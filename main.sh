@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 配置信息
-NUTSTORE_DIR="https://dav.jianguoyun.com/dav/backup"
+NUTSTORE_DIR="https://dav.jianguoyun.com/dav/backup/docker_data"
 
 # 颜色定义
 RED='\033[31m'
