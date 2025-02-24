@@ -17,3 +17,9 @@ bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy8409
 ```bash
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/time.sh)"
 ```
+
+要执行主脚本，请在终端中运行以下命令：
+
+```bash
+bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/main.sh)"
+```
