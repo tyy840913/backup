@@ -6,6 +6,8 @@
 
 ## 使用方法
 
+要执行软件源更新脚本，请在终端中运行以下命令：
+
 ```bash
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/update.sh)"
 ```
