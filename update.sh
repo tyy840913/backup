@@ -45,45 +45,25 @@ declare -A MIRRORS=(
     [13]="浙江大学"
     [14]="中科院软件所"
     [15]="OPENTHOS"
-    [16]="首尔大学"
-    [17]="曼彻斯特大学"
-    [18]="法兰克福大学"
-    [19]="普林斯顿大学"
-    [20]="亚马逊AWS"
-    [21]="Google Cloud"
-    [22]="微软Azure"
-    [23]="DigitalOcean"
-    [24]="Linode"
-    [25]="Cloudflare"
 )
 
 # 镜像源基础URL映射
 declare -A MIRROR_BASES=(
-    [1]="http://mirrors.aliyun.com"
-    [2]="https://mirrors.bfsu.edu.cn"
-    [3]="https://mirrors.cqu.edu.cn"
-    [4]="https://mirrors.ustc.edu.cn"
-    [5]="https://repo.huaweicloud.com"
-    [6]="http://mirror.lzu.edu.cn"
-    [7]="https://mirrors.nju.edu.cn"
-    [8]="http://mirrors.163.com"
-    [9]="https://mirrors.tuna.tsinghua.edu.cn"
-    [10]="https://mirror.sjtu.edu.cn"
-    [11]="http://mirrors.cloud.tencent.com"
-    [12]="http://mirrors.sohu.com"
-    [13]="http://mirrors.zju.edu.cn"
-    [14]="http://mirror.iscas.ac.cn"
-    [15]="http://mirrors.openthos.com"
-    [16]="http://ftp.kaist.ac.kr"
-    [17]="http://mirrors.manchester.ac.uk"
-    [18]="http://ftp.fau.de"
-    [19]="http://mirror.math.princeton.edu/pub"
-    [20]="http://aws.amazon.com/ec2"
-    [21]="http://packages.cloud.google.com"
-    [22]="http://azure.archive.ubuntu.com"
-    [23]="http://mirrors.digitalocean.com"
-    [24]="http://mirror.linode.com"
-    [25]="http://mirrors.cloudflare.com"
+    [1]="http://mirrors.aliyun.com"                     # 阿里云
+    [2]="https://mirrors.bfsu.edu.cn"                   # 北京外国语大学
+    [3]="https://mirrors.cqu.edu.cn"                    # 重庆大学
+    [4]="https://mirrors.ustc.edu.cn"                   # 中国科学技术大学
+    [5]="https://repo.huaweicloud.com"                   # 华为云
+    [6]="http://mirror.lzu.edu.cn"                       # 兰州大学
+    [7]="https://mirrors.nju.edu.cn"                    # 南京大学
+    [8]="http://mirrors.163.com"                         # 网易
+    [9]="https://mirrors.tuna.tsinghua.edu.cn"          # 清华大学
+    [10]="https://mirror.sjtu.edu.cn"                   # 上海交通大学
+    [11]="http://mirrors.cloud.tencent.com"              # 腾讯云
+    [12]="http://mirrors.sohu.com"                       # 搜狐
+    [13]="http://mirrors.zju.edu.cn"                     # 浙江大学
+    [14]="http://mirror.iscas.ac.cn"                     # 中科院软件所
+    [15]="http://mirrors.openthos.com"                   # OPENTHOS
 )
 
 # 操作系统路径映射
@@ -108,7 +88,7 @@ declare -A OS_PATHS=(
 )
 
 # 显示镜像源菜单
-echo "请选择镜像源："
+echo "请选择镜像源（国内）："
 for key in $(printf '%s\n' "${!MIRRORS[@]}" | sort -n); do
     echo "$key. ${MIRRORS[$key]}"
 done
@@ -118,7 +98,7 @@ read -p "请输入选项数字 (默认1): " choice
 choice=${choice:-1}
 
 # 验证输入有效性
-if [[ ! $choice =~ ^([1-9]|1[0-9]|2[0-5])$ ]]; then
+if [[ ! $choice =~ ^([1-9]|1[0-5])$ ]]; then
     echo "无效选项"
     exit 1
 fi
@@ -197,8 +177,6 @@ EOF
         cat > "$repo_file" <<- EOF
 ${mirror_base}/v${OS_VERSION_ID}/main
 ${mirror_base}/v${OS_VERSION_ID}/community
-# ${mirror_base}/edge/main
-# ${mirror_base}/edge/community
 EOF
         ;;
         
