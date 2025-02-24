@@ -2,8 +2,8 @@
 
 # 配置信息
 NUTSTORE_DIR="https://dav.woskee.nyc.mn:88/jianguoyun/backup"
-read -p "请输入坚果云账号: " NUTSTORE_USER
-read -sp "请输入坚果云密码: " NUTSTORE_PASS
+read -p "请输入账号: " NUTSTORE_USER
+read -sp "请输入密码: " NUTSTORE_PASS
 echo
 # 颜色定义
 RED='\033[31m'
