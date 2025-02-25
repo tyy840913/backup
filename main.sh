@@ -90,7 +90,7 @@ EOF
     done
 
     case $choice in
-        5)
+        6)
             echo -e "${RED}退出系统...${RESET}"
             exit 0
             ;;
