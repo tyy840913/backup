@@ -46,13 +46,13 @@ backup_file() {
 
 # 定义镜像源选项（按字母顺序排列）
 declare -A MIRRORS=(
-    [1]="阿里云"            # 国内最大云服务商[3,7](@ref)
-    [2]="华为云"            # 企业级支持[3,5](@ref)
-    [3]="南京大学"          # 教育网优选[7](@ref)
-    [4]="清华大学"          # 更新及时[7,9](@ref)
-    [5]="腾讯云"            # 云服务集成[5](@ref)
-    [6]="网易"             # 老牌服务商[3](@ref)
-    [7]="中国科学技术大学"   # 科研场景优选[7,9](@ref)
+    [1]="阿里云"            # 国内最大云服务商
+    [2]="华为云"            # 企业级支持
+    [3]="南京大学"          # 教育网优选
+    [4]="清华大学"          # 更新及时
+    [5]="腾讯云"            # 云服务集成
+    [6]="网易"             # 老牌服务商
+    [7]="中国科学技术大学"   # 科研场景优选
 )
 
 # 镜像源基础URL映射
@@ -68,7 +68,7 @@ declare -A MIRROR_BASES=(
 
 # 操作系统路径映射（精简后）
 declare -A OS_PATHS=(
-    [alpine]="alpine"       # 特别保留[1,2](@ref)
+    [alpine]="alpine"       # 特别保留
     [centos]="centos"
     [debian]="debian"
     [ubuntu]="ubuntu"
@@ -101,7 +101,7 @@ mirror_base="${MIRROR_BASES[$choice]}/${OS_PATHS[$OS_ID]}"
 configure_sources() {
     case $OS_ID in
         ubuntu|debian)
-            # Debian系配置[1,2](@ref)
+            # Debian系配置
             sources_file="/etc/apt/sources.list"
             backup_file "$sources_file"
             
@@ -117,7 +117,7 @@ EOF
             ;;
 
         alpine)
-            # Alpine配置[1,2](@ref)
+            # Alpine配置
             repo_file="/etc/apk/repositories"
             backup_file "$repo_file"
             
@@ -131,7 +131,7 @@ EOF
             ;;
 
         centos|rocky|almalinux)
-            # RHEL系配置[1,5](@ref)
+            # RHEL系配置
             repo_file="/etc/yum.repos.d/${OS_ID}-Base.repo"
             backup_file "$repo_file"
             
@@ -151,7 +151,7 @@ EOF
             ;;
 
         fedora)
-            # Fedora配置[5](@ref)
+            # Fedora配置
             repo_file="/etc/yum.repos.d/fedora.repo"
             backup_file "$repo_file"
             
@@ -165,7 +165,7 @@ EOF
             ;;
 
         opensuse)
-            # OpenSUSE配置[5](@ref)
+            # OpenSUSE配置
             repo_file="/etc/zypp/repos.d/oss.repo"
             backup_file "$repo_file"
             
