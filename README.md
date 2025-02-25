@@ -12,6 +12,12 @@
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/update.sh)"
 ```
 
+要执行卸载工具脚本，请在终端中运行以下命令：
+
+```bash
+bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/uninstall.sh)"
+```
+
 要执行时区修改脚本，请在终端中运行以下命令：
 
 ```bash
