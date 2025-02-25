@@ -196,4 +196,4 @@ case $OS_ID in
     opensuse) zypper refresh -f ;;
 esac
 
-echo -e "\n\033[32m[完成] 镜像源已切换至 ${MIRRORS[$choice]}，建议重启后生效\033[0m"
+echo -e "\n\033[32m[完成] 镜像源已切换至 ${MIRRORS[$choice]}\033[0m"
