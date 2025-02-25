@@ -64,17 +64,19 @@ EOF
         "2) 自动下载脚本 (download.sh)"
         "3) 时区修改脚本 (time.sh)"
         "4) 系统源更新脚本 (update.sh)"
-        "5) 退出"
+        "5) 卸载系统工具脚本 (uninstall.sh)"
+        "6) 退出"
     )
 
     # 显示菜单
     for item in "${menu_items[@]}"; do
         case $item in
-            *auto.sh*)    color=${CYAN} ;;
-            *download.sh*)color=${BLUE} ;;
-            *time.sh*)    color=${GREEN} ;;
-            *update.sh*)  color=${YELLOW} ;;
-            *)            color=${RESET} ;;
+            *auto.sh*)      color=${CYAN} ;;
+            *download.sh*)  color=${BLUE} ;;
+            *time.sh*)      color=${GREEN} ;;
+            *update.sh*)    color=${YELLOW} ;;
+            *uninstall.sh*) color=${CYAN} ;;
+            *)              color=${RESET} ;;
         esac
         echo -e "  ${color}${item}${RESET}"
     done
@@ -98,10 +100,11 @@ EOF
                 2) script="download.sh" ;;
                 3) script="time.sh" ;;
                 4) script="update.sh" ;;
+                5) script="uninstall.sh" ;;
             esac
 
             # 设置下载参数
-            if [[ "$script" == "time.sh" || "$script" == "update.sh" ]]; then
+            if [[ "$script" == "time.sh" || "$script" == "update.sh" || "$script" == "uninstall.sh" ]]; then
                 DOWNLOAD_URL="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/$script"
                 AUTH_OPTION=""
             else
