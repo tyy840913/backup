@@ -1,11 +1,11 @@
-#!/bin/bash
-# 国内镜像源一键切换脚本
+#!/bin/ash
+# 国内镜像源一键切换脚本（Ash兼容版）
 # 支持系统：Alpine/CentOS/Debian/Ubuntu/Fedora/OpenSUSE
 # 作者：Shell助手 最后更新：2025-02-25
 
 # 函数：以红色显示错误信息并退出
 error_exit() {
-    echo -e "\033[31m[错误] $1\033[0m" >&2
+    printf "\033[31m[错误] %s\033[0m\n" "$1" >&2
     exit 1
 }
 
@@ -17,7 +17,7 @@ fi
 # 系统检测函数
 detect_os() {
     if [ -f /etc/os-release ]; then
-        source /etc/os-release
+        . /etc/os-release
         OS_ID="${ID}"
         OS_VERSION_CODENAME="${VERSION_CODENAME}"
         OS_VERSION_ID="${VERSION_ID%.*}"
@@ -30,7 +30,7 @@ detect_os() {
     fi
 
     # 显示检测结果
-    echo -e "\n\033[34m[系统检测]\033[0m"
+    printf "\n\033[34m[系统检测]\033[0m\n"
     echo "操作系统ID: $OS_ID"
     echo "版本代号: $OS_VERSION_CODENAME"
     echo "版本号: $OS_VERSION_ID"
@@ -40,72 +40,75 @@ detect_os() {
 backup_file() {
     local file="$1"
     if [ -f "$file" ]; then
-        cp -v "$file" "${file}.bak.$(date +%Y%m%d%H%M%S)"
+        cp "$file" "${file}.bak.$(date +%Y%m%d%H%M%S)"
+        echo "备份文件: ${file}.bak.$(date +%Y%m%d%H%M%S)"
     fi
 }
 
-# 定义镜像源选项（按字母顺序排列）
-declare -A MIRRORS=(
-    [1]="阿里云"            # 国内最大云服务商
-    [2]="华为云"            # 企业级支持
-    [3]="南京大学"          # 教育网优选
-    [4]="清华大学"          # 更新及时
-    [5]="腾讯云"            # 云服务集成
-    [6]="网易"             # 老牌服务商
-    [7]="中国科学技术大学"   # 科研场景优选
-)
-
-# 镜像源基础URL映射
-declare -A MIRROR_BASES=(
-    [1]="http://mirrors.aliyun.com"
-    [2]="https://repo.huaweicloud.com"
-    [3]="https://mirrors.nju.edu.cn"
-    [4]="https://mirrors.tuna.tsinghua.edu.cn"
-    [5]="http://mirrors.cloud.tencent.com"
-    [6]="http://mirrors.163.com"
-    [7]="https://mirrors.ustc.edu.cn"
-)
-
-# 操作系统路径映射（精简后）
-declare -A OS_PATHS=(
-    [alpine]="alpine"       # 特别保留
-    [centos]="centos"
-    [debian]="debian"
-    [ubuntu]="ubuntu"
-    [fedora]="fedora"
-    [opensuse]="opensuse"
-)
+# 定义镜像源选项
+MIRROR1_NAME="阿里云"
+MIRROR1_URL="https://mirrors.aliyun.com"
+MIRROR2_NAME="华为云"
+MIRROR2_URL="https://repo.huaweicloud.com"
+MIRROR3_NAME="南京大学"
+MIRROR3_URL="https://mirrors.nju.edu.cn"
+MIRROR4_NAME="清华大学"
+MIRROR4_URL="https://mirrors.tuna.tsinghua.edu.cn"
+MIRROR5_NAME="腾讯云"
+MIRROR5_URL="http://mirrors.cloud.tencent.com"
+MIRROR6_NAME="网易"
+MIRROR6_URL="http://mirrors.163.com"
+MIRROR7_NAME="中国科学技术大学"
+MIRROR7_URL="https://mirrors.ustc.edu.cn"
 
 # 主流程开始
 detect_os
 
 # 显示镜像源菜单
-echo -e "\n\033[34m[镜像源选择]\033[0m"
-for key in $(printf '%s\n' "${!MIRRORS[@]}" | sort -n); do
-    echo "$key. ${MIRRORS[$key]}"
+printf "\n\033[34m[镜像源选择]\033[0m\n"
+i=1
+while [ $i -le 7 ]; do
+    eval "mirror_name=\$MIRROR${i}_NAME"
+    echo "$i. $mirror_name"
+    i=$((i + 1))
 done
 
 # 获取用户输入
-read -p "请输入选项数字 (默认1): " choice
+printf "请输入选项数字 (默认1): "
+read choice
 choice=${choice:-1}
 
 # 验证输入有效性
-if [[ ! $choice =~ ^[1-7]$ ]]; then
-    error_exit "无效选项，请输入1-7之间的数字"
-fi
+case "$choice" in
+    [1-7]) ;;
+    *) error_exit "无效选项，请输入1-7之间的数字" ;;
+esac
 
-# 获取基础镜像URL和操作系统路径
-mirror_base="${MIRROR_BASES[$choice]}/${OS_PATHS[$OS_ID]}"
+# 获取镜像名称和URL
+eval "mirror_name=\$MIRROR${choice}_NAME"
+eval "mirror_url=\$MIRROR${choice}_URL"
+
+# 确定系统路径
+case "$OS_ID" in
+    alpine) os_path="alpine" ;;
+    centos) os_path="centos" ;;
+    debian) os_path="debian" ;;
+    ubuntu) os_path="ubuntu" ;;
+    fedora) os_path="fedora" ;;
+    opensuse) os_path="opensuse" ;;
+    *) error_exit "不支持的发行版：$OS_ID" ;;
+esac
+
+mirror_base="${mirror_url}/${os_path}"
 
 # 配置处理函数
 configure_sources() {
     case $OS_ID in
         ubuntu|debian)
-            # Debian系配置
             sources_file="/etc/apt/sources.list"
             backup_file "$sources_file"
             
-            echo -e "\033[32m[配置APT源]\033[0m 使用镜像：${MIRRORS[$choice]}"
+            printf "\033[32m[配置APT源]\033[0m 使用镜像：%s\n" "$mirror_name"
             cat > "$sources_file" <<- EOF
 # 主仓库
 deb ${mirror_base}/ ${OS_VERSION_CODENAME} main restricted universe multiverse
@@ -117,31 +120,28 @@ EOF
             ;;
 
         alpine)
-            # Alpine配置
             repo_file="/etc/apk/repositories"
             backup_file "$repo_file"
             
-            echo -e "\033[32m[配置APK源]\033[0m 使用镜像：${MIRRORS[$choice]}"
+            printf "\033[32m[配置APK源]\033[0m 使用镜像：%s\n" "$mirror_name"
             cat > "$repo_file" <<- EOF
 ${mirror_base}/v${OS_VERSION_ID}/main
 ${mirror_base}/v${OS_VERSION_ID}/community
-# 边缘测试仓库
-# ${mirror_base}/edge/main
 EOF
             ;;
 
         centos|rocky|almalinux)
-            # RHEL系配置
             repo_file="/etc/yum.repos.d/${OS_ID}-Base.repo"
             backup_file "$repo_file"
             
-            echo -e "\033[32m[配置YUM源]\033[0m 使用镜像：${MIRRORS[$choice]}"
+            os_id_upper=$(echo "$OS_ID" | tr '[:lower:]' '[:upper:]')
+            printf "\033[32m[配置YUM源]\033[0m 使用镜像：%s\n" "$mirror_name"
             cat > "$repo_file" <<- EOF
 [base]
 name=${OS_ID}-\$releasever - Base
 baseurl=${mirror_base}/\$releasever/BaseOS/\$basearch/os/
 gpgcheck=1
-gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-${OS_ID^^}
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-${os_id_upper}
 
 [updates]
 name=${OS_ID}-\$releasever - Updates
@@ -151,11 +151,10 @@ EOF
             ;;
 
         fedora)
-            # Fedora配置
             repo_file="/etc/yum.repos.d/fedora.repo"
             backup_file "$repo_file"
             
-            echo -e "\033[32m[配置DNF源]\033[0m 使用镜像：${MIRRORS[$choice]}"
+            printf "\033[32m[配置DNF源]\033[0m 使用镜像：%s\n" "$mirror_name"
             cat > "$repo_file" <<- EOF
 [fedora]
 name=Fedora \$releasever - \$basearch
@@ -165,11 +164,10 @@ EOF
             ;;
 
         opensuse)
-            # OpenSUSE配置
             repo_file="/etc/zypp/repos.d/oss.repo"
             backup_file "$repo_file"
             
-            echo -e "\033[32m[配置ZYpp源]\033[0m 使用镜像：${MIRRORS[$choice]}"
+            printf "\033[32m[配置ZYpp源]\033[0m 使用镜像：%s\n" "$mirror_name"
             cat > "$repo_file" <<- EOF
 [oss]
 name=openSUSE-\$releasever-Oss
@@ -178,9 +176,7 @@ gpgcheck=1
 EOF
             ;;
 
-        *)
-            error_exit "不支持的发行版：$OS_ID"
-            ;;
+        *) error_exit "不支持的发行版：$OS_ID" ;;
     esac
 }
 
@@ -188,7 +184,7 @@ EOF
 configure_sources
 
 # 更新包索引
-echo -e "\n\033[34m[更新软件源]\033[0m"
+printf "\n\033[34m[更新软件源]\033[0m\n"
 case $OS_ID in
     ubuntu|debian) apt update -y ;;
     alpine) apk update ;;
@@ -196,4 +192,4 @@ case $OS_ID in
     opensuse) zypper refresh -f ;;
 esac
 
-echo -e "\n\033[32m[完成] 镜像源已切换至 ${MIRRORS[$choice]}\033[0m"
+printf "\n\033[32m[完成] 镜像源已切换至 %s\033[0m\n" "$mirror_name"
