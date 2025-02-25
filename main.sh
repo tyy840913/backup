@@ -84,8 +84,8 @@ EOF
 
     # 获取用户选择
     while true; do
-        read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-5]: ${RESET}")" choice
-        [[ $choice =~ ^[1-5]$ ]] && break
+        read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-6]: ${RESET}")" choice
+        [[ $choice =~ ^[1-6]$ ]] && break
         echo -e "${RED}无效输入，请重新选择!${RESET}"
     done
 
