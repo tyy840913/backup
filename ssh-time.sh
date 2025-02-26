@@ -150,19 +150,36 @@ configure_ssh_root_login() {
 }
 configure_ssh_root_login
 
-# 时区配置
+# 时区配置（新增用户确认步骤）
 set_timezone() {
     echo -e "\033[36m[操作] 正在校验时区配置...\033[0m"
     current_tz=$(date +%Z)
-    [ "$current_tz" = "CST" ] && {
+    
+    # 如果已经是 CST 时区直接返回
+    if [ "$current_tz" = "CST" ]; then
         echo -e "\033[36m当前时区已正确设置 (Asia/Shanghai  CST+8)\033[0m"
         return
-    }
-    
-    echo -e "\033[33m! 正在设置时区为 Asia/Shanghai\033[0m"
-    timedatectl set-timezone Asia/Shanghai 2>/dev/null || \
-    ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
-    echo -e "\033[32m✓ 时区配置完成\033[0m"
+    fi
+
+    # 需要配置时询问用户
+    echo -e "\033[33m! 检测到时区未设置为 CST，当前时区为：$current_tz\033[0m"
+    read -p "是否要设置时区为 Asia/Shanghai？[Y/n] " tz_confirm
+    tz_confirm=${tz_confirm:-Y}
+
+    if [[ $tz_confirm =~ ^[Yy] ]]; then
+        # 尝试两种设置方式
+        if timedatectl set-timezone Asia/Shanghai 2>/dev/null; then
+            echo -e "\033[32m✓ 使用时区工具设置成功\033[0m"
+        elif ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime; then
+            echo -e "\033[32m✓ 通过软链接设置时区成功\033[0m"
+        else
+            echo -e "\033[31m错误：时区设置失败，请手动检查！\033[0m"
+            return 1
+        fi
+        echo -e "\033[32m✓ 时区已更新为 $(date +%Z)\033[0m"
+    else
+        echo -e "\033[33m用户选择保持当前时区配置\033[0m"
+    fi
 }
 set_timezone
 
