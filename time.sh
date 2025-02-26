@@ -102,9 +102,23 @@ configure_ssh_root_login() {
         return 1
     }
 
-    # 修改关键参数（兼容不同注释格式）
-    sed -i -E '/^#?PermitRootLogin/c\PermitRootLogin yes' "$sshd_config"
-    sed -i -E '/^#?PasswordAuthentication/c\PasswordAuthentication yes' "$sshd_config"
+    # 检查是否需要修改配置
+    local need_restart=0
+    if ! grep -qE '^PermitRootLogin[[:space:]]+yes' "$sshd_config"; then
+        sed -i -E '/^#?PermitRootLogin/c\PermitRootLogin yes' "$sshd_config"
+        need_restart=1
+    fi
+
+    if ! grep -qE '^PasswordAuthentication[[:space:]]+yes' "$sshd_config"; then
+        sed -i -E '/^#?PasswordAuthentication/c\PasswordAuthentication yes' "$sshd_config"
+        need_restart=1
+    fi
+
+    # 无需修改时跳过重启
+    if [ $need_restart -eq 0 ]; then
+        echo "SSH配置已符合要求，无需修改 √"
+        return 0
+    fi
 
     # 重启SSH服务（适配不同系统）
     case $pkgmgr in
@@ -116,11 +130,19 @@ configure_ssh_root_login() {
             ;;
     esac
 
-    # 验证服务状态
-    if ! systemctl is-active "$service_name" >/dev/null 2>&1; then
-        echo "SSH服务重启失败，请检查日志：journalctl -u $service_name" >&2
-        return 1
+    # 验证服务状态（兼容systemd和openrc）
+    if command -v systemctl &>/dev/null; then
+        if ! systemctl is-active "$service_name" >/dev/null 2>&1; then
+            echo "SSH服务重启失败，请检查日志：journalctl -u $service_name" >&2
+            return 1
+        fi
+    else
+        if ! rc-service "$service_name" status | grep -q "status: started"; then
+            echo "SSH服务重启失败，请检查日志" >&2
+            return 1
+        fi
     fi
+    
     echo "SSH配置更新成功 √"
 }
 configure_ssh_root_login
