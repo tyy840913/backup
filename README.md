@@ -33,7 +33,7 @@ bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy8409
 要执行时区修改及SSH安装，请在终端中运行以下命令：
 
 ```bash
-bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/time.sh)"
+bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/ssh-time.sh)"
 ```
 
 要执行docker安装脚本，请在终端中运行以下命令：
