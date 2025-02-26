@@ -96,19 +96,57 @@ enable_service
 
 # SSH配置优化
 configure_ssh_root_login() {
-    echo -e "\033[36m[操作] 正在优化SSH配置...\033[0m"
+    echo -e "\033[36m[操作] 正在检查SSH配置...\033[0m"
     local sshd_config="/etc/ssh/sshd_config"
-    cp "$sshd_config" "${sshd_config}.bak" 2>/dev/null || echo -e "\033[33m! 未能创建配置文件备份\033[0m"
+    
+    # 创建备份
+    if ! cp "$sshd_config" "${sshd_config}.bak" 2>/dev/null; then
+        echo -e "\033[33m! 警告：未能创建配置文件备份\033[0m"
+    fi
 
-    sed -i '/PermitRootLogin/d; /PasswordAuthentication/d' "$sshd_config"
+    # 配置检查函数
+    is_configured() {
+        # 检查是否存在明确配置项（跳过注释行）
+        grep -qE '^[[:space:]]*PermitRootLogin[[:space:]]+yes' "$sshd_config" && \
+        grep -qE '^[[:space:]]*PasswordAuthentication[[:space:]]+yes' "$sshd_config"
+    }
+
+    # 如果配置已正确则跳过
+    if is_configured; then
+        echo -e "\033[32m✓ 配置已符合要求（允许root登录和密码认证）\033[0m"
+        return 0
+    fi
+
+    # 执行配置修改
+    echo -e "\033[33m! 检测到需要修改SSH配置\033[0m"
+    sed -i '/PermitRootLogin\|PasswordAuthentication/d' "$sshd_config"  # 删除旧配置
     echo "PermitRootLogin yes" >> "$sshd_config"
     echo "PasswordAuthentication yes" >> "$sshd_config"
 
+    # 重启服务并验证
+    local need_restart=1
     case $pkgmgr in
-        apt|yum|dnf) systemctl restart $service_name ;;
-        apk) rc-service $service_name restart ;;
+        apt|yum|dnf)
+            if systemctl restart "$service_name"; then
+                echo -e "\033[32m✓ SSH服务重启成功\033[0m"
+                need_restart=0
+            fi
+            ;;
+        apk)
+            if rc-service "$service_name" restart; then
+                echo -e "\033[32m✓ SSH服务重启成功\033[0m"
+                need_restart=0
+            fi
+            ;;
     esac
-    echo -e "\033[32m✓ SSH配置已更新\033[0m"
+
+    # 处理重启失败的情况
+    if [ $need_restart -eq 1 ]; then
+        echo -e "\033[31m错误：SSH服务重启失败，请手动检查！\033[0m"
+        return 1
+    fi
+
+    echo -e "\033[32m✓ 配置更新完成（修改后已生效）\033[0m"
 }
 configure_ssh_root_login
 
@@ -117,7 +155,7 @@ set_timezone() {
     echo -e "\033[36m[操作] 正在校验时区配置...\033[0m"
     current_tz=$(date +%Z)
     [ "$current_tz" = "CST" ] && {
-        echo -e "\033[36m当前时区已正确设置 (CST UTC+8)\033[0m"
+        echo -e "\033[36m当前时区已正确设置 (Asia/Shanghai CST+8)\033[0m"
         return
     }
     
