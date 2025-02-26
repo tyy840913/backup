@@ -65,7 +65,8 @@ EOF
         "3) 时区修改脚本 (ssh-time.sh)"
         "4) 系统源更新脚本 (update.sh)"
         "5) 卸载系统工具脚本 (uninstall.sh)"
-        "6) 退出"
+        "6) Docker安装脚本 (docker.sh)"
+        "7) 退出"
     )
 
     # 显示菜单
@@ -76,6 +77,7 @@ EOF
             *ssh-time.sh*)      color=${GREEN} ;;
             *update.sh*)    color=${YELLOW} ;;
             *uninstall.sh*) color=${CYAN} ;;
+            *docker.sh*)    color=${MAGENTA} ;;
             *)              color=${RESET} ;;
         esac
         echo -e "  ${color}${item}${RESET}"
@@ -84,13 +86,13 @@ EOF
 
     # 获取用户选择
     while true; do
-        read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-6]: ${RESET}")" choice
-        [[ $choice =~ ^[1-6]$ ]] && break
+        read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-7]: ${RESET}")" choice
+        [[ $choice =~ ^[1-7]$ ]] && break
         echo -e "${RED}无效输入，请重新选择!${RESET}"
     done
 
     case $choice in
-        6)
+        7)
             echo -e "${RED}退出系统...${RESET}"
             exit 0
             ;;
@@ -101,10 +103,11 @@ EOF
                 3) script="ssh-time.sh" ;;
                 4) script="update.sh" ;;
                 5) script="uninstall.sh" ;;
+                6) script="docker.sh" ;;
             esac
 
             # 设置下载参数
-            if [[ "$script" == "ssh-time.sh" || "$script" == "update.sh" || "$script" == "uninstall.sh" ]]; then
+            if [[ "$script" == "ssh-time.sh" || "$script" == "update.sh" || "$script" == "uninstall.sh" || "$script" == "docker.sh" ]]; then
                 DOWNLOAD_URL="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/$script"
                 AUTH_OPTION=""
             else
