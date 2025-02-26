@@ -91,76 +91,131 @@ enable_service() {
 
 enable_service
 
-# 时区配置 (符号链接优先)
+# 新增SSH配置：允许root密码登录
+configure_ssh_root_login() {
+    echo "正在配置SSH允许root用户密码登录..."
+    local sshd_config="/etc/ssh/sshd_config"
+    
+    # 备份配置文件
+    cp "$sshd_config" "${sshd_config}.bak" 2>/dev/null || {
+        echo "无法备份SSH配置文件" >&2
+        return 1
+    }
+
+    # 修改关键参数（兼容不同注释格式）
+    sed -i -E '/^#?PermitRootLogin/c\PermitRootLogin yes' "$sshd_config"
+    sed -i -E '/^#?PasswordAuthentication/c\PasswordAuthentication yes' "$sshd_config"
+
+    # 重启SSH服务（适配不同系统）
+    case $pkgmgr in
+        apt|yum|dnf)
+            systemctl restart "$service_name"
+            ;;
+        apk)
+            rc-service "$service_name" restart
+            ;;
+    esac
+
+    # 验证服务状态
+    if ! systemctl is-active "$service_name" >/dev/null 2>&1; then
+        echo "SSH服务重启失败，请检查日志：journalctl -u $service_name" >&2
+        return 1
+    fi
+    echo "SSH配置更新成功 √"
+}
+configure_ssh_root_login
+
+# 时区修改
 set_timezone() {
     local target_tz="Asia/Shanghai"
     local tzfile="/usr/share/zoneinfo/$target_tz"
     local localtime="/etc/localtime"
     local timezone="/etc/timezone"
 
-    # 验证时区文件存在性
-    if [ ! -f "$tzfile" ]; then
-        echo "错误：时区文件 $tzfile 不存在" >&2
-        return 1
-    fi
-
-    # 检查现有符号链接有效性
-    if [ -L "$localtime" ]; then
-        if [ "$(readlink -f "$localtime")" = "$tzfile" ]; then
+    # 先检查当前是否已经是东八区 
+    if command -v timedatectl &>/dev/null; then
+        if timedatectl | grep -q "$target_tz"; then
             echo "时区已正确配置为 $target_tz"
             return 0
-        else
-            echo "检测到无效的时区符号链接，重新配置..."
-            rm -f "$localtime"
         fi
     elif [ -f "$localtime" ]; then
-        echo "发现时区实体文件，转换为符号链接..."
-        mv "$localtime" "$localtime.bak"
+        # 通过符号链接或文件内容判断 
+        if [ -L "$localtime" ] && [ "$(readlink -f "$localtime")" = "$tzfile" ]; then
+            echo "时区已正确配置为 $target_tz"
+            return 0
+        elif cmp -s "$localtime" "$tzfile"; then
+            echo "时区已正确配置为 $target_tz"
+            return 0
+        fi
     fi
 
-    # 优先创建符号链接
-    echo "正在设置符号链接时区..."
-    if ln -sf "$tzfile" "$localtime"; then
-        # 更新辅助配置文件
-        echo "$target_tz" > "$timezone"
-        [ -f /etc/sysconfig/clock ] && sed -i "s/^ZONE=.*/ZONE=\"$target_tz\"/" /etc/sysconfig/clock
-        
-        # 针对Debian系更新配置
-        if [ -f /etc/localtime ] && command -v dpkg-reconfigure &>/dev/null; then
-            dpkg-reconfigure -f noninteractive tzdata &> /dev/null
-        fi
+    # 检查符号链接可行性 
+    local can_use_symlink=true
+    if [ ! -f "$tzfile" ]; then
+        echo "错误：时区文件 $tzfile 不存在，尝试安装 tzdata..."
+        case $pkgmgr in
+            apt) apt install -y tzdata ;;
+            yum|dnf) $pkgmgr install -y tzdata ;;
+            apk) apk add --no-cache tzdata ;;
+        esac
+        [ -f "$tzfile" ] || { echo "时区文件安装失败"; return 1; }
+    fi
+
+    # 测试创建临时符号链接检测可行性
+    local temp_link="$(mktemp -u)"
+    if ! ln -sf "$tzfile" "$temp_link" 2>/dev/null; then
+        can_use_symlink=false
     else
-        # 符号链接失败时回退到timedatectl
-        echo "符号链接创建失败，尝试其他方式..."
+        rm -f "$temp_link"
+    fi
+
+    # 优先使用符号链接方案 
+    if $can_use_symlink; then
+        echo "尝试符号链接方式配置时区..."
+        # 备份原有配置
+        [ -e "$localtime" ] && cp -a "$localtime" "$localtime.bak"
+        [ -e "$timezone" ] && cp -a "$timezone" "$timezone.bak"
+        
+        # 删除旧配置（兼容实体文件和符号链接）
+        rm -f "$localtime"
+        # 创建符号链接
+        if ln -sf "$tzfile" "$localtime"; then
+            echo "$target_tz" > "$timezone"
+            # 特殊系统适配
+            [ -f /etc/sysconfig/clock ] && sed -i "s/^ZONE=.*/ZONE=\"$target_tz\"/" /etc/sysconfig/clock
+            [ -f /etc/conf.d/clock ] && sed -i "s/^TIMEZONE=.*/TIMEZONE=\"$target_tz\"/" /etc/conf.d/clock
+        else
+            can_use_symlink=false
+        fi
+    fi
+
+    # 符号链接失败时使用替代方案 
+    if ! $can_use_symlink; then
+        echo "符号链接不可用，尝试复制文件方式..."
+        if [ -f "$tzfile" ]; then
+            cp -f "$tzfile" "$localtime"
+            echo "$target_tz" > "$timezone"
+        else
+            echo "时区文件缺失，无法配置" >&2
+            return 1
+        fi
+    fi
+
+    # 验证配置结果
+    if { [ -L "$localtime" ] && [ "$(readlink -f "$localtime")" = "$tzfile" ]; } || 
+       { [ -f "$localtime" ] && cmp -s "$localtime" "$tzfile"; }; then
+        echo "时区成功设置为 $target_tz (UTC+8)"
+        # 更新系统时间
+        hwclock --hctosys 2>/dev/null || true
+    else
+        # 终极回退方案：使用 timedatectl
         if command -v timedatectl &>/dev/null; then
             timedatectl set-timezone "$target_tz"
         else
-            # 最终回退方案
-            cp "$tzfile" "$localtime"
-            echo "$target_tz" > "$timezone"
+            echo "时区配置失败，请手动检查" >&2
+            return 1
         fi
     fi
-
-    # 最终验证
-    if check_tz_config "$target_tz"; then
-        echo "时区已成功设置为 $target_tz (UTC+8)"
-    else
-        echo "时区配置失败，请手动检查" >&2
-        return 1
-    fi
 }
-
-# 时区验证函数
-check_tz_config() {
-    local expect_tz="$1"
-    # 检查当前系统时区
-    if date | grep -q "CST"; then
-        return 0
-    fi
-    # 检查符号链接
-    [ -L "/etc/localtime" ] && [ "$(readlink -f /etc/localtime)" = "/usr/share/zoneinfo/$expect_tz" ]
-}
-
-set_timezone
 
 echo "所有配置已完成"
