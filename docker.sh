@@ -2,11 +2,11 @@
 
 # 镜像加速器列表（清理后的有效镜像地址）
 MIRRORS=(
-    "https://proxy.1panel.live"
+    "https://docker.woskee.nyc.mn",
+    "https://docker.woskee.dns.army",
+    "https://docker.woskee.dynv6.net",
+    "https://proxy.1panel.live",
     "https://docker.1panel.top"
-    "https://docker.m.daocloud.io"
-    "https://docker.1ms.run"
-    "https://docker.ketches.cn"
 )
 
 # 系统检测函数
