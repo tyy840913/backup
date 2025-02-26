@@ -155,7 +155,7 @@ set_timezone() {
     echo -e "\033[36m[操作] 正在校验时区配置...\033[0m"
     current_tz=$(date +%Z)
     [ "$current_tz" = "CST" ] && {
-        echo -e "\033[36m当前时区已正确设置 (CST UTC+8)\033[0m"
+        echo -e "\033[36m当前时区已正确设置 (Asia/Shanghai  CST+8)\033[0m"
         return
     }
     
