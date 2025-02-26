@@ -1,7 +1,7 @@
 # 新安装alpine系统优先使用这条命令安装基础工具
 
 ```bash
-sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && apk add curl bash
+sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && apk update && apk add curl bash
 ```
 
 # 要执行主脚本，请在终端中运行以下命令：
