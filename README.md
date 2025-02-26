@@ -29,3 +29,10 @@ bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy8409
 ```bash
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/main.sh)"
 ```
+
+优先使用这条命令安装基础工具
+
+```bash
+sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && apk update && apk add curl bash
+```
+
