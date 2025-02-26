@@ -42,7 +42,7 @@ bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy8409
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker.sh)"
 ```
 
-要执行Pve虚拟机磁盘转换工具，请在终端中运行以下命令：
+要执行PVE虚拟机磁盘转换工具，请在终端中运行以下命令：
 
 ```bash
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/qm.sh)"
