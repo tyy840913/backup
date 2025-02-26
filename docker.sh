@@ -2,10 +2,10 @@
 
 # 镜像加速器列表（清理后的有效镜像地址）
 MIRRORS=(
-    "https://docker.woskee.nyc.mn",
-    "https://docker.woskee.dns.army",
-    "https://docker.woskee.dynv6.net",
-    "https://proxy.1panel.live",
+    "https://docker.woskee.nyc.mn"
+    "https://docker.woskee.dns.army"
+    "https://docker.woskee.dynv6.net"
+    "https://proxy.1panel.live"
     "https://docker.1panel.top"
 )
 
@@ -93,7 +93,7 @@ manage_service() {
     esac
 }
 
-# 智能镜像配置
+# 智能镜像配置（修改关键部分）
 configure_registry() {
     CONFIG_DIR="/etc/docker"
     CONFIG_FILE="$CONFIG_DIR/daemon.json"
@@ -110,17 +110,15 @@ configure_registry() {
         esac
     fi
 
-    # 生成临时配置
+    # 生成临时配置（关键修改：完全替换镜像源）
     CURRENT_CONFIG=$(jq '.' "$CONFIG_FILE" 2>/dev/null || jq -n '{}')
     NEW_CONFIG=$(echo "$CURRENT_CONFIG" | jq --argjson mirrors "$(printf '%s\n' "${MIRRORS[@]}" | jq -R . | jq -s .)" '
-        ."registry-mirrors" = (
-            (."registry-mirrors" // []) + $mirrors | unique
-        )
+        ."registry-mirrors" = $mirrors
     ')
 
     # 比较配置差异
     if ! diff <(echo "$CURRENT_CONFIG") <(echo "$NEW_CONFIG") &>/dev/null; then
-        echo "更新镜像加速配置"
+        echo "更新镜像加速配置（完全替换）"
         echo "$NEW_CONFIG" > "$CONFIG_FILE.tmp"
         mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
 
