@@ -62,7 +62,7 @@ EOF
     menu_items=(
         "1) 自动备份脚本 (auto.sh)"
         "2) 自动下载脚本 (download.sh)"
-        "3) 时区修改脚本 (time.sh)"
+        "3) 时区修改脚本 (ssh-time.sh)"
         "4) 系统源更新脚本 (update.sh)"
         "5) 卸载系统工具脚本 (uninstall.sh)"
         "6) 退出"
@@ -73,7 +73,7 @@ EOF
         case $item in
             *auto.sh*)      color=${CYAN} ;;
             *download.sh*)  color=${BLUE} ;;
-            *time.sh*)      color=${GREEN} ;;
+            *ssh-time.sh*)      color=${GREEN} ;;
             *update.sh*)    color=${YELLOW} ;;
             *uninstall.sh*) color=${CYAN} ;;
             *)              color=${RESET} ;;
@@ -98,13 +98,13 @@ EOF
             case $choice in
                 1) script="auto.sh" ;;
                 2) script="download.sh" ;;
-                3) script="time.sh" ;;
+                3) script="ssh-time.sh" ;;
                 4) script="update.sh" ;;
                 5) script="uninstall.sh" ;;
             esac
 
             # 设置下载参数
-            if [[ "$script" == "time.sh" || "$script" == "update.sh" || "$script" == "uninstall.sh" ]]; then
+            if [[ "$script" == "ssh-time.sh" || "$script" == "update.sh" || "$script" == "uninstall.sh" ]]; then
                 DOWNLOAD_URL="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/$script"
                 AUTH_OPTION=""
             else
