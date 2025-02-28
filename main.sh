@@ -14,8 +14,8 @@ PROXY_ENDPOINTS=(
     "https://cdn.woskee.nyc.mn/"
 )
 
-# 基础配置
-BASE_URL="raw.githubusercontent.com/tyy840913/backup/main/"
+# 基础配置（调整为相对路径）
+BASE_URL="tyy840913/backup/main/"
 CATALOG_FILE="cact.txt"
 SCRIPT_TIMEOUT=5
 
@@ -32,7 +32,7 @@ get_fastest_proxy() {
     local url_list=()
     local proxy_map=()
 
-    # 生成测试URL列表
+    # 生成测试URL列表（修正URL拼接逻辑）
     for proxy in "${PROXY_ENDPOINTS[@]}"; do
         local test_url="${proxy}${BASE_URL}${CATALOG_FILE}"
         url_list+=("$test_url")
@@ -102,7 +102,7 @@ execute_script() {
     fi
 }
 
-# 显示图形界面
+# 显示图形界面（保持不变）
 show_menu() {
     while true; do
         clear
@@ -116,7 +116,6 @@ show_menu() {
         echo -e "${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}════════════════ 脚本管理中心 ════════════════${COLOR_RESET}"
         
-        # 显示脚本列表
         local index=1
         for name in "${script_names[@]}"; do
             printf "${COLOR_CYAN}%2d. ${COLOR_GREEN}%-20s ${COLOR_YELLOW}➔ ${COLOR_RESET}%s\n" \
@@ -124,11 +123,9 @@ show_menu() {
             ((index++))
         done
         
-        # 退出选项
         echo -e "\n${COLOR_YELLOW} 0. 退出系统${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}══════════════════════════════════════════════${COLOR_RESET}"
         
-        # 用户输入
         read -p "请输入选项序号: " choice
         
         case $choice in
@@ -152,17 +149,14 @@ show_menu() {
                 ;;
         esac
         
-        # 返回前等待
         read -n 1 -s -r -p "按任意键返回主菜单..."
     done
 }
 
-# 主流程
 main() {
     get_fastest_proxy
     fetch_scripts
     show_menu
 }
 
-# 启动
 main
