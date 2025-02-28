@@ -38,7 +38,8 @@ get_scripts_list() {
         echo -e "${RED}错误：无法获取脚本列表${NC}"
         exit 1
     fi
-    echo "$content" | awk '{gsub(/^[ \t]+|[ \t]+$/, ""); if(NF>0) print}')
+    # 修正此处括号问题
+    echo "$content" | awk '{gsub(/^[ \t]+|[ \t]+$/, ""); if(NF>0) print}'
 }
 
 # 显示彩色菜单
@@ -85,7 +86,7 @@ SCRIPT_LIST=$(get_scripts_list)
 
 while true; do
     show_menu
-    read -p "请选择操作 (0-${#SCRIPT_LIST[@]}): " choice
+    read -p "请选择操作 (0-$(echo "$SCRIPT_LIST" | wc -l)): " choice
     
     case $choice in
         0) 
