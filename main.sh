@@ -15,7 +15,7 @@ PROXY_ENDPOINTS=(
 )
 
 # 基础配置
-BASE_URL="https://raw.githubusercontent.com/tyy840913/backup/main/"
+BASE_URL="raw.githubusercontent.com/tyy840913/backup/main/"
 CATALOG_FILE="cact.txt"
 SCRIPT_TIMEOUT=5
 
