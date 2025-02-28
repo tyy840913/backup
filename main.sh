@@ -4,8 +4,8 @@
 BASE_URL="https://raw.githubusercontent.com/tyy840913/backup/main"
 CACT_FILE="cact.txt"
 PROXIES=(
-    "https://your-proxy-server-1/"
-    "https://your-proxy-server-2/"
+    "https://add.woskee.nyc.mn/"
+    "https://cdn.woskee.nyc.mn/"
     "$BASE_URL"  # 原始地址作为最后回退
 )
 
