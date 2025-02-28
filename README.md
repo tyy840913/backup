@@ -4,20 +4,20 @@
 
 # 主脚本
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/tyy840913/backup/main/main.sh)
+bash <(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/main.sh)
 ```
 
 # 系统配置
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/tyy840913/backup/main/init.sh)
+bash <(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/init.sh)
 ```
 
 # 自动备份
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/tyy840913/backup/main/auto_backup.sh)
+bash <(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/auto_backup.sh)
 ```
 
 # Docker安装
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/tyy840913/backup/main/Docker.sh)
+bash <(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/Docker.sh)
 ```
