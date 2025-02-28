@@ -117,6 +117,7 @@ configure_registry() {
     REGISTRIES=(
         "https://docker.woskee.nyc.mn"
         "https://docker.woskee.dns.army"
+        "https://docker.woskee.dynv6.net"
     )
 
     # 备份原有配置
