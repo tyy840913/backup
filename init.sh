@@ -52,7 +52,6 @@ check_ssh() {
             ;;
     esac
 
-    # 检查安装状态
     if ! command -v sshd &>/dev/null; then
         echo -e "${YELLOW}[SSH] 服务未安装，正在安装...${NC}"
         case $OS in
@@ -62,7 +61,6 @@ check_ssh() {
         esac
     fi
 
-    # 配置自启动
     case $OS in
         debian|centos)
             if ! systemctl is-enabled $SERVICE &>/dev/null; then
@@ -76,7 +74,6 @@ check_ssh() {
             ;;
     esac
 
-    # 修改SSH配置
     SSH_CONFIG="/etc/ssh/sshd_config"
     sed -i 's/#*PermitRootLogin.*/PermitRootLogin yes/' $SSH_CONFIG
     sed -i 's/#*PasswordAuthentication.*/PasswordAuthentication yes/' $SSH_CONFIG
@@ -118,7 +115,7 @@ check_timezone() {
     fi
 }
 
-# 镜像源配置
+# 镜像源配置（已修正顺序）
 configure_mirror() {
     echo -e "\n${BLUE}=== 镜像源配置 ===${NC}"
     
@@ -136,9 +133,9 @@ configure_mirror() {
         [4]="mirrors.tuna.tsinghua.edu.cn"
     )
 
-    # 显示选项菜单
     echo "请选择镜像源 (输入编号):"
-    for key in "${!MIRRORS[@]}"; do
+    # 修正遍历顺序为1-4
+    for key in 1 2 3 4; do
         echo "$key) ${MIRRORS[$key]}"
     done
 
@@ -151,7 +148,6 @@ configure_mirror() {
     NEW_MIRROR=${URLS[$choice]}
     echo -e "${GREEN}已选择: ${MIRRORS[$choice]}${NC}"
 
-    # 配置镜像源
     case $OS in
         debian)
             SOURCE_FILE="/etc/apt/sources.list"
