@@ -10,12 +10,14 @@ NC='\033[0m'      # 颜色重置
 
 # 精准检测系统发行版
 detect_os() {
-    if grep -qi "alpine" /etc/os-release 2>/dev/null; then
-        echo "alpine"
-    elif grep -qi "debian" /etc/os-release 2>/dev/null; then
-        echo "debian"
-    elif grep -qi "centos\|rhel\|fedora" /etc/os-release 2>/dev/null; then
-        echo "centos"
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        case $ID in
+            debian|ubuntu) echo "debian" ;;
+            centos|rhel)   echo "centos" ;;
+            alpine)        echo "alpine" ;;
+            *)             echo "unknown" ;;
+        esac
     else
         echo "unknown"
     fi
@@ -33,7 +35,7 @@ manage_service() {
     esac
 }
 
-# SSH服务检查与配置
+# SSH服务检查与配置（增强版）
 check_ssh() {
     echo -e "\n${BLUE}=== SSH服务检查 ===${NC}"
     
@@ -52,15 +54,20 @@ check_ssh() {
             ;;
     esac
 
+    # 安装状态检查
     if ! command -v sshd &>/dev/null; then
         echo -e "${YELLOW}[SSH] 服务未安装，正在安装...${NC}"
         case $OS in
             debian) apt update && apt install -y $PKG ;;
             centos) yum install -y $PKG ;;
             alpine) apk add $PKG ;;
-        esac
+        esac || {
+            echo -e "${RED}SSH安装失败，请检查网络连接${NC}"
+            exit 1
+        }
     fi
 
+    # 自启动配置
     case $OS in
         debian|centos)
             if ! systemctl is-enabled $SERVICE &>/dev/null; then
@@ -74,95 +81,120 @@ check_ssh() {
             ;;
     esac
 
+    # 配置文件优化
     SSH_CONFIG="/etc/ssh/sshd_config"
     sed -i 's/#*PermitRootLogin.*/PermitRootLogin yes/' $SSH_CONFIG
     sed -i 's/#*PasswordAuthentication.*/PasswordAuthentication yes/' $SSH_CONFIG
     
-    manage_service $SERVICE restart
+    # 服务重启
+    if ! manage_service $SERVICE restart; then
+        echo -e "${RED}SSH服务重启失败${NC}"
+        exit 1
+    fi
     echo -e "${GREEN}[SSH] 服务已配置完成${NC}"
 }
 
-# 时区配置检查
+# 时区配置检查（增强版）
 check_timezone() {
     echo -e "\n${BLUE}=== 时区检查 ===${NC}"
     TARGET_ZONE="Asia/Shanghai"
+    ZONE_FILE="/usr/share/zoneinfo/${TARGET_ZONE}"
     
-    case $OS in
-        debian|centos)
-            CURRENT_ZONE=$(timedatectl show --value -p Timezone)
-            ;;
-        alpine)
-            CURRENT_ZONE=$(cat /etc/timezone 2>/dev/null)
-            ;;
-    esac
+    # 检查时区文件是否存在
+    if [ ! -f "$ZONE_FILE" ]; then
+        echo -e "${RED}错误：时区文件 $ZONE_FILE 不存在${NC}"
+        return 1
+    fi
 
-    if [ "$CURRENT_ZONE" != "$TARGET_ZONE" ]; then
-        echo -e "${YELLOW}当前时区: ${CURRENT_ZONE:-未设置}, 正在配置为东八区...${NC}"
+    # 优先尝试符号链接方式
+    if [ -w /etc/localtime ]; then
+        CURRENT_ZONE=$(readlink /etc/localtime | sed 's|.*/zoneinfo/||')
+        if [ "$CURRENT_ZONE" != "$TARGET_ZONE" ]; then
+            echo -e "${YELLOW}当前时区: ${CURRENT_ZONE}, 正在配置为东八区...${NC}"
+            ln -sf "$ZONE_FILE" /etc/localtime
+        fi
+    else
+        echo -e "${YELLOW}无法创建符号链接，改用专用配置...${NC}"
         case $OS in
             debian|centos)
                 timedatectl set-timezone $TARGET_ZONE
                 ;;
             alpine)
                 apk add --no-cache tzdata
-                cp /usr/share/zoneinfo/$TARGET_ZONE /etc/localtime
+                cp "$ZONE_FILE" /etc/localtime
                 echo $TARGET_ZONE > /etc/timezone
                 apk del tzdata
                 ;;
         esac
-        echo -e "${GREEN}时区已设置为 $TARGET_ZONE${NC}"
+    fi
+
+    # 最终验证
+    if [ "$(date +%Z)" == "CST" ]; then
+        echo -e "${GREEN}时区已正确设置为东八区${NC}"
     else
-        echo -e "${GREEN}当前时区已正确设置为东八区${NC}"
+        echo -e "${RED}时区配置异常，当前时区：$(date +%Z)${NC}"
+        return 1
     fi
 }
 
-# 镜像源配置（已修正顺序）
+# 镜像源配置（支持6个国内源）
 configure_mirror() {
     echo -e "\n${BLUE}=== 镜像源配置 ===${NC}"
     
     declare -A MIRRORS=(
-        [1]="阿里云镜像源"
-        [2]="腾讯云镜像源" 
-        [3]="华为云镜像源"
-        [4]="清华大学镜像源"
+        [1]="阿里云" [2]="腾讯云" [3]="华为云" 
+        [4]="清华大学" [5]="网易" [6]="中科大"
     )
     
     declare -A URLS=(
         [1]="mirrors.aliyun.com"
         [2]="mirrors.cloud.tencent.com"
-        [3]="repo.huaweicloud.com"
+        [3]="repo.huaweicloud.com" 
         [4]="mirrors.tuna.tsinghua.edu.cn"
+        [5]="mirrors.163.com"
+        [6]="mirrors.ustc.edu.cn"
     )
 
-    echo "请选择镜像源 (输入编号):"
-    # 修正遍历顺序为1-4
-    for key in 1 2 3 4; do
+    echo "请选择镜像源:"
+    for key in 1 2 3 4 5 6; do
         echo "$key) ${MIRRORS[$key]}"
     done
 
     while true; do
-        read -p "请输入选择 (1-4): " choice
-        [[ $choice =~ ^[1-4]$ ]] && break
+        read -p "请输入选择 (1-6): " choice
+        [[ $choice =~ ^[1-6]$ ]] && break
         echo -e "${RED}无效输入，请重新选择${NC}"
     done
 
     NEW_MIRROR=${URLS[$choice]}
-    echo -e "${GREEN}已选择: ${MIRRORS[$choice]}${NC}"
+    echo -e "${GREEN}已选择: ${MIRRORS[$choice]} 镜像源${NC}"
 
     case $OS in
         debian)
             SOURCE_FILE="/etc/apt/sources.list"
             sed -i "s|http://.*\.debian\.org|https://$NEW_MIRROR|g" $SOURCE_FILE
-            apt update
+            sed -i "s|http://security\.debian\.org|https://$NEW_MIRROR|g" $SOURCE_FILE
+            if ! apt update; then
+                echo -e "${RED}APT更新失败，请检查镜像源配置${NC}"
+                exit 1
+            fi
             ;;
         centos)
             SOURCE_FILE="/etc/yum.repos.d/CentOS-Base.repo"
-            sed -i "s|^baseurl=.*|baseurl=https://$NEW_MIRROR|g" $SOURCE_FILE
-            yum makecache
+            sed -i "s|^mirrorlist=|#mirrorlist=|g" $SOURCE_FILE
+            sed -i "s|^#baseurl=http://mirror.centos.org|baseurl=https://$NEW_MIRROR|g" $SOURCE_FILE
+            if ! yum makecache; then
+                echo -e "${RED}YUM缓存失败，请检查镜像源配置${NC}"
+                exit 1
+            fi
             ;;
         alpine)
             SOURCE_FILE="/etc/apk/repositories"
             sed -i "s|http://dl-cdn.alpinelinux.org|https://$NEW_MIRROR|g" $SOURCE_FILE
-            apk update
+            if ! apk update; then
+                echo -e "${RED}APK更新失败，请检查镜像源配置${NC}"
+                exit 1
+            fi
             ;;
     esac
     
