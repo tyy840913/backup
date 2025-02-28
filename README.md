@@ -1,7 +1,5 @@
- 
-# 系统初始化脚本直连地址
-
-请直接复制以下完整路径使用：
-
-`bash -c "$(curl -sSL https://raw.githubusercontent.com/tyy840913/backup/main/init.sh)"`
-
+## 快速启动
+```bash
+# 📋 点击右侧复制按钮直接复制
+bash -c "$(curl -sSL https://raw.githubusercontent.com/tyy840913/backup/main/init.sh)"
+```
