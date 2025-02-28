@@ -10,9 +10,8 @@ COLOR_RESET="\033[0m"
 
 # 代理服务器配置（可自行添加）
 PROXY_ENDPOINTS=(
-    "https://cf-proxy-ex.lhyang.org/"
-    "https://proxy.example.com/"
-    ""
+    "https://add.woskee.nyc.mn/"
+    "https://cdn.woskee.nyc.mn/"
 )
 
 # 基础配置
