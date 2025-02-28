@@ -181,7 +181,7 @@ configure_mirror() {
             ;;
         centos)
             SOURCE_FILE="/etc/yum.repos.d/CentOS-Base.repo"
-            # 修复关键错误：移除错误的HTML内容，使用正确正则表达式
+            # 关键修复：移除HTML内容污染，使用正确正则表达式
             sed -i "s|^mirrorlist=|#mirrorlist=|g" $SOURCE_FILE
             sed -i "s|^#baseurl=http://mirror.centos.org|baseurl=https://$NEW_MIRROR|g" $SOURCE_FILE
             if ! yum makecache; then
