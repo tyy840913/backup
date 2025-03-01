@@ -15,6 +15,22 @@ COLOR_FILE='\033[1;35m'
 COLOR_ERROR='\033[1;31m'
 COLOR_RESET='\033[0m'
 
+# 显示宽度计算函数
+display_width() {
+    local str=$1
+    local width=0
+    local len=${#str}
+    for ((i=0; i<len; i++)); do
+        local c="${str:i:1}"
+        if [[ "$c" =~ [^[:ascii:]] ]]; then
+            width=$((width + 2))
+        else
+            width=$((width + 1))
+        fi
+    done
+    echo $width
+}
+
 # 下载目录文件函数
 download_catalog() {
     echo -e "${COLOR_DESC}正在获取脚本目录...${COLOR_RESET}"
@@ -41,17 +57,34 @@ show_menu() {
     clear
     echo -e "${COLOR_TITLE}"
     echo "╔══════════════════════════════════════╗"
-    echo "║         脚本选择菜单 (v1.0)          ║"
+    echo "║         脚本选择菜单 (v1.1)          ║"
     echo "╠══════════════════════════════════════╣"
     
     for i in "${!descriptions[@]}"; do
-        printf "║ ${COLOR_OPTION}%2d.${COLOR_RESET} " $((i+1))
-        printf "${COLOR_DESC}%-24s${COLOR_RESET}" "${descriptions[i]}"
-        echo -e "${COLOR_FILE}${filenames[i]}${COLOR_RESET} ║"
+        desc="${descriptions[i]}"
+        file="${filenames[i]}"
+        
+        # 计算显示宽度
+        desc_width=$(display_width "$desc")
+        file_width=$(display_width "$file")
+        total=$((desc_width + file_width))
+        
+        # 计算间距
+        space_count=$((33 - total))
+        if (( space_count < 0 )); then
+            space_count=0
+        fi
+
+        # 格式输出
+        printf "║ ${COLOR_OPTION}%2d.${COLOR_RESET} ${COLOR_DESC}%s${COLOR_RESET}%${space_count}s${COLOR_FILE}%s${COLOR_RESET} ║\n" \
+               $((i+1)) "$desc" "" "$file"
     done
-    
+
+    # 退出选项处理
+    exit_desc="退出脚本"
+    exit_space=$((33 - $(display_width "$exit_desc")))
     echo -e "${COLOR_TITLE}╠══════════════════════════════════════╣"
-    echo -e "║ ${COLOR_OPTION} 0.${COLOR_RESET} ${COLOR_DESC}退出脚本${COLOR_RESET}                   ║"
+    printf "║ ${COLOR_OPTION} 0.${COLOR_RESET} ${COLOR_DESC}%s${COLOR_RESET}%${exit_space}s ║\n" "$exit_desc" ""
     echo "╚══════════════════════════════════════╝"
     echo -e "${COLOR_RESET}"
 }
