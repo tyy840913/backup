@@ -13,7 +13,7 @@ check_installed() {
     compose_installed=$(command -v docker-compose &> /dev/null && echo "yes" || echo "no")
     
     if [ "$docker_installed" = "yes" ] && [ "$compose_installed" = "yes" ]; then
-        echo -e "${GREEN}Docker和Docker Compose已安装，跳过安装步骤${RESET}"
+        echo -e "${GREEN}Docker和Docker Compose已安装${RESET}"
         return 0
     else
         return 1
