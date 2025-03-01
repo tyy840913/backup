@@ -82,7 +82,13 @@ user_confirm() {
 # Alpine系统安装
 install_alpine() {
     echo -e "${BLUE}开始Alpine系统安装...${RESET}"
+    
+    # 配置国内镜像源
+    echo -e "${YELLOW}配置Alpine国内镜像源...${RESET}"
+    sed -i 's#http://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories
     apk update
+    
+    # 安装Docker
     apk add docker docker-compose
     rc-update add docker boot
     service docker start
@@ -94,47 +100,107 @@ install_linux() {
     echo -e "${BLUE}开始Linux通用安装...${RESET}"
     
     if command -v apt &> /dev/null; then
+        # Debian/Ubuntu安装流程
+        echo -e "${YELLOW}检测到APT包管理器，使用国内镜像源安装...${RESET}"
+        
+        # 安装依赖
         apt update
-        apt install -y apt-transport-https ca-certificates curl software-properties-common
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-        apt update
+        apt install -y apt-transport-https ca-certificates curl software-properties-common gnupg
+
+        # 尝试多个GPG密钥源
+        GPG_SUCCESS=0
+        GPG_SOURCES=(
+            "https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg"
+            "https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/ubuntu/gpg"
+            "https://mirrors.ustc.edu.cn/docker-ce/linux/ubuntu/gpg"
+            "https://download.docker.com/linux/ubuntu/gpg"
+        )
+
+        for source in "${GPG_SOURCES[@]}"; do
+            echo -e "${YELLOW}尝试从 ${source} 下载GPG密钥...${RESET}"
+            if curl -fsSL "${source}" | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg; then
+                GPG_SUCCESS=1
+                break
+            fi
+        done
+
+        if [ $GPG_SUCCESS -ne 1 ]; then
+            echo -e "${RED}错误：无法下载GPG密钥，所有镜像源尝试失败${RESET}"
+            return 1
+        fi
+
+        # 尝试多个APT源
+        APT_SOURCES=(
+            "https://mirrors.aliyun.com/docker-ce/linux/ubuntu"
+            "https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/ubuntu"
+            "https://mirrors.ustc.edu.cn/docker-ce/linux/ubuntu"
+            "https://download.docker.com/linux/ubuntu"
+        )
+
+        LSBCS=$(lsb_release -cs)
+        for apt_source in "${APT_SOURCES[@]}"; do
+            echo -e "${YELLOW}尝试使用APT源：${apt_source}...${RESET}"
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] ${apt_source} ${LSBCS} stable" > /etc/apt/sources.list.d/docker.list
+            if apt update &>/dev/null; then
+                break
+            fi
+        done
+
+        # 安装Docker
         apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-    elif command -v yum &> /dev/null; then
-        yum install -y yum-utils
-        yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+    elif command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+        # RHEL/CentOS/Fedora安装流程
+        echo -e "${YELLOW}检测到YUM/DNF包管理器，使用国内镜像源安装...${RESET}"
+        
+        # 安装依赖
+        yum install -y yum-utils device-mapper-persistent-data lvm2
+
+        # 配置仓库
+        REPO_URLS=(
+            "https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo"
+            "https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/centos/docker-ce.repo"
+            "https://mirrors.ustc.edu.cn/docker-ce/linux/centos/docker-ce.repo"
+            "https://download.docker.com/linux/centos/docker-ce.repo"
+        )
+
+        for repo_url in "${REPO_URLS[@]}"; do
+            echo -e "${YELLOW}尝试使用仓库源：${repo_url}...${RESET}"
+            if yum-config-manager --add-repo "${repo_url}" &>/dev/null; then
+                # 替换为国内镜像源
+                sed -i 's#download.docker.com#mirrors.aliyun.com/docker-ce#g' /etc/yum.repos.d/docker-ce.repo
+                if yum makecache &>/dev/null; then
+                    break
+                fi
+            fi
+        done
+
+        # 安装Docker
         yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-    elif command -v dnf &> /dev/null; then
-        dnf -y install dnf-plugins-core
-        dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
-        dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
     fi
-    
+
+    # 启动服务
     systemctl enable --now docker
     wait_for_docker || return 1
 }
 
-# 配置镜像源（自动处理文件创建）
+# 配置镜像源（保持原有加速源不变）
 configure_mirrors() {
     echo -e "${YELLOW}更新镜像加速配置...${RESET}"
     
-    # 确保目录存在
     mkdir -p /etc/docker
 
-    # 显示当前配置差异
     if [ -s "/etc/docker/daemon.json" ]; then
         echo -e "${BLUE}当前配置文件内容：${RESET}"
         jq . /etc/docker/daemon.json 2>/dev/null || cat /etc/docker/daemon.json
         echo
     fi
 
-    # 获取用户确认
     if ! user_confirm "是否覆盖现有配置？"; then
         echo -e "${YELLOW}已保留原有配置${RESET}"
         return 0
     fi
 
-    # 写入新配置
     if tee /etc/docker/daemon.json << EOF
 {
   "registry-mirrors": [
@@ -167,7 +233,6 @@ EOF
 validate_mirrors() {
     echo -e "\n${BLUE}=== 检查镜像配置文件 ===${RESET}"
 
-    # 检查配置文件状态
     if [ ! -f "/etc/docker/daemon.json" ] || [ ! -s "/etc/docker/daemon.json" ]; then
         echo -e "${YELLOW}配置文件不存在或为空，自动创建${RESET}"
         configure_mirrors || return 1
@@ -177,7 +242,6 @@ validate_mirrors() {
         jq .registry-mirrors /etc/docker/daemon.json 2>/dev/null || cat /etc/docker/daemon.json
         echo
         
-        # 用户确认是否覆盖
         if user_confirm "是否强制更新为指定镜像源？"; then
             configure_mirrors || return 1
         else
