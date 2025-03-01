@@ -2,23 +2,6 @@
 # 设置终端列宽为1，强制单列显示
 COLUMNS=1
 
-PS3='请选择镜像源（输入数字）: '
-options=("淘宝镜像" "阿里云镜像" "官方镜像" "退出")
-select opt in "${options[@]}"; do
-    case $opt in
-        "淘宝镜像") 
-            npm config set registry https://registry.npm.taobao.org
-            echo "已切换至淘宝镜像" ;;
-        "阿里云镜像")
-            npm config set registry https://registry.npm.taobao.org
-            echo "已切换至阿里云镜像" ;;
-        "官方镜像")
-            npm config set registry https://registry.npmjs.org ;;
-        "退出") break ;;
-        *) echo "无效选项，请重新输入" ;;
-    esac
-done
-
 # 检查是否为root，否则尝试用sudo重新运行
 if [[ $EUID -ne 0 ]]; then
     exec sudo "$0" "$@" || {
