@@ -172,8 +172,16 @@ configure_mirror() {
     case $OS in
         debian)
             SOURCE_FILE="/etc/apt/sources.list"
-            sed -i "s|http://.*\.debian\.org|https://$NEW_MIRROR|g" $SOURCE_FILE
-            sed -i "s|http://security\.debian\.org|https://$NEW_MIRROR|g" $SOURCE_FILE
+            # 备份原文件
+            cp "$SOURCE_FILE" "${SOURCE_FILE}.bak"
+            # 替换主仓库和安全更新仓库
+            sed -i "s|http://[^/]*\.debian\.org/debian|https://$NEW_MIRROR/debian|g" "$SOURCE_FILE"
+            sed -i "s|http://security\.debian\.org/debian-security|https://$NEW_MIRROR/debian-security|g" "$SOURCE_FILE"
+            # 添加非自由软件源
+            if ! grep -q "$NEW_MIRROR" "$SOURCE_FILE"; then
+                echo "deb https://$NEW_MIRROR/debian $(lsb_release -cs) main contrib non-free" >> "$SOURCE_FILE"
+                echo "deb https://$NEW_MIRROR/debian-security $(lsb_release -cs)-security main contrib non-free" >> "$SOURCE_FILE"
+            fi
             if ! apt update; then
                 echo -e "${RED}APT更新失败，请检查镜像源配置${NC}"
                 exit 1
@@ -181,9 +189,10 @@ configure_mirror() {
             ;;
         centos)
             SOURCE_FILE="/etc/yum.repos.d/CentOS-Base.repo"
-            # 关键修复：移除HTML内容污染，使用正确正则表达式
-            sed -i "s|^mirrorlist=|#mirrorlist=|g" $SOURCE_FILE
-            sed -i "s|^#baseurl=http://mirror.centos.org|baseurl=https://$NEW_MIRROR|g" $SOURCE_FILE
+            # 禁用mirrorlist并设置baseurl
+            sed -i -e "s|^mirrorlist=|#mirrorlist=|g" \
+                   -e "s|^#baseurl=http://mirror.centos.org|baseurl=https://$NEW_MIRROR|g" \
+                   "$SOURCE_FILE"
             if ! yum makecache; then
                 echo -e "${RED}YUM缓存失败，请检查镜像源配置${NC}"
                 exit 1
@@ -191,7 +200,12 @@ configure_mirror() {
             ;;
         alpine)
             SOURCE_FILE="/etc/apk/repositories"
-            sed -i "s|http://dl-cdn.alpinelinux.org|https://$NEW_MIRROR|g" $SOURCE_FILE
+            # 替换官方源并添加社区源
+            sed -i "s|http://dl-cdn.alpinelinux.org|https://$NEW_MIRROR|g" "$SOURCE_FILE"
+            if ! grep -q "$NEW_MIRROR" "$SOURCE_FILE"; then
+                echo "https://$NEW_MIRROR/alpine/v$(cut -d. -f1,2 /etc/alpine-release)/main" > "$SOURCE_FILE"
+                echo "https://$NEW_MIRROR/alpine/v$(cut -d. -f1,2 /etc/alpine-release)/community" >> "$SOURCE_FILE"
+            fi
             if ! apk update; then
                 echo -e "${RED}APK更新失败，请检查镜像源配置${NC}"
                 exit 1
@@ -200,6 +214,8 @@ configure_mirror() {
     esac
     
     echo -e "${GREEN}镜像源更新完成${NC}"
+    echo -e "${YELLOW}当前源文件内容：${NC}"
+    tail -n 10 "$SOURCE_FILE"
 }
 
 # 主程序
