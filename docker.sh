@@ -1,186 +1,98 @@
 #!/bin/bash
 
-# 检查Root权限
-if [[ $EUID -ne 0 ]]; then
-   echo "请使用 root 权限运行本脚本" 
-   exit 1
-fi
-
-# 定义颜色代码
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-NC='\033[0m'
-
-# 获取系统信息
-if [ -f /etc/alpine-release ]; then
-    DISTRO="alpine"
-    VERSION=$(cat /etc/alpine-release | cut -d'.' -f1-2)
-elif [ -f /etc/os-release ]; then
-    . /etc/os-release
-    DISTRO=$ID
-    VERSION=$VERSION_ID
-else
-    echo -e "${RED}无法识别系统版本${NC}"
-    exit 1
-fi
-
-# 检查Docker是否已安装
-check_docker_installed() {
-    if command -v docker &>/dev/null; then
-        echo -e "${YELLOW}Docker 已经安装，跳过安装步骤${NC}"
+# 检查Docker和Docker Compose是否已安装
+check_installed() {
+    docker_installed=$(command -v docker &> /dev/null && echo "yes" || echo "no")
+    compose_installed=$(command -v docker-compose &> /dev/null && echo "yes" || echo "no")
+    
+    if [ "$docker_installed" = "yes" ] && [ "$compose_installed" = "yes" ]; then
+        echo -e "\033[32mDocker和Docker Compose已安装，跳过安装步骤\033[0m"
         return 0
+    else
+        return 1
     fi
-    return 1
 }
 
-# 检查Docker Compose是否已安装
-check_compose_installed() {
-    if command -v docker-compose &>/dev/null; then
-        echo -e "${YELLOW}Docker Compose 已经安装，跳过安装步骤${NC}"
-        return 0
-    fi
-    return 1
-}
-
-# 设置开机启动
-enable_service() {
-    case $DISTRO in
-        alpine)
-            if rc-update show default | grep -q docker; then
-                echo -e "${YELLOW}Docker 已设置开机启动${NC}"
-            else
-                rc-update add docker default
-                echo -e "${GREEN}已设置Docker开机启动${NC}"
-            fi
-            ;;
-        *)
-            if systemctl is-enabled docker &>/dev/null; then
-                echo -e "${YELLOW}Docker 已设置开机启动${NC}"
-            else
-                systemctl enable docker --now
-                echo -e "${GREEN}已设置Docker开机启动${NC}"
-            fi
-            ;;
-    esac
-}
-
-# 安装Docker
-install_docker() {
-    echo -e "${GREEN}正在安装 Docker...${NC}"
-    case $DISTRO in
-        debian|ubuntu)
-            apt-get update
-            apt-get install -y \
-                ca-certificates \
-                curl \
-                gnupg
-            install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-            echo \
-                "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO \
-                $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-            apt-get update
-            apt-get install -y docker-ce docker-ce-cli containerd.io
-            ;;
-        centos|rhel)
-            yum install -y yum-utils
-            yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-            yum install -y docker-ce docker-ce-cli containerd.io
-            ;;
-        fedora)
-            dnf -y install dnf-plugins-core
-            dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
-            dnf -y install docker-ce docker-ce-cli containerd.io
-            ;;
-        alpine)
-            apk add docker docker-cli docker-compose
-            ;;
-        *)
-            echo -e "${RED}不支持的发行版: $DISTRO${NC}"
-            exit 1
-            ;;
-    esac
-}
-
-# 安装Docker Compose
-install_compose() {
-    echo -e "${GREEN}正在安装 Docker Compose...${NC}"
-    COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    chmod +x /usr/local/bin/docker-compose
-}
-
-# 配置镜像加速
-configure_registry() {
-    DAEMON_JSON="/etc/docker/daemon.json"
-    REGISTRIES=(
-        "https://docker.woskee.nyc.mn"
-        "https://docker.woskee.dns.army"
-        "https://docker.woskee.dynv6.net"
-    )
-
-    # 备份原有配置
-    if [ -f $DAEMON_JSON ]; then
-        cp $DAEMON_JSON "${DAEMON_JSON}.bak"
-        echo -e "${YELLOW}已备份原配置文件: ${DAEMON_JSON}.bak${NC}"
-    fi
-
-    # 创建配置
-    cat > $DAEMON_JSON << EOF
-{
-    "registry-mirrors": ${REGISTRIES[@]@Q},
-    "log-driver": "json-file",
-    "log-opts": {
-        "max-size": "10m",
-        "max-file": "3"
-    }
-}
-EOF
-
-    echo -e "${GREEN}镜像加速配置完成${NC}"
-    systemctl restart docker || rc-service docker restart
-}
-
-# 镜像搜索功能
-search_images() {
+# 用户确认提示
+confirm_install() {
     while true; do
-        read -p "输入镜像名称（留空退出）: " image
-        if [ -z "$image" ]; then
-            break
-        fi
-        docker search $image
+        read -rp "检测到未安装Docker或Docker Compose，是否继续安装？(Y/N) " answer
+        case $answer in
+            [Yy]* ) return 0;;
+            [Nn]* ) exit 1;;
+            * ) echo "请输入 Y 或 N";;
+        esac
     done
 }
 
-# 主安装流程
-main() {
-    # 安装Docker
-    if ! check_docker_installed; then
-        install_docker
-    fi
-
-    # 安装Docker Compose
-    if ! check_compose_installed; then
-        if [ "$DISTRO" != "alpine" ]; then
-            install_compose
-        else
-            echo -e "${YELLOW}Alpine 系统已通过apk安装docker-compose${NC}"
-        fi
-    fi
-
-    enable_service
-    configure_registry
-    
-    echo -e "\n${GREEN}安装完成！${NC}"
-    echo -e "Docker 版本: $(docker --version)"
-    echo -e "Docker Compose 版本: $(docker-compose --version)"
-    
-    # 启动镜像搜索
-    echo -e "\n# Docker Hub 镜像搜索"
-    echo -e "快速查找、下载和部署 Docker 容器镜像"
-    read -p "提示：按回车键开始搜索，直接回车退出..."
-    search_images
+# Alpine系统安装
+install_alpine() {
+    apk update
+    apk add docker docker-compose
+    rc-update add docker boot
+    service docker start
 }
 
-main
+# 其他Linux发行版安装
+install_linux() {
+    # 识别包管理器
+    if command -v apt &> /dev/null; then
+        apt update
+        apt install -y apt-transport-https ca-certificates curl software-properties-common
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+        add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+        apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    elif command -v yum &> /dev/null; then
+        yum install -y yum-utils
+        yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    elif command -v dnf &> /dev/null; then
+        dnf -y install dnf-plugins-core
+        dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+        dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    fi
+
+    # 设置开机启动
+    systemctl enable --now docker
+}
+
+# 配置镜像加速
+configure_mirrors() {
+    mkdir -p /etc/docker
+    cat > /etc/docker/daemon.json <<EOF
+{
+    "registry-mirrors": [
+        "https://proxy.1panel.live",
+        "https://docker.1panel.top",
+        "https://docker.m.daocloud.io",
+        "https://docker.woskee.nyc.mn",
+        "https://docker.woskee.dns.army",
+        "https://docker.woskee.dynv6.net"
+    ]
+}
+EOF
+    # 重启服务
+    if [ "$(command -v systemctl)" ]; then
+        systemctl restart docker
+    else
+        service docker restart
+    fi
+}
+
+# 主流程
+if ! check_installed; then
+    confirm_install
+    
+    # 识别系统类型
+    if grep -iq "alpine" /etc/os-release; then
+        install_alpine
+    else
+        install_linux
+    fi
+
+    # 配置镜像加速
+    configure_mirrors
+    
+    echo -e "\033[32m安装完成！Docker版本：$(docker --version)\033[0m"
+    echo -e "\033[32mDocker Compose版本：$(docker-compose --version)\033[0m"
+fi
