@@ -3,6 +3,12 @@
 sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && apk update && apk add bash curl
 ```
 
+# PVE虚拟磁盘转换，可以转换IMG ISO文件
+```bash
+curl -LsO https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/qm.sh && chmod +x qm.sh && ./qm.sh
+```
+
+
 ## 快速启动
 
 # 📋 点击右侧复制按钮直接复制
