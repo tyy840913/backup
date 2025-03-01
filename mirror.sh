@@ -230,108 +230,6 @@ EOF
     esac
 }
 
-# SSH服务检查与配置（增强版）
-check_ssh() {
-    echo -e "\n${BLUE}=== SSH服务检查 ===${NC}"
-    
-    case $OS in
-        debian)
-            PKG="openssh-server"
-            SERVICE="ssh"
-            ;;
-        centos)
-            PKG="openssh-server"
-            SERVICE="sshd"
-            ;;
-        alpine)
-            PKG="openssh"
-            SERVICE="sshd"
-            ;;
-    esac
-
-    # 安装状态检查
-    if ! command -v sshd &>/dev/null; then
-        echo -e "${YELLOW}[SSH] 服务未安装，正在安装...${NC}"
-        case $OS in
-            debian) apt update && apt install -y $PKG ;;
-            centos) yum install -y $PKG ;;
-            alpine) apk add $PKG ;;
-        esac || {
-            echo -e "${RED}SSH安装失败，请检查网络连接${NC}"
-            exit 1
-        }
-    fi
-
-    # 自启动配置
-    case $OS in
-        debian|centos)
-            if ! systemctl is-enabled $SERVICE &>/dev/null; then
-                systemctl enable $SERVICE
-            fi
-            ;;
-        alpine)
-            if ! rc-update show | grep -q $SERVICE; then
-                rc-update add $SERVICE
-            fi
-            ;;
-    esac
-
-    # 配置文件优化
-    SSH_CONFIG="/etc/ssh/sshd_config"
-    sed -i 's/#*PermitRootLogin.*/PermitRootLogin yes/' $SSH_CONFIG
-    sed -i 's/#*PasswordAuthentication.*/PasswordAuthentication yes/' $SSH_CONFIG
-    
-    # 服务重启
-    if ! manage_service $SERVICE restart; then
-        echo -e "${RED}SSH服务重启失败${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}[SSH] 服务已配置完成${NC}"
-}
-
-# 时区配置检查（增强版）
-check_timezone() {
-    echo -e "\n${BLUE}=== 时区检查 ===${NC}"
-    TARGET_ZONE="Asia/Shanghai"
-    ZONE_FILE="/usr/share/zoneinfo/${TARGET_ZONE}"
-    
-    # 检查时区文件是否存在
-    if [ ! -f "$ZONE_FILE" ]; then
-        echo -e "${RED}错误：时区文件 $ZONE_FILE 不存在${NC}"
-        return 1
-    fi
-
-    # 优先尝试符号链接方式
-    if [ -w /etc/localtime ]; then
-        CURRENT_ZONE=$(readlink /etc/localtime | sed 's|.*/zoneinfo/||')
-        if [ "$CURRENT_ZONE" != "$TARGET_ZONE" ]; then
-            echo -e "${YELLOW}当前时区: ${CURRENT_ZONE}, 正在配置为东八区...${NC}"
-            ln -sf "$ZONE_FILE" /etc/localtime
-        fi
-    else
-        echo -e "${YELLOW}无法创建符号链接，改用专用配置...${NC}"
-        case $OS in
-            debian|centos)
-                timedatectl set-timezone $TARGET_ZONE
-                ;;
-            alpine)
-                apk add --no-cache tzdata
-                cp "$ZONE_FILE" /etc/localtime
-                echo $TARGET_ZONE > /etc/timezone
-                apk del tzdata
-                ;;
-        esac
-    fi
-
-    # 最终验证
-    if [ "$(date +%Z)" == "CST" ]; then
-        echo -e "${GREEN}时区已正确设置为东八区${NC}"
-    else
-        echo -e "${RED}时区配置异常，当前时区：$(date +%Z)${NC}"
-        return 1
-    fi
-}
-
 # 主程序
 OS=$(detect_os)
 if [ "$OS" == "unknown" ]; then
@@ -342,8 +240,6 @@ fi
 get_os_info  # 新增调用
 
 # 执行所有检查
-check_ssh
-check_timezone
 change_repository  # 新增调用
 
 echo -e "\n${GREEN}所有配置已完成，即将退出脚本！${NC}"
