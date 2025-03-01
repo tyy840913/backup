@@ -27,7 +27,12 @@ bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy8409
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/Docker.sh)"
 ```
 
-# 更换系统镜像源
+# 更换linux系统镜像源
 ```bash
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/mirror.sh)"
+```
+
+# 更换PVE系统镜像源
+```bash
+bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/pve-init.sh)"
 ```
