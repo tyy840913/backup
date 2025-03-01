@@ -2,3 +2,4 @@
 系统配置 init.sh
 Docker安装 Docker.sh
 镜像源更新 mirror.sh
+PVE磁盘转换 qm.sh
