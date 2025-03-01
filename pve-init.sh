@@ -48,43 +48,40 @@ show_main_menu() {
     case $main_choice in
       1|2|3) show_mirror_menu $main_choice ;;
       0) exit 0 ;;
-      *) echo "无效输入"; sleep 1 ;;
+      *) echo -e "\033[31m错误：无效输入\033[0m"; sleep 1 ;;
     esac
   done
 }
 
 show_mirror_menu() {
   local config_type=$1
+  clear
+  echo -e "\033[32m当前配置路径: $(get_config_path $config_type)\033[0m"
+  echo "可用镜像站："
+  local i=1
+  for name in "${mirror_names[@]}"; do
+    echo "$i) $name"
+    ((i++))
+  done
+  echo "0) 返回上级"
+
   while true; do
-    clear
-    echo -e "\033[32m当前配置路径: $(get_config_path $config_type)\033[0m"
-    echo "可用镜像站："
-    local i=1
-    for name in "${mirror_names[@]}"; do
-      echo "$i) $name"
-      ((i++))
-    done
-    echo "0) 返回上级"
-    
-    while true; do
-      read -p "选择镜像站: " mirror_choice
-      if [[ $mirror_choice == "0" ]]; then
-        return
-      fi
-      
-      if [[ $mirror_choice =~ ^[0-9]+$ ]]; then
-        if (( mirror_choice >= 1 && mirror_choice <= ${#mirror_names[@]} )); then
-          local selected_mirror=${mirror_names[$((mirror_choice-1))]}
-          apply_mirror $config_type "${MIRRORS[$selected_mirror]}"
-          return
-        else
-          echo "无效的选择，请输入0到${#mirror_names[@]}之间的数字。"
-        fi
+    read -p "选择镜像站: " mirror_choice
+    if [[ $mirror_choice == "0" ]]; then
+      return  # 直接返回主菜单
+    fi
+
+    if [[ $mirror_choice =~ ^[0-9]+$ ]]; then
+      if (( mirror_choice >= 1 && mirror_choice <= ${#mirror_names[@]} )); then
+        local selected_mirror=${mirror_names[$((mirror_choice-1))]}
+        apply_mirror $config_type "${MIRRORS[$selected_mirror]}"
+        return  # 配置完成后立即返回
       else
-        echo "无效输入，请输入数字。"
+        echo -e "\033[31m错误：请输入0到${#mirror_names[@]}之间的数字\033[0m"
       fi
-      sleep 1
-    done
+    else
+      echo -e "\033[31m错误：请输入数字\033[0m"
+    fi
   done
 }
 
