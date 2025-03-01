@@ -1,3 +1,8 @@
+# alpine系统更换源命令 "清华源" ，安装 bash curl 工具
+```bash
+sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && apk update && apk add bash curl
+```
+
 ## 快速启动
 
 # 📋 点击右侧复制按钮直接复制
