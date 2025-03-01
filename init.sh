@@ -137,101 +137,10 @@ check_timezone() {
     fi
 }
 
-# 新增镜像测速功能
-ping_mirror() {
-    local domain=$1
-    local timeout=2
-    
-    # 使用curl测试HTTP连接时间（兼容容器环境）
-    if command -v curl &>/dev/null; then
-        local start=$(date +%s%3N)
-        if curl -sI --connect-timeout $timeout "${domain}" &>/dev/null; then
-            local end=$(date +%s%3N)
-            echo $((end - start))
-        else
-            echo 9999
-        fi
-    # 使用ping作为备选方案
-    elif command -v ping &>/dev/null; then
-        local result=$(ping -c 2 -W $timeout "$domain" 2>&1 | awk -F '/' 'END {print $5}')
-        if [[ "$result" =~ ^[0-9.]+$ ]]; then
-            echo "${result%.*}" 
-        else
-            echo 9999
-        fi
-    else
-        echo 9999
-    fi
-}
-
-# 镜像源列表与测速
-select_fast_mirror() {
-    declare -A mirrors
-    local os_type=$1
-    
-    case $os_type in
-        debian|ubuntu)
-            mirrors=(
-                [aliyun]="mirrors.aliyun.com"
-                [tencent]="mirrors.cloud.tencent.com"
-                [huawei]="repo.huaweicloud.com"
-                [tsinghua]="mirrors.tuna.tsinghua.edu.cn"
-                [ustc]="mirrors.ustc.edu.cn"
-                [163]="mirrors.163.com"
-                [njuitc]="mirrors.nju.edu.cn"
-            ) ;;
-        centos)
-            mirrors=(
-                [aliyun]="mirrors.aliyun.com"
-                [tencent]="mirrors.cloud.tencent.com" 
-                [huawei]="mirrors.huaweicloud.com"
-                [tsinghua]="mirrors.tuna.tsinghua.edu.cn"
-                [ustc]="mirrors.ustc.edu.cn"
-                [163]="mirrors.163.com"
-            ) ;;
-        alpine)
-            mirrors=(
-                [aliyun]="mirrors.aliyun.com"
-                [tencent]="mirrors.cloud.tencent.com"
-                [huawei]="repo.huaweicloud.com"
-                [tsinghua]="mirrors.tuna.tsinghua.edu.cn"
-                [ustc]="mirrors.ustc.edu.cn"
-                [bfsu]="mirrors.bfsu.edu.cn"
-            ) ;;
-    esac
-
-    echo -e "${BLUE}正在测试镜像源响应速度...${NC}"
-    declare -A speeds
-    for name in "${!mirrors[@]}"; do
-        local domain="${mirrors[$name]}"
-        echo -n "测试 ${name} (${domain}) ... "
-        local latency=$(ping_mirror "$domain")
-        speeds["$name"]=$latency
-        if [ $latency -eq 9999 ]; then
-            echo -e "${RED}超时${NC}"
-        else
-            echo -e "${GREEN}${latency}ms${NC}"
-        fi
-    done
-
-    # 按延迟排序并选择最快源
-    local fastest="aliyun" # 默认值
-    local min_latency=9999
-    for name in "${!speeds[@]}"; do
-        if [ ${speeds[$name]} -lt $min_latency ]; then
-            min_latency=${speeds[$name]}
-            fastest=$name
-        fi
-    done
-
-    echo -e "\n${GREEN}最快镜像源: ${fastest} (${min_latency}ms)${NC}"
-    echo "$fastest"
-}
-
-# 修改后的镜像源配置入口
+# 新增镜像源配置功能
 replace_mirror_source() {
     echo -e "\n${BLUE}=== 镜像源更换 ===${NC}"
-    local user_mirror=${1:-"auto"}  # 默认自动选择
+    local mirror=${1:-"aliyun"}  # 默认阿里云
     
     # 获取系统版本信息
     if [ -f /etc/os-release ]; then
@@ -240,64 +149,50 @@ replace_mirror_source() {
         CENTOS_VER=$(rpm --eval %{rhel} 2>/dev/null || echo "unknown")
     fi
 
-    # 自动测速逻辑
-    if [ "$user_mirror" == "auto" ]; then
-        local selected_mirror=$(select_fast_mirror $OS)
-    else
-        local selected_mirror=$user_mirror
-    fi
-
     case $OS in
         debian|ubuntu)
-            replace_debian_mirror "$selected_mirror" ;;
+            replace_debian_mirror "$mirror" ;;
         centos)
-            replace_centos_mirror "$selected_mirror" ;;
+            replace_centos_mirror "$mirror" ;;
         alpine)
-            replace_alpine_mirror "$selected_mirror" ;;
+            replace_alpine_mirror "$mirror" ;;
     esac || {
         echo -e "${RED}镜像源更换失败，已恢复备份${NC}"
         return 1
     }
 }
 
-# 修正后的Debian/Ubuntu镜像处理
+# Debian/Ubuntu 镜像源处理
 replace_debian_mirror() {
     local mirror=$1
     local backup_file="/etc/apt/sources.list.bak"
-    local security_path="debian-security"
     
-    # 扩展镜像源选项
-    declare -A mirror_urls=(
-        [aliyun]="mirrors.aliyun.com"
-        [tencent]="mirrors.cloud.tencent.com"
-        [huawei]="repo.huaweicloud.com"
-        [tsinghua]="mirrors.tuna.tsinghua.edu.cn"
-        [ustc]="mirrors.ustc.edu.cn"
-        [163]="mirrors.163.com"
-        [njuitc]="mirrors.nju.edu.cn"
-    )
+    # 备份源文件
+    [ ! -f "$backup_file" ] && sudo cp /etc/apt/sources.list "$backup_file"
+    
+    # 选择镜像源
+    case $mirror in
+        aliyun)
+            url="mirrors.aliyun.com"
+            security_url="$url" ;;
+        tsinghua)
+            url="mirrors.tuna.tsinghua.edu.cn"
+            security_url="$url/debian-security" ;;
+        huawei)
+            url="repo.huaweicloud.com"
+            security_url="$url/debian-security" ;;
+        ustc)
+            url="mirrors.ustc.edu.cn"
+            security_url="$url/debian-security" ;;
+        163)
+            url="mirrors.163.com"
+            security_url="$url/debian-security" ;;
+        *) 
+            echo -e "${RED}不支持的镜像源选项${NC}"
+            return 1 ;;
+    esac
 
-    # 安全更新路径特殊处理
-    declare -A security_urls=(
-        [aliyun]="mirrors.aliyun.com/debian-security"
-        [tencent]="mirrors.cloud.tencent.com/debian-security"
-        [huawei]="repo.huaweicloud.com/debian-security"
-        [tsinghua]="mirrors.tuna.tsinghua.edu.cn/debian-security"
-        [ustc]="mirrors.ustc.edu.cn/debian-security"
-        [163]="mirrors.163.com/debian-security"
-        [njuitc]="mirrors.nju.edu.cn/debian-security"
-    )
-
-    # 参数检查
-    if [ -z "${mirror_urls[$mirror]}" ]; then
-        echo -e "${RED}不支持的Debian镜像源: $mirror${NC}"
-        return 1
-    fi
-
-    local url=${mirror_urls[$mirror]}
-    local security_url=${security_urls[$mirror]}
-
-    # 生成源配置
+    # 生成新源配置
     if [ "$ID" = "debian" ]; then
         cat <<EOF | sudo tee /etc/apt/sources.list >/dev/null
 deb https://$url/debian/ $CODENAME main contrib non-free
@@ -313,7 +208,6 @@ deb https://$security_url/ $CODENAME-security main contrib non-free
 deb-src https://$security_url/ $CODENAME-security main contrib non-free
 EOF
     else  # Ubuntu
-        security_path="ubuntu-security"
         cat <<EOF | sudo tee /etc/apt/sources.list >/dev/null
 deb https://$url/ubuntu/ $CODENAME main restricted universe multiverse
 deb-src https://$url/ubuntu/ $CODENAME main restricted universe multiverse
@@ -337,36 +231,34 @@ EOF
     echo -e "${GREEN}[APT] 已更换为 ${mirror} 镜像源${NC}"
 }
 
-# 修正后的CentOS镜像处理
+# CentOS 镜像源处理
 replace_centos_mirror() {
     local mirror=$1
     local repo_file="/etc/yum.repos.d/CentOS-Base.repo"
     local backup_file="$repo_file.bak"
     
-    declare -A mirror_urls=(
-        [aliyun]="mirrors.aliyun.com/centos"
-        [tencent]="mirrors.cloud.tencent.com/centos" 
-        [huawei]="mirrors.huaweicloud.com/centos"
-        [tsinghua]="mirrors.tuna.tsinghua.edu.cn/centos"
-        [ustc]="mirrors.ustc.edu.cn/centos"
-        [163]="mirrors.163.com/centos"
-    )
-
-    # 参数验证
-    if [ -z "${mirror_urls[$mirror]}" ]; then
-        echo -e "${RED}不支持的CentOS镜像源: $mirror${NC}"
-        return 1
-    fi
-
-    local base_url="https://${mirror_urls[$mirror]}/\$releasever"
-    
     # 备份源文件
     [ ! -f "$backup_file" ] && sudo cp "$repo_file" "$backup_file"
+    
+    # 选择镜像源
+    case $mirror in
+        aliyun)
+            base_url="https://mirrors.aliyun.com/centos/$CENTOS_VER" ;;
+        tsinghua)
+            base_url="https://mirrors.tuna.tsinghua.edu.cn/centos/$CENTOS_VER" ;;
+        huawei)
+            base_url="https://mirrors.huaweicloud.com/centos/$CENTOS_VER" ;;
+        163)
+            base_url="http://mirrors.163.com/centos/$CENTOS_VER" ;;
+        *)
+            echo -e "${RED}不支持的镜像源选项${NC}"
+            return 1 ;;
+    esac
 
     # 生成新配置
-    sudo sed -i -e "s|^mirrorlist=|#mirrorlist=|g" \
-                -e "s|^#baseurl=http://mirror.centos.org|baseurl=$base_url|g" \
-                "$repo_file"
+    sudo sed -e "s|^mirrorlist=|#mirrorlist=|g" \
+             -e "s|^#baseurl=http://mirror.centos.org|baseurl=$base_url|g" \
+             -i "$repo_file"
     
     # 更新测试
     if ! sudo yum clean all || ! sudo yum makecache; then
@@ -376,34 +268,30 @@ replace_centos_mirror() {
     echo -e "${GREEN}[YUM] 已更换为 ${mirror} 镜像源${NC}"
 }
 
-# 增强的Alpine镜像处理
+# Alpine 镜像源处理
 replace_alpine_mirror() {
     local mirror=$1
     local repo_file="/etc/apk/repositories"
     local backup_file="$repo_file.bak"
     
-    declare -A mirror_urls=(
-        [aliyun]="mirrors.aliyun.com/alpine"
-        [tencent]="mirrors.cloud.tencent.com/alpine"
-        [huawei]="repo.huaweicloud.com/alpine"
-        [tsinghua]="mirrors.tuna.tsinghua.edu.cn/alpine"
-        [ustc]="mirrors.ustc.edu.cn/alpine"
-        [bfsu]="mirrors.bfsu.edu.cn/alpine"
-    )
-
-    # 参数检查
-    if [ -z "${mirror_urls[$mirror]}" ]; then
-        echo -e "${RED}不支持的Alpine镜像源: $mirror${NC}"
-        return 1
-    fi
-
-    local new_url="https://${mirror_urls[$mirror]}"
-    
     # 备份源文件
     [ ! -f "$backup_file" ] && sudo cp "$repo_file" "$backup_file"
+    
+    # 选择镜像源
+    case $mirror in
+        aliyun)
+            new_url="mirrors.aliyun.com/alpine" ;;
+        tsinghua)
+            new_url="mirrors.tuna.tsinghua.edu.cn/alpine" ;;
+        huawei)
+            new_url="repo.huaweicloud.com/alpine" ;;
+        *)
+            echo -e "${RED}不支持的镜像源选项${NC}"
+            return 1 ;;
+    esac
 
     # 替换源
-    sudo sed -i "s#https\?://dl-cdn.alpinelinux.org#$new_url#g" "$repo_file"
+    sudo sed -i "s#https\?://dl-cdn.alpinelinux.org#https://$new_url#g" "$repo_file"
     
     # 更新测试
     if ! sudo apk update; then
@@ -420,7 +308,7 @@ if [ "$OS" == "unknown" ]; then
     exit 1
 fi
 
-# 参数处理
+# 新增镜像源参数处理
 while getopts "m:" opt; do
     case $opt in
         m) MIRROR=$OPTARG ;;
@@ -428,7 +316,7 @@ while getopts "m:" opt; do
     esac
 done
 
-replace_mirror_source "${MIRROR:-auto}"  # 默认自动选择最快源
+replace_mirror_source "${MIRROR:-aliyun}"  # 默认使用阿里云
 check_ssh
 check_timezone
 
