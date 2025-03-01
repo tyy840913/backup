@@ -1,8 +1,11 @@
 #!/bin/bash
+# Proxmox VE 镜像源管理工具 - 修正版
+# 功能：快速切换系统源/PVE源/LXC模板源，支持清华/阿里云/龙芯/官方源
+
 # 预加载系统信息
 source /etc/os-release
 export PRETTY_NAME DEBIAN_VER=${VERSION_CODENAME}
-export PVE_VER=$(pveversion | grep -oP 'pve-manager/\K\d+\.\d+' 2>/dev/null)
+export PVE_VER=$(pveversion 2>/dev/null | grep -oP 'pve-manager/\K\d+\.\d+')
 
 # 版本检测函数
 check_compatibility() { 
@@ -23,7 +26,7 @@ get_config_path() {
   esac
 }
 
-# 镜像源配置
+# 镜像源配置（修正URL）
 declare -A MIRRORS=(
   ["清华镜像站"]="https://mirrors.tuna.tsinghua.edu.cn/"
   ["阿里云镜像"]="https://mirrors.aliyun.com/"
@@ -36,14 +39,13 @@ mirror_names=("清华镜像站" "阿里云镜像" "龙芯专线" "官方源")
 show_main_menu() {
   while true; do
     clear
-    # 使用预加载的系统信息
     echo -e "\033[34m当前系统: ${PRETTY_NAME} | PVE版本: ${PVE_VER}\033[0m"
     echo "请选择配置类型："
     echo "1) 系统源 (/etc/apt/sources.list)"
     echo "2) PVE源 (/etc/apt/sources.list.d/pve.list)"
     echo "3) 模板源 (LXC模板库)"
     echo "0) 退出"
-    read -p "选择: " -t 60 main_choice  # 60秒无输入自动退出
+    read -p "选择: " -t 60 main_choice
 
     case $main_choice in
       1|2|3) show_mirror_menu $main_choice ;;
@@ -82,25 +84,32 @@ show_mirror_menu() {
 apply_mirror() {
   local config_type=$1 base_url=$2
   local config_file=$(get_config_path $config_type)
-  local backup_ext=$(date +%s).bak  # 时间戳备份后缀
+  local backup_ext=$(date +%s).bak
 
   case $config_type in
-    1)
+    1)  # 系统源处理
       sudo sed -i.${backup_ext} "
-        s|^deb.*/debian \(.*\) main.*$|deb ${base_url}debian \1 main contrib non-free non-free-firmware|;
-        s|^deb.*/debian-security \(.*\) main.*$|deb ${base_url}debian-security \1 main contrib non-free non-free-firmware|;
-        s|^deb.*/debian \(.*\)-updates main.*$|deb ${base_url}debian \1-updates main contrib non-free non-free-firmware|
+        s|^#\?deb.*https://.*/debian |deb ${base_url}debian/|;
+        s|^#\?deb.*https://.*/debian-security |deb ${base_url}debian-security/|;
+        s|^#\?deb.*https://.*/debian \([^ ]*\)-updates |deb ${base_url}debian/\1-updates |
       " "$config_file"
+      # 确保完整组件
+      sudo sed -i "s/ main.*$/ main contrib non-free non-free-firmware/" "$config_file"
       ;;
-    2)
-      sudo sed -i.${backup_ext} "s|^deb.*/pve/.*$|deb ${base_url}proxmox/debian/pve/ $DEBIAN_VER pve-no-subscription|" "$config_file"
+    2)  # PVE源处理
+      [[ "$base_url" == "https://enterprise.proxmox.com/" ]] && 
+        local repo_line="deb ${base_url}pve/debian/pve/ $DEBIAN_VER pve-enterprise" ||
+        local repo_line="deb ${base_url}proxmox/debian/pve/ $DEBIAN_VER pve-no-subscription"
+      echo "$repo_line" | sudo tee "$config_file" >/dev/null
       ;;
-    3)
-      sudo sed -i.${backup_ext} "s|\(our \$default_base_url = \).*|\1\"${base_url}proxmox/images/\"|" "$config_file"
+    3)  # 模板源处理
+      sudo sed -i.${backup_ext} \
+        "s|\(our \$default_base_url = \).*|\1\"${base_url}proxmox/images/\";|" "$config_file"
       ;;
   esac
 
   echo -e "\033[32m配置已更新！备份文件: ${config_file}.${backup_ext}\033[0m"
+  echo -e "\033[33m建议执行：apt update && apt upgrade -y\033[0m"
   read -p "按回车键返回主菜单"
 }
 
