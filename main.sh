@@ -61,7 +61,7 @@ show_interface() {
     # 底部操作提示
     echo
     print_divider
-    echo -e "${COLOR_INPUT}请输入序号选择脚本 (0 退出):${COLOR_RESET}"
+    echo -en "${COLOR_INPUT}请输入序号选择脚本 (0 退出): ${COLOR_RESET}"
 }
 
 # 执行子脚本
@@ -77,7 +77,7 @@ run_script() {
         # 根据后缀选择执行方式
         case "${filenames[index]##*.}" in
             sh) bash "$tmp_script" ;;
-            py) python "$tmp_script" ;;
+            py) python3 "$tmp_script" ;;
             *)  echo -e "${COLOR_ERROR}不支持的脚本格式！${COLOR_RESET}" ;;
         esac
         
@@ -99,19 +99,20 @@ while true; do
     
     # 输入验证
     while :; do
-        read -p " " choice
+        read -r choice
         if [[ "$choice" =~ ^[0-9]+$ ]]; then
             if ((choice == 0)); then
-                echo -e "${COLOR_TITLE}感谢使用，再见！${COLOR_RESET}"
+                echo -e "\n${COLOR_TITLE}感谢使用，再见！${COLOR_RESET}"
                 rm -f "$catalog_file"
                 exit 0
             elif ((choice > 0 && choice <= ${#descriptions[@]})); then
                 break
             fi
         fi
-        echo -e "${COLOR_ERROR}无效输入，请重新输入！${COLOR_RESET}"
+        # 错误提示优化
+        echo -en "\033[1A\033[K${COLOR_ERROR}无效输入，请重新输入: ${COLOR_RESET}"
     done
 
     run_script "$choice"
-    read -p "按回车键继续..."
+    read -rp "按回车键继续..."
 done
