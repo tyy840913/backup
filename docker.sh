@@ -30,7 +30,6 @@ install_alpine() {
     apk update
     apk add docker docker-compose
     rc-update add docker boot
-    service docker start
 }
 
 # 其他Linux发行版安装
