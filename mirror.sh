@@ -1,4 +1,3 @@
- 
 #!/bin/bash
 # 系统配置自动化检查与修复脚本
 # 支持：Debian/Ubuntu, CentOS/RHEL, Alpine Linux
@@ -10,7 +9,7 @@ BLUE='\033[34m'   # 信息
 CYAN='\033[36m'   # 调试
 NC='\033[0m'      # 颜色重置
 
-# 镜像源配置信息（新增）
+# 镜像源配置信息
 declare -A MIRROR_SOURCES=(
     ["aliyun"]="阿里云"
     ["tencent"]="腾讯云"
@@ -34,7 +33,7 @@ detect_os() {
     fi
 }
 
-# 获取系统版本信息（新增）
+# 获取系统版本信息
 get_os_info() {
     case $OS in
         debian)
@@ -52,46 +51,34 @@ get_os_info() {
     esac
 }
 
-# 服务管理抽象层
-manage_service() {
-    case $OS in
-        debian|centos)
-            systemctl $2 $1
-            ;;
-        alpine)
-            rc-service $1 $2
-            ;;
-    esac
-}
-
-# 镜像源速度测试函数（新增）
+# 镜像源速度测试函数
 test_mirror_speed() {
     local mirror_name=$1
     local mirror_url=$2
     
-    # 测试连接时间（单位：毫秒）
-    local connect_time=$(curl -o /dev/null -s -w "%{time_connect}\n" --connect-timeout 2 -x "" $mirror_url)
+    # 测试连接时间（秒）
+    local connect_time=$(curl -o /dev/null -s -w "%{time_connect}\n" --connect-timeout 2 $mirror_url)
     if [[ $? -ne 0 || -z "$connect_time" ]]; then
         echo -e "${RED}连接失败${NC}"
         return 1
     fi
     
-    # 测试下载速度（单位：KB/s）
-    local speed=$(curl -s -w "%{speed_download}\n" -o /dev/null --connect-timeout 2 -x "" $mirror_url | awk '{printf "%.2f", $1/1024}')
+    # 测试下载速度（KB/s）
+    local speed=$(curl -s -w "%{speed_download}\n" -o /dev/null --connect-timeout 2 $mirror_url | awk '{printf "%.2f", $1/1024}')
     
-    # 综合评分（连接时间权重40%，下载速度权重60%）
-    local score=$(awk -v ct="$connect_time" -v sp="$speed" 'BEGIN {print (1000/(ct*1000)*0.4 + sp*0.6)}')
+    # 综合评分（连接时间占20%，下载速度占80%）
+    local score=$(awk -v ct="$connect_time" -v sp="$speed" 'BEGIN {print (1/(ct+0.1)*0.2 + sp*0.8)}')
     
     printf "%-8s | ${CYAN}%-7s${NC} | ${CYAN}%-9s${NC} | ${CYAN}%-8s${NC}\n" \
     "${MIRROR_SOURCES[$mirror_name]}" \
-    "$(awk -v ct="$connect_time" 'BEGIN {printf "%.2fms", ct*1000}')" \
+    "$(printf "%.2fms" $(echo "$connect_time*1000" | bc -l))" \
     "$(printf "%'.2f KB/s" $speed)" \
     "$(printf "%.2f" $score)"
     
     return 0
 }
 
-# 获取镜像源URL（新增）
+# 获取镜像源URL（修正后）
 get_mirror_url() {
     local mirror=$1
     case $OS in
@@ -102,15 +89,6 @@ get_mirror_url() {
                 huawei)   echo "https://mirrors.huaweicloud.com/debian/" ;;
                 netease)  echo "https://mirrors.163.com/debian/" ;;
                 ustc)     echo "https://mirrors.ustc.edu.cn/debian/" ;;
-            esac
-            ;;
-        ubuntu)
-            case $mirror in
-                aliyun)   echo "https://mirrors.aliyun.com/ubuntu/" ;;
-                tencent)  echo "https://mirrors.tencent.com/ubuntu/" ;;
-                huawei)   echo "https://mirrors.huaweicloud.com/ubuntu/" ;;
-                netease)  echo "https://mirrors.163.com/ubuntu/" ;;
-                ustc)     echo "https://mirrors.ustc.edu.cn/ubuntu/" ;;
             esac
             ;;
         centos)
@@ -134,9 +112,9 @@ get_mirror_url() {
     esac
 }
 
-# 更换镜像源函数（新增）
+# 更换镜像源函数
 change_repository() {
-    echo -e "\n${BLUE}=== 开始镜像源速度检测 ===${NC}"
+    echo -e "\n${BLUE}=== 镜像源速度检测 ===${NC}"
     echo -e "候选镜像源：${CYAN}${!MIRROR_SOURCES[@]}${NC}"
     echo -e "--------------------------------------------"
     printf "%-8s | %-7s | %-9s | %-8s\n" "镜像源" "延迟" "下载速度" "综合评分"
@@ -193,15 +171,19 @@ change_repository() {
     echo -e "\n${GREEN}最佳镜像源：${MIRROR_SOURCES[$best_mirror]}${NC}"
 
     # 执行镜像源更换
-    echo -e "\n${BLUE}=== 开始更换镜像源 ===${NC}"
+    echo -e "\n${BLUE}=== 更换镜像源 ===${NC}"
     case $OS in
         debian)
             sources_file="/etc/apt/sources.list"
             backup_file="/etc/apt/sources.list.bak"
             [ ! -f $backup_file ] && cp $sources_file $backup_file
             new_url=$(get_mirror_url $best_mirror)
-            sed -i "s|http.*debian/|$new_url|g" $sources_file
-            sed -i "s|https.*debian/|$new_url|g" $sources_file
+            # 清空原有源并写入新源
+            cat > $sources_file << EOF
+deb ${new_url} ${CODENAME} main contrib non-free
+deb ${new_url} ${CODENAME}-updates main contrib non-free
+deb ${new_url}-security ${CODENAME}/updates main contrib non-free
+EOF
             echo -e "${GREEN}Debian源已更新为：${new_url}${NC}"
             ;;
         centos)
@@ -212,9 +194,10 @@ change_repository() {
             cat << EOF > $sources_dir/CentOS-Base.repo
 [base]
 name=CentOS-\$releasever - Base
-baseurl=${new_url}\$releasever/os/\$basearch/
+baseurl=${new_url}/\$releasever/os/\$basearch/
+enabled=1
 gpgcheck=1
-gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-\$releasever
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
 EOF
             echo -e "${GREEN}CentOS源已更新为：${new_url}${NC}"
             ;;
@@ -237,10 +220,9 @@ if [ "$OS" == "unknown" ]; then
     exit 1
 fi
 
-get_os_info  # 新增调用
+get_os_info
 
-# 执行所有检查
-change_repository  # 新增调用
+change_repository
 
-echo -e "\n${GREEN}所有配置已完成，即将退出脚本！${NC}"
+echo -e "\n${GREEN}所有配置已完成！${NC}"
 exit 0
