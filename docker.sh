@@ -86,8 +86,6 @@ validate_mirrors() {
     declare -a required_mirrors=(
         "https://proxy.1panel.live"
         "https://docker.1panel.top"
-        "https://docker.m.daocloud.io"
-        "https://docker.woskee.nyc.mn"
         "https://docker.woskee.dns.army"
         "https://docker.woskee.dynv6.net"
     )
