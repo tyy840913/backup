@@ -54,36 +54,15 @@ detect_os() {
   esac
 }
 
-# 显示系统信息
-show_system_info() {
-  # 转换系统家族为友好名称
-  case $FAMILY in
-    debian) FAMILY_NAME="Debian" ;;
-    rhel) FAMILY_NAME="Red Hat" ;;
-    alpine) FAMILY_NAME="Alpine" ;;
-    arch) FAMILY_NAME="Arch" ;;
-    suse) FAMILY_NAME="SUSE" ;;
-    *) FAMILY_NAME="$FAMILY" ;;
-  esac
-
-  echo -e "\n${BLUE}══════════════════════════════════════════════════${NC}"
-  echo -e "${GREEN}                   系统检测信息                   ${NC}"
-  echo -e "${BLUE}══════════════════════════════════════════════════${NC}"
-  printf "%-12s: ${YELLOW}%s${NC}\n" "母系统" "$FAMILY_NAME"
-  printf "%-12s: ${YELLOW}%s${NC}\n" "分支系统" "$DIST_NAME"
-  printf "%-12s: ${YELLOW}%s${NC}\n" "版本号" "$DIST_VERSION"
-  printf "%-12s: ${YELLOW}%s${NC}\n" "包管理器" "${PKG_MANAGER^^}"
-  echo -e "${BLUE}══════════════════════════════════════════════════${NC}\n"
-}
-
 # 镜像源配置函数
 config_debian() {
   local mirror=$1
+  local codename=$DIST_CODENAME
   local sources_file="/etc/apt/sources.list"
   
   sudo cp "$sources_file" "${sources_file}.bak"
-  sudo sed -i "s|^deb http://.*/debian/|deb $mirror/debian/|" "$sources_file"
-  sudo sed -i "s|^deb http://.*/ubuntu/|deb $mirror/ubuntu/|" "$sources_file"
+  sudo sed -i "s/^deb http:\/\/.*\/debian\/ \(.*\)/deb $mirror\/debian\/ \1/" "$sources_file"
+  sudo sed -i "s/^deb http:\/\/.*\/ubuntu\/ \(.*\)/deb $mirror\/ubuntu\/ \1/" "$sources_file"
 }
 
 config_rhel() {
@@ -127,20 +106,62 @@ show_menu() {
   
   select opt in "${options[@]}"; do
     case $REPLY in
-      1) MIRROR="http://mirrors.aliyun.com"; break ;;
-      2) MIRROR="http://mirrors.tencentyun.com"; break ;;
-      3) MIRROR="http://repo.huaweicloud.com"; break ;;
-      4) MIRROR="http://mirrors.163.com"; break ;;
-      5) MIRROR="http://mirrors.ustc.edu.cn"; break ;;
-      6) MIRROR="http://mirrors.tuna.tsinghua.edu.cn"; break ;;
+      1) 
+        case $FAMILY in
+          debian) MIRROR="http://mirrors.aliyun.com";;
+          rhel) MIRROR="http://mirrors.aliyun.com";;
+          arch) MIRROR="http://mirrors.aliyun.com";;
+          alpine) MIRROR="http://mirrors.aliyun.com";;
+        esac
+        break ;;
+      2) 
+        case $FAMILY in
+          debian) MIRROR="http://mirrors.tencentyun.com";;
+          rhel) MIRROR="http://mirrors.tencentyun.com";;
+          arch) MIRROR="http://mirrors.tencentyun.com";;
+          alpine) MIRROR="http://mirrors.tencentyun.com";;
+        esac
+        break ;;
+      3) 
+        case $FAMILY in
+          debian) MIRROR="http://repo.huaweicloud.com";;
+          rhel) MIRROR="http://repo.huaweicloud.com";;
+          arch) MIRROR="http://repo.huaweicloud.com";;
+          alpine) MIRROR="http://repo.huaweicloud.com";;
+        esac
+        break ;;
+      4) 
+        case $FAMILY in
+          debian) MIRROR="http://mirrors.163.com";;
+          rhel) MIRROR="http://mirrors.163.com";;
+          arch) MIRROR="http://mirrors.163.com";;
+          alpine) MIRROR="http://mirrors.163.com";;
+        esac
+        break ;;
+      5) 
+        case $FAMILY in
+          debian) MIRROR="http://mirrors.ustc.edu.cn";;
+          rhel) MIRROR="http://mirrors.ustc.edu.cn";;
+          arch) MIRROR="http://mirrors.ustc.edu.cn";;
+          alpine) MIRROR="http://mirrors.ustc.edu.cn";;
+        esac
+        break ;;
+      6) 
+        case $FAMILY in
+          debian) MIRROR="http://mirrors.tuna.tsinghua.edu.cn";;
+          rhel) MIRROR="http://mirrors.tuna.tsinghua.edu.cn";;
+          arch) MIRROR="http://mirrors.tuna.tsinghua.edu.cn";;
+          alpine) MIRROR="http://mirrors.tuna.tsinghua.edu.cn";;
+        esac
+        break ;;
       *) echo -e "${RED}无效选项，请重新输入！${NC}" ;;
     esac
   done
 }
 
-# 自动更新索引
+# 新增自动更新索引函数
 update_index() {
-  echo -e "\n${GREEN}正在更新软件源索引...${NC}"
+  echo -e "\n${GREEN}正在自动更新软件源索引...${NC}"
   case $PKG_MANAGER in
     apt) sudo apt update -y ;;
     yum) sudo yum makecache ;;
@@ -148,14 +169,13 @@ update_index() {
     pacman) sudo pacman -Sy ;;
     apk) sudo apk update ;;
     zypper) sudo zypper refresh ;;
-    *) echo -e "${RED}未知的包管理器，无法更新索引${NC}" ;;
+    *) echo -e "${RED}未知的包管理器，无法自动更新${NC}" ;;
   esac
   echo -e "${GREEN}软件源索引更新完成！${NC}"
 }
 
 # 主流程
 detect_os
-show_system_info
 show_menu
 
 echo -e "\n${GREEN}正在更换镜像源为 [$opt] ...${NC}"
@@ -168,4 +188,4 @@ case $FAMILY in
 esac
 
 echo -e "${GREEN}镜像源更换完成！${NC}"
-update_index
+update_index  # 添加自动更新调用
