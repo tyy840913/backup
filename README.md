@@ -21,3 +21,8 @@ bash <(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/b
 ```bash
 bash <(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/Docker.sh)
 ```
+
+# 更换系统镜像源
+```bash
+bash <(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/mirror.sh)
+```
