@@ -1,3 +1,4 @@
 自动备份 auto_backup.sh
 系统配置 init.sh
 Docker安装 Docker.sh
+镜像源更新 mirror.sh
