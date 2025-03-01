@@ -137,7 +137,7 @@ check_timezone() {
     fi
 }
 
-# 镜像源配置（支持6个国内源）
+# 镜像源配置（支持6个国内源)
 configure_mirror() {
     echo -e "\n${BLUE}=== 镜像源配置 ===${NC}"
     
@@ -146,13 +146,11 @@ configure_mirror() {
         [4]="清华大学" [5]="网易" [6]="中科大"
     )
     
-    declare -A URLS=(
-        [1]="mirrors.aliyun.com"
-        [2]="mirrors.cloud.tencent.com"
-        [3]="repo.huaweicloud.com" 
-        [4]="mirrors.tuna.tsinghua.edu.cn"
-        [5]="mirrors.163.com"
-        [6]="mirrors.ustc.edu.cn"
+    # 各发行版镜像路径映射表（主域名/路径前缀）
+    declare -A URL_PATHS=(
+        [debian]="/debian"
+        [centos]="/centos"
+        [alpine]="/alpine"
     )
 
     echo "请选择镜像源:"
@@ -166,46 +164,88 @@ configure_mirror() {
         echo -e "${RED}无效输入，请重新选择${NC}"
     done
 
-    NEW_MIRROR=${URLS[$choice]}
+    # 获取基础镜像域名
+    declare -A BASE_DOMAINS=(
+        [1]="mirrors.aliyun.com"
+        [2]="mirrors.cloud.tencent.com"
+        [3]="repo.huaweicloud.com"
+        [4]="mirrors.tuna.tsinghua.edu.cn"
+        [5]="mirrors.163.com"
+        [6]="mirrors.ustc.edu.cn"
+    )
+    
+    DOMAIN=${BASE_DOMAINS[$choice]}
+    [ -z "$DOMAIN" ] && { echo -e "${RED}无效的镜像源选择${NC}"; exit 1; }
+
     echo -e "${GREEN}已选择: ${MIRRORS[$choice]} 镜像源${NC}"
 
     case $OS in
         debian)
             SOURCE_FILE="/etc/apt/sources.list"
+            MIRROR_URL="https://$DOMAIN${URL_PATHS[$OS]}"
+            SECURITY_URL="https://$DOMAIN/debian-security"
+
             # 备份原文件
             cp "$SOURCE_FILE" "${SOURCE_FILE}.bak"
-            # 替换主仓库和安全更新仓库
-            sed -i "s|http://[^/]*\.debian\.org/debian|https://$NEW_MIRROR/debian|g" "$SOURCE_FILE"
-            sed -i "s|http://security\.debian\.org/debian-security|https://$NEW_MIRROR/debian-security|g" "$SOURCE_FILE"
-            # 添加非自由软件源
-            if ! grep -q "$NEW_MIRROR" "$SOURCE_FILE"; then
-                echo "deb https://$NEW_MIRROR/debian $(lsb_release -cs) main contrib non-free" >> "$SOURCE_FILE"
-                echo "deb https://$NEW_MIRROR/debian-security $(lsb_release -cs)-security main contrib non-free" >> "$SOURCE_FILE"
+
+            # 替换主仓库和安全更新仓库（支持http/https）
+            sed -i -E \
+                -e "s|https?://[^/]+/debian|$MIRROR_URL|g" \
+                -e "s|https?://[^/]+/debian-security|$SECURITY_URL|g" \
+                "$SOURCE_FILE"
+
+            # 添加非自由软件源（如果不存在）
+            if ! grep -q "$MIRROR_URL" "$SOURCE_FILE"; then
+                echo "deb $MIRROR_URL $(lsb_release -cs) main contrib non-free" >> "$SOURCE_FILE"
+                echo "deb $SECURITY_URL $(lsb_release -cs)-security main contrib non-free" >> "$SOURCE_FILE"
             fi
+
             if ! apt update; then
                 echo -e "${RED}APT更新失败，请检查镜像源配置${NC}"
                 exit 1
             fi
             ;;
+
         centos)
             SOURCE_FILE="/etc/yum.repos.d/CentOS-Base.repo"
-            # 禁用mirrorlist并设置baseurl
-            sed -i -e "s|^mirrorlist=|#mirrorlist=|g" \
-                   -e "s|^#baseurl=http://mirror.centos.org|baseurl=https://$NEW_MIRROR|g" \
-                   "$SOURCE_FILE"
+            MIRROR_URL="https://$DOMAIN${URL_PATHS[$OS]}"
+
+            # 禁用mirrorlist并设置baseurl（兼容不同版本路径）
+            sed -i -E \
+                -e "s|^mirrorlist=|#mirrorlist=|g" \
+                -e "s|^#baseurl=http://[^/]+|baseurl=$MIRROR_URL|g" \
+                "$SOURCE_FILE"
+
+            # 修正AppStream仓库配置（CentOS 8+）
+            if [ -f "/etc/yum.repos.d/AppStream.repo" ]; then
+                sed -i -E \
+                    -e "s|^mirrorlist=|#mirrorlist=|g" \
+                    -e "s|^#baseurl=http://[^/]+|baseurl=$MIRROR_URL|g" \
+                    "/etc/yum.repos.d/AppStream.repo"
+            fi
+
             if ! yum makecache; then
                 echo -e "${RED}YUM缓存失败，请检查镜像源配置${NC}"
                 exit 1
             fi
             ;;
+
         alpine)
             SOURCE_FILE="/etc/apk/repositories"
+            MIRROR_URL="https://$DOMAIN${URL_PATHS[$OS]}"
+
             # 替换官方源并添加社区源
-            sed -i "s|http://dl-cdn.alpinelinux.org|https://$NEW_MIRROR|g" "$SOURCE_FILE"
-            if ! grep -q "$NEW_MIRROR" "$SOURCE_FILE"; then
-                echo "https://$NEW_MIRROR/alpine/v$(cut -d. -f1,2 /etc/alpine-release)/main" > "$SOURCE_FILE"
-                echo "https://$NEW_MIRROR/alpine/v$(cut -d. -f1,2 /etc/alpine-release)/community" >> "$SOURCE_FILE"
+            sed -i -E \
+                -e "s|https?://[^/]+/alpine|$MIRROR_URL|g" \
+                "$SOURCE_FILE"
+
+            # 确保版本号正确
+            ALPINE_VERSION=$(cut -d. -f1,2 /etc/alpine-release)
+            if ! grep -q "$MIRROR_URL" "$SOURCE_FILE"; then
+                echo "$MIRROR_URL/v$ALPINE_VERSION/main" > "$SOURCE_FILE"
+                echo "$MIRROR_URL/v$ALPINE_VERSION/community" >> "$SOURCE_FILE"
             fi
+
             if ! apk update; then
                 echo -e "${RED}APK更新失败，请检查镜像源配置${NC}"
                 exit 1
@@ -215,7 +255,7 @@ configure_mirror() {
     
     echo -e "${GREEN}镜像源更新完成${NC}"
     echo -e "${YELLOW}当前源文件内容：${NC}"
-    tail -n 10 "$SOURCE_FILE"
+    grep -E "^deb|^baseurl|http" "$SOURCE_FILE" | tail -n 10
 }
 
 # 主程序
