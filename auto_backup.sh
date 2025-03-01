@@ -89,7 +89,7 @@ add_cron_job() {
 main() {
   # 修改后的用户凭证获取
   while [ -z "$USER" ]; do
-    read -p "请输入账号（邮箱）: " USER  # 移除品牌名称
+    read -p "请输入账号（邮箱）: " USER  # 添加邮箱提示
   done
   while [ -z "$PASS" ]; do
     read -s -p "请输入密码: " PASS      # 通用密码提示
