@@ -7,14 +7,6 @@ YELLOW='\033[1;33m'
 BLUE='\033[1;34m'
 NC='\033[0m' # 恢复默认
 
-# 镜像源常量定义
-ALIYUN_MIRROR="http://mirrors.aliyun.com"
-TENCENT_MIRROR="http://mirrors.tencentyun.com"
-HUAWEI_MIRROR="http://repo.huaweicloud.com"
-NETEASE_MIRROR="http://mirrors.163.com"
-USTC_MIRROR="http://mirrors.ustc.edu.cn"
-TSINGHUA_MIRROR="http://mirrors.tuna.tsinghua.edu.cn"
-
 # 初始化变量
 DIST_NAME="Unknown"
 DIST_ID="unknown"
@@ -22,7 +14,6 @@ DIST_VERSION="Unknown"
 DIST_CODENAME="Unknown"
 PKG_MANAGER="Unknown"
 FAMILY="Unknown"
-MIRROR=""
 
 # 检测发行版信息
 detect_os() {
@@ -63,6 +54,28 @@ detect_os() {
   esac
 }
 
+# 显示系统信息
+show_system_info() {
+  # 转换系统家族为友好名称
+  case $FAMILY in
+    debian) FAMILY_NAME="Debian" ;;
+    rhel) FAMILY_NAME="Red Hat" ;;
+    alpine) FAMILY_NAME="Alpine" ;;
+    arch) FAMILY_NAME="Arch" ;;
+    suse) FAMILY_NAME="SUSE" ;;
+    *) FAMILY_NAME="$FAMILY" ;;
+  esac
+
+  echo -e "\n${BLUE}══════════════════════════════════════════════════${NC}"
+  echo -e "${GREEN}                   系统检测信息                   ${NC}"
+  echo -e "${BLUE}══════════════════════════════════════════════════${NC}"
+  printf "%-12s: ${YELLOW}%s${NC}\n" "母系统" "$FAMILY_NAME"
+  printf "%-12s: ${YELLOW}%s${NC}\n" "分支系统" "$DIST_NAME"
+  printf "%-12s: ${YELLOW}%s${NC}\n" "版本号" "$DIST_VERSION"
+  printf "%-12s: ${YELLOW}%s${NC}\n" "包管理器" "${PKG_MANAGER^^}"
+  echo -e "${BLUE}══════════════════════════════════════════════════${NC}\n"
+}
+
 # 镜像源配置函数
 config_debian() {
   local mirror=$1
@@ -90,14 +103,14 @@ config_rhel() {
 }
 
 config_arch() {
-  local mirror="$1"
-  echo "Server = $mirror/archlinux/\$repo/os/\$arch" | sudo tee /etc/pacman.d/mirrorlist >/dev/null
+  local mirror="$1/archlinux"
+  echo "Server = $mirror/\$repo/os/\$arch" | sudo tee /etc/pacman.d/mirrorlist >/dev/null
 }
 
 config_alpine() {
-  local mirror="$1"
-  echo "$mirror/alpine/$DIST_VERSION/main" | sudo tee /etc/apk/repositories
-  echo "$mirror/alpine/$DIST_VERSION/community" | sudo tee -a /etc/apk/repositories
+  local mirror="$1/alpine"
+  echo "$mirror/$DIST_VERSION/main" | sudo tee /etc/apk/repositories
+  echo "$mirror/$DIST_VERSION/community" | sudo tee -a /etc/apk/repositories
 }
 
 # 镜像源选择菜单
@@ -114,19 +127,35 @@ show_menu() {
   
   select opt in "${options[@]}"; do
     case $REPLY in
-      1) MIRROR=$ALIYUN_MIRROR; break ;;
-      2) MIRROR=$TENCENT_MIRROR; break ;;
-      3) MIRROR=$HUAWEI_MIRROR; break ;;
-      4) MIRROR=$NETEASE_MIRROR; break ;;
-      5) MIRROR=$USTC_MIRROR; break ;;
-      6) MIRROR=$TSINGHUA_MIRROR; break ;;
+      1) MIRROR="http://mirrors.aliyun.com"; break ;;
+      2) MIRROR="http://mirrors.tencentyun.com"; break ;;
+      3) MIRROR="http://repo.huaweicloud.com"; break ;;
+      4) MIRROR="http://mirrors.163.com"; break ;;
+      5) MIRROR="http://mirrors.ustc.edu.cn"; break ;;
+      6) MIRROR="http://mirrors.tuna.tsinghua.edu.cn"; break ;;
       *) echo -e "${RED}无效选项，请重新输入！${NC}" ;;
     esac
   done
 }
 
+# 自动更新索引
+update_index() {
+  echo -e "\n${GREEN}正在更新软件源索引...${NC}"
+  case $PKG_MANAGER in
+    apt) sudo apt update -y ;;
+    yum) sudo yum makecache ;;
+    dnf) sudo dnf makecache ;;
+    pacman) sudo pacman -Sy ;;
+    apk) sudo apk update ;;
+    zypper) sudo zypper refresh ;;
+    *) echo -e "${RED}未知的包管理器，无法更新索引${NC}" ;;
+  esac
+  echo -e "${GREEN}软件源索引更新完成！${NC}"
+}
+
 # 主流程
 detect_os
+show_system_info
 show_menu
 
 echo -e "\n${GREEN}正在更换镜像源为 [$opt] ...${NC}"
@@ -139,10 +168,4 @@ case $FAMILY in
 esac
 
 echo -e "${GREEN}镜像源更换完成！${NC}"
-echo -e "${YELLOW}建议运行以下命令更新缓存：${NC}"
-case $PKG_MANAGER in
-  apt) echo "sudo apt update" ;;
-  yum|dnf) echo "sudo $PKG_MANAGER makecache" ;;
-  pacman) echo "sudo pacman -Sy" ;;
-  apk) echo "sudo apk update" ;;
-esac
+update_index
