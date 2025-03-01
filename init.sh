@@ -137,125 +137,168 @@ check_timezone() {
     fi
 }
 
-# 镜像源配置（支持6个国内源)
-configure_mirror() {
-    echo -e "\n${BLUE}=== 镜像源配置 ===${NC}"
+# 新增镜像源配置功能
+replace_mirror_source() {
+    echo -e "\n${BLUE}=== 镜像源更换 ===${NC}"
+    local mirror=${1:-"aliyun"}  # 默认阿里云
     
-    declare -A MIRRORS=(
-        [1]="阿里云" [2]="腾讯云" [3]="华为云" 
-        [4]="清华大学" [5]="网易" [6]="中科大"
-    )
-    
-    # 各发行版镜像路径映射表（主域名/路径前缀）
-    declare -A URL_PATHS=(
-        [debian]="/debian"
-        [centos]="/centos"
-        [alpine]="/alpine"
-    )
-
-    echo "请选择镜像源:"
-    for key in 1 2 3 4 5 6; do
-        echo "$key) ${MIRRORS[$key]}"
-    done
-
-    while true; do
-        read -p "请输入选择 (1-6): " choice
-        [[ $choice =~ ^[1-6]$ ]] && break
-        echo -e "${RED}无效输入，请重新选择${NC}"
-    done
-
-    # 获取基础镜像域名
-    declare -A BASE_DOMAINS=(
-        [1]="mirrors.aliyun.com"
-        [2]="mirrors.cloud.tencent.com"
-        [3]="repo.huaweicloud.com"
-        [4]="mirrors.tuna.tsinghua.edu.cn"
-        [5]="mirrors.163.com"
-        [6]="mirrors.ustc.edu.cn"
-    )
-    
-    DOMAIN=${BASE_DOMAINS[$choice]}
-    [ -z "$DOMAIN" ] && { echo -e "${RED}无效的镜像源选择${NC}"; exit 1; }
-
-    echo -e "${GREEN}已选择: ${MIRRORS[$choice]} 镜像源${NC}"
+    # 获取系统版本信息
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        CODENAME=$VERSION_CODENAME
+        CENTOS_VER=$(rpm --eval %{rhel} 2>/dev/null || echo "unknown")
+    fi
 
     case $OS in
-        debian)
-            SOURCE_FILE="/etc/apt/sources.list"
-            MIRROR_URL="https://$DOMAIN${URL_PATHS[$OS]}"
-            SECURITY_URL="https://$DOMAIN/debian-security"
-
-            # 备份原文件
-            cp "$SOURCE_FILE" "${SOURCE_FILE}.bak"
-
-            # 替换主仓库和安全更新仓库（支持http/https）
-            sed -i -E \
-                -e "s|https?://[^/]+/debian|$MIRROR_URL|g" \
-                -e "s|https?://[^/]+/debian-security|$SECURITY_URL|g" \
-                "$SOURCE_FILE"
-
-            # 添加非自由软件源（如果不存在）
-            if ! grep -q "$MIRROR_URL" "$SOURCE_FILE"; then
-                echo "deb $MIRROR_URL $(lsb_release -cs) main contrib non-free" >> "$SOURCE_FILE"
-                echo "deb $SECURITY_URL $(lsb_release -cs)-security main contrib non-free" >> "$SOURCE_FILE"
-            fi
-
-            if ! apt update; then
-                echo -e "${RED}APT更新失败，请检查镜像源配置${NC}"
-                exit 1
-            fi
-            ;;
-
+        debian|ubuntu)
+            replace_debian_mirror "$mirror" ;;
         centos)
-            SOURCE_FILE="/etc/yum.repos.d/CentOS-Base.repo"
-            MIRROR_URL="https://$DOMAIN${URL_PATHS[$OS]}"
-
-            # 禁用mirrorlist并设置baseurl（兼容不同版本路径）
-            sed -i -E \
-                -e "s|^mirrorlist=|#mirrorlist=|g" \
-                -e "s|^#baseurl=http://[^/]+|baseurl=$MIRROR_URL|g" \
-                "$SOURCE_FILE"
-
-            # 修正AppStream仓库配置（CentOS 8+）
-            if [ -f "/etc/yum.repos.d/AppStream.repo" ]; then
-                sed -i -E \
-                    -e "s|^mirrorlist=|#mirrorlist=|g" \
-                    -e "s|^#baseurl=http://[^/]+|baseurl=$MIRROR_URL|g" \
-                    "/etc/yum.repos.d/AppStream.repo"
-            fi
-
-            if ! yum makecache; then
-                echo -e "${RED}YUM缓存失败，请检查镜像源配置${NC}"
-                exit 1
-            fi
-            ;;
-
+            replace_centos_mirror "$mirror" ;;
         alpine)
-            SOURCE_FILE="/etc/apk/repositories"
-            MIRROR_URL="https://$DOMAIN${URL_PATHS[$OS]}"
+            replace_alpine_mirror "$mirror" ;;
+    esac || {
+        echo -e "${RED}镜像源更换失败，已恢复备份${NC}"
+        return 1
+    }
+}
 
-            # 替换官方源并添加社区源
-            sed -i -E \
-                -e "s|https?://[^/]+/alpine|$MIRROR_URL|g" \
-                "$SOURCE_FILE"
-
-            # 确保版本号正确
-            ALPINE_VERSION=$(cut -d. -f1,2 /etc/alpine-release)
-            if ! grep -q "$MIRROR_URL" "$SOURCE_FILE"; then
-                echo "$MIRROR_URL/v$ALPINE_VERSION/main" > "$SOURCE_FILE"
-                echo "$MIRROR_URL/v$ALPINE_VERSION/community" >> "$SOURCE_FILE"
-            fi
-
-            if ! apk update; then
-                echo -e "${RED}APK更新失败，请检查镜像源配置${NC}"
-                exit 1
-            fi
-            ;;
-    esac
+# Debian/Ubuntu 镜像源处理
+replace_debian_mirror() {
+    local mirror=$1
+    local backup_file="/etc/apt/sources.list.bak"
     
-    echo -e "${GREEN}镜像源更新完成${NC}"
-    echo -e "${YELLOW}当前源文件内容：${NC}"
-    grep -E "^deb|^baseurl|http" "$SOURCE_FILE" | tail -n 10
+    # 备份源文件
+    [ ! -f "$backup_file" ] && sudo cp /etc/apt/sources.list "$backup_file"
+    
+    # 选择镜像源
+    case $mirror in
+        aliyun)
+            url="mirrors.aliyun.com"
+            security_url="$url" ;;
+        tsinghua)
+            url="mirrors.tuna.tsinghua.edu.cn"
+            security_url="$url/debian-security" ;;
+        huawei)
+            url="repo.huaweicloud.com"
+            security_url="$url/debian-security" ;;
+        ustc)
+            url="mirrors.ustc.edu.cn"
+            security_url="$url/debian-security" ;;
+        163)
+            url="mirrors.163.com"
+            security_url="$url/debian-security" ;;
+        *) 
+            echo -e "${RED}不支持的镜像源选项${NC}"
+            return 1 ;;
+    esac
+
+    # 生成新源配置
+    if [ "$ID" = "debian" ]; then
+        cat <<EOF | sudo tee /etc/apt/sources.list >/dev/null
+deb https://$url/debian/ $CODENAME main contrib non-free
+deb-src https://$url/debian/ $CODENAME main contrib non-free
+
+deb https://$url/debian/ $CODENAME-updates main contrib non-free
+deb-src https://$url/debian/ $CODENAME-updates main contrib non-free
+
+deb https://$url/debian/ $CODENAME-backports main contrib non-free
+deb-src https://$url/debian/ $CODENAME-backports main contrib non-free
+
+deb https://$security_url/ $CODENAME-security main contrib non-free
+deb-src https://$security_url/ $CODENAME-security main contrib non-free
+EOF
+    else  # Ubuntu
+        cat <<EOF | sudo tee /etc/apt/sources.list >/dev/null
+deb https://$url/ubuntu/ $CODENAME main restricted universe multiverse
+deb-src https://$url/ubuntu/ $CODENAME main restricted universe multiverse
+
+deb https://$url/ubuntu/ $CODENAME-updates main restricted universe multiverse
+deb-src https://$url/ubuntu/ $CODENAME-updates main restricted universe multiverse
+
+deb https://$url/ubuntu/ $CODENAME-backports main restricted universe multiverse
+deb-src https://$url/ubuntu/ $CODENAME-backports main restricted universe multiverse
+
+deb https://$url/ubuntu/ $CODENAME-security main restricted universe multiverse
+deb-src https://$url/ubuntu/ $CODENAME-security main restricted universe multiverse
+EOF
+    fi
+
+    # 更新测试
+    if ! sudo apt update; then
+        sudo cp "$backup_file" /etc/apt/sources.list
+        return 1
+    fi
+    echo -e "${GREEN}[APT] 已更换为 ${mirror} 镜像源${NC}"
+}
+
+# CentOS 镜像源处理
+replace_centos_mirror() {
+    local mirror=$1
+    local repo_file="/etc/yum.repos.d/CentOS-Base.repo"
+    local backup_file="$repo_file.bak"
+    
+    # 备份源文件
+    [ ! -f "$backup_file" ] && sudo cp "$repo_file" "$backup_file"
+    
+    # 选择镜像源
+    case $mirror in
+        aliyun)
+            base_url="https://mirrors.aliyun.com/centos/$CENTOS_VER" ;;
+        tsinghua)
+            base_url="https://mirrors.tuna.tsinghua.edu.cn/centos/$CENTOS_VER" ;;
+        huawei)
+            base_url="https://mirrors.huaweicloud.com/centos/$CENTOS_VER" ;;
+        163)
+            base_url="http://mirrors.163.com/centos/$CENTOS_VER" ;;
+        *)
+            echo -e "${RED}不支持的镜像源选项${NC}"
+            return 1 ;;
+    esac
+
+    # 生成新配置
+    sudo sed -e "s|^mirrorlist=|#mirrorlist=|g" \
+             -e "s|^#baseurl=http://mirror.centos.org|baseurl=$base_url|g" \
+             -i "$repo_file"
+    
+    # 更新测试
+    if ! sudo yum clean all || ! sudo yum makecache; then
+        sudo mv "$backup_file" "$repo_file"
+        return 1
+    fi
+    echo -e "${GREEN}[YUM] 已更换为 ${mirror} 镜像源${NC}"
+}
+
+# Alpine 镜像源处理
+replace_alpine_mirror() {
+    local mirror=$1
+    local repo_file="/etc/apk/repositories"
+    local backup_file="$repo_file.bak"
+    
+    # 备份源文件
+    [ ! -f "$backup_file" ] && sudo cp "$repo_file" "$backup_file"
+    
+    # 选择镜像源
+    case $mirror in
+        aliyun)
+            new_url="mirrors.aliyun.com/alpine" ;;
+        tsinghua)
+            new_url="mirrors.tuna.tsinghua.edu.cn/alpine" ;;
+        huawei)
+            new_url="repo.huaweicloud.com/alpine" ;;
+        *)
+            echo -e "${RED}不支持的镜像源选项${NC}"
+            return 1 ;;
+    esac
+
+    # 替换源
+    sudo sed -i "s#https\?://dl-cdn.alpinelinux.org#https://$new_url#g" "$repo_file"
+    
+    # 更新测试
+    if ! sudo apk update; then
+        sudo mv "$backup_file" "$repo_file"
+        return 1
+    fi
+    echo -e "${GREEN}[APK] 已更换为 ${mirror} 镜像源${NC}"
 }
 
 # 主程序
@@ -265,9 +308,17 @@ if [ "$OS" == "unknown" ]; then
     exit 1
 fi
 
+# 新增镜像源参数处理
+while getopts "m:" opt; do
+    case $opt in
+        m) MIRROR=$OPTARG ;;
+        *) ;;
+    esac
+done
+
+replace_mirror_source "${MIRROR:-aliyun}"  # 默认使用阿里云
 check_ssh
 check_timezone
-configure_mirror
 
 echo -e "\n${GREEN}所有配置已完成，即将退出脚本！${NC}"
 exit 0
