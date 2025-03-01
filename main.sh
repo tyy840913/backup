@@ -1,9 +1,8 @@
 #!/bin/bash
 
-# 基础URL配置
+# 基础配置
 base_url="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main"
 catalog_file="/tmp/cata.$$.txt"
-script_cache=()
 descriptions=()
 filenames=()
 
@@ -15,128 +14,124 @@ COLOR_FILE='\033[1;35m'
 COLOR_ERROR='\033[1;31m'
 COLOR_RESET='\033[0m'
 
-# 显示宽度计算函数
+# 显示宽度计算（支持中文）
 display_width() {
-    local str=$1
+    local str=$(echo "$1" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g")
     local width=0
-    local len=${#str}
-    for ((i=0; i<len; i++)); do
+    for ((i=0; i<${#str}; i++)); do
         local c="${str:i:1}"
-        if [[ "$c" =~ [^[:ascii:]] ]]; then
-            width=$((width + 2))
-        else
-            width=$((width + 1))
-        fi
+        [[ $c == [[:ascii:]] ]] && ((width++)) || ((width+=2))
     done
     echo $width
 }
 
-# 下载目录文件函数
-download_catalog() {
-    echo -e "${COLOR_DESC}正在获取脚本目录...${COLOR_RESET}"
-    if ! curl -s "${base_url}/cata.txt" -o "$catalog_file"; then
-        echo -e "${COLOR_ERROR}错误：目录文件下载失败！${COLOR_RESET}"
-        exit 1
-    fi
+# 生成边框线
+generate_border() {
+    local width=$1
+    printf "╔"; for ((i=0; i<$width; i++)); do printf "═"; done; printf "╗\n"
 }
 
-# 解析目录文件
+# 下载目录文件
+download_catalog() {
+    echo -e "${COLOR_DESC}正在获取脚本目录...${COLOR_RESET}"
+    curl -s "${base_url}/cata.txt" -o "$catalog_file" || {
+        echo -e "${COLOR_ERROR}目录下载失败!${COLOR_RESET}"
+        exit 1
+    }
+}
+
+# 解析目录
 parse_catalog() {
-    while IFS= read -r line || [[ -n "$line" ]]; do
+    while IFS= read -r line; do
         if [[ "$line" =~ [[:space:]] ]]; then
-            desc="${line% *}"
-            file="${line##* }"
-            descriptions+=("$desc")
-            filenames+=("$file")
+            descriptions+=("${line% *}")
+            filenames+=("${line##* }")
         fi
     done < "$catalog_file"
 }
 
-# 显示图形界面
+# 显示动态菜单
 show_menu() {
-    clear
-    echo -e "${COLOR_TITLE}"
-    echo "╔══════════════════════════════════════╗"
-    echo "║         脚本选择菜单 (v1.1)          ║"
-    echo "╠══════════════════════════════════════╣"
-    
+    # 计算最大宽度
+    local max_width=0
     for i in "${!descriptions[@]}"; do
-        desc="${descriptions[i]}"
-        file="${filenames[i]}"
-        
-        # 计算显示宽度
-        desc_width=$(display_width "$desc")
-        file_width=$(display_width "$file")
-        total=$((desc_width + file_width))
-        
-        # 计算间距
-        space_count=$((33 - total))
-        if (( space_count < 0 )); then
-            space_count=0
-        fi
-
-        # 格式输出
-        printf "║ ${COLOR_OPTION}%2d.${COLOR_RESET} ${COLOR_DESC}%s${COLOR_RESET}%${space_count}s${COLOR_FILE}%s${COLOR_RESET} ║\n" \
-               $((i+1)) "$desc" "" "$file"
+        item_text="${COLOR_OPTION}$((i+1)).${COLOR_RESET} ${COLOR_DESC}${descriptions[i]}${COLOR_RESET} ${COLOR_FILE}${filenames[i]}${COLOR_RESET}"
+        item_width=$(display_width "$item_text")
+        ((item_width > max_width)) && max_width=$item_width
     done
 
-    # 退出选项处理
-    exit_desc="退出脚本"
-    exit_space=$((33 - $(display_width "$exit_desc")))
-    echo -e "${COLOR_TITLE}╠══════════════════════════════════════╣"
-    printf "║ ${COLOR_OPTION} 0.${COLOR_RESET} ${COLOR_DESC}%s${COLOR_RESET}%${exit_space}s ║\n" "$exit_desc" ""
-    echo "╚══════════════════════════════════════╝"
-    echo -e "${COLOR_RESET}"
+    # 设置最小宽度
+    ((max_width < 40)) && max_width=40
+    local border_width=$((max_width + 2))
+    
+    clear
+    echo -e "${COLOR_TITLE}$(generate_border $border_width)"
+    
+    # 居中显示标题
+    title="脚本选择菜单 (v3.0)"
+    title_width=$(display_width "$title")
+    padding=$(( (border_width - title_width)/2 ))
+    printf "║%${padding}s${COLOR_TITLE}%s%$((border_width - title_width - padding))s║\n" "" "$title" ""
+    
+    echo -e "${COLOR_TITLE}╠$(printf '%0.s═' $(seq 1 $border_width))╣${COLOR_RESET}"
+
+    # 显示菜单项
+    for i in "${!descriptions[@]}"; do
+        desc_part="${COLOR_OPTION}$((i+1)).${COLOR_RESET} ${COLOR_DESC}${descriptions[i]}${COLOR_RESET}"
+        file_part="${COLOR_FILE}${filenames[i]}${COLOR_RESET}"
+        
+        desc_width=$(display_width "$desc_part")
+        file_width=$(display_width "$file_part")
+        space_count=$((max_width - desc_width - file_width))
+        
+        printf "║ %s%*s%s ║\n" "$desc_part" $space_count "" "$file_part"
+    done
+
+    # 退出选项
+    exit_text="${COLOR_OPTION} 0.${COLOR_RESET} ${COLOR_DESC}退出脚本${COLOR_RESET}"
+    exit_width=$(display_width "$exit_text")
+    space_count=$((max_width - exit_width))
+    echo -e "${COLOR_TITLE}╠$(printf '%0.s═' $(seq 1 $border_width))╣${COLOR_RESET}"
+    printf "║ %s%*s ║\n" "$exit_text" $space_count ""
+    echo -e "${COLOR_TITLE}╚$(printf '%0.s═' $(seq 1 $border_width))╝${COLOR_RESET}\n"
 }
 
 # 运行子脚本
 run_script() {
-    local index=$(( $1 - 1 ))
-    local script_url="${base_url}/${filenames[index]}"
+    local script_url="${base_url}/${filenames[$1]}"
+    echo -e "\n${COLOR_DESC}正在下载: ${COLOR_FILE}${filenames[$1]}${COLOR_RESET}"
     
-    echo -e "\n${COLOR_DESC}正在下载 ${COLOR_FILE}${filenames[index]}${COLOR_RESET}"
-    if ! script_content=$(curl -s "$script_url"); then
-        echo -e "${COLOR_ERROR}错误：脚本下载失败！${COLOR_RESET}"
-        return 1
+    if content=$(curl -s $script_url); then
+        tmp_script=$(mktemp)
+        echo "$content" > $tmp_script
+        chmod +x $tmp_script
+        echo -e "${COLOR_TITLE}══════════ 开始执行 ══════════${COLOR_RESET}"
+        $tmp_script
+        echo -e "${COLOR_TITLE}══════════ 执行结束 ══════════${COLOR_RESET}"
+        rm -f $tmp_script
+    else
+        echo -e "${COLOR_ERROR}脚本下载失败!${COLOR_RESET}"
     fi
-    
-    echo -e "${COLOR_DESC}正在执行 ${COLOR_FILE}${filenames[index]}${COLOR_RESET}"
-    echo -e "${COLOR_TITLE}════════════ 开始执行 ════════════${COLOR_RESET}\n"
-    
-    # 创建临时脚本文件
-    tmp_script=$(mktemp)
-    echo "$script_content" > "$tmp_script"
-    chmod +x "$tmp_script"
-    "$tmp_script"
-    rm -f "$tmp_script"
-    
-    echo -e "\n${COLOR_TITLE}════════════ 执行结束 ════════════${COLOR_RESET}"
 }
 
-# 初始化
+# 主程序
 download_catalog
 parse_catalog
 
-# 主循环
-while true; do
+while :; do
     show_menu
-    
-    while true; do
-        read -p "请输入选项序号 (0-${#descriptions[@]}): " choice
-        if [[ "$choice" =~ ^[0-9]+$ ]]; then
-            if (( choice == 0 )); then
-                echo -e "${COLOR_DESC}感谢使用，再见！${COLOR_RESET}"
-                rm -f "$catalog_file"
-                exit 0
-            elif (( choice > 0 && choice <= ${#descriptions[@]} )); then
-                break
-            fi
-        fi
-        echo -e "${COLOR_ERROR}无效输入，请输入有效序号！${COLOR_RESET}"
+    while :; do
+        read -p "请输入选择 (0-${#descriptions[@]}): " choice
+        [[ $choice =~ ^[0-9]+$ ]] || continue
+        ((choice >=0 && choice <= ${#descriptions[@]})) && break
     done
     
-    run_script "$choice"
+    ((choice == 0)) && {
+        rm -f $catalog_file
+        echo -e "${COLOR_DESC}再见!${COLOR_RESET}"
+        exit 0
+    }
     
-    echo
-    read -p "按回车键返回主菜单..."
+    run_script $((choice-1))
+    read -p "按回车键继续..."
 done
