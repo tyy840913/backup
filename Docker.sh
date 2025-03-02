@@ -1,168 +1,151 @@
 #!/bin/bash
 
-# 颜色定义
-RED='\033[31m'
-GREEN='\033[32m'
-YELLOW='\033[33m'
-BLUE='\033[34m'
-RESET='\033[0m'
-BOLD='\033[1m'
-
-# 初始化变量
-OS_ID=""
-PKG_MANAGER=""
-DOCKER_PKG=""
-COMPOSE_PKG=""
-SERVICE_CMD=""
-CONFIRM_MSG=""
-
-# 输出装饰函数
-print_header() {
-    echo -e "${BLUE}${BOLD}==> $1${RESET}"
+# 美化输出函数
+color_echo() {
+    case $1 in
+        red)    echo -e "\033[31m$2\033[0m" ;;
+        green)  echo -e "\033[32m$2\033[0m" ;;
+        yellow) echo -e "\033[33m$2\033[0m" ;;
+        blue)   echo -e "\033[34m$2\033[0m" ;;
+        *)      echo "$2" ;;
+    esac
 }
 
-print_success() {
-    echo -e "${GREEN}✓ ${1}${RESET}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}⚠ ${1}${RESET}"
-}
-
-print_error() {
-    echo -e "${RED}✗ ${1}${RESET}"
-}
-
-# 检测系统信息
-detect_os() {
+# 获取系统信息
+get_os_info() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
         OS_ID=$ID
-        case $ID in
-            alpine) PKG_MANAGER="apk" ;;
-            debian|ubuntu) PKG_MANAGER="apt" ;;
-            centos|rhel|ol) PKG_MANAGER="yum" ;;
-            fedora) PKG_MANAGER="dnf" ;;
-            *) print_error "不支持的发行版" && exit 1 ;;
-        esac
+        OS_VERSION=$VERSION_ID
+    elif [ -f /etc/alpine-release ]; then
+        OS_ID="alpine"
+        OS_VERSION=$(cat /etc/alpine-release | cut -d'.' -f1-2)
     else
-        print_error "无法检测操作系统"
+        color_echo red "无法检测操作系统"
         exit 1
     fi
-
-    echo -e "${BOLD}系统信息：${RESET}"
-    echo -e "发行版：${BLUE}$(source /etc/os-release && echo $PRETTY_NAME)${RESET}"
-    echo -e "内核版本：${BLUE}$(uname -r)${RESET}"
-    echo
 }
 
-# 安装确认函数
-confirm() {
-    read -rp "$1 [y/N] " response
-    case "$response" in
-        [yY][eE][sS]|[yY]) 
-            return 0
+# 安装Docker
+install_docker() {
+    color_echo blue "正在安装Docker..."
+    
+    case $OS_ID in
+        debian|ubuntu)
+            apt install -y $DOCKER_PKG
+            systemctl enable --now docker
+            ;;
+        centos|rhel|fedora)
+            if [ $OS_ID = "fedora" ]; then
+                dnf install -y $DOCKER_PKG
+            else
+                yum install -y $DOCKER_PKG
+            fi
+            systemctl enable --now docker
+            ;;
+        alpine)
+            apk add docker
+            rc-update add docker boot
+            service docker start
             ;;
         *)
-            return 1
+            color_echo red "不支持的发行版"
+            exit 1
             ;;
     esac
 }
 
-# Docker安装函数
-install_docker() {
-    case $OS_ID in
-        alpine)
-            $PKG_MANAGER add docker docker-openrc
-            SERVICE_CMD="rc-update add docker boot && service docker start"
-            ;;
-        debian|ubuntu)
-            $PKG_MANAGER update
-            $PKG_MANAGER install -y docker.io docker-compose
-            SERVICE_CMD="systemctl enable --now docker"
-            ;;
-        centos|rhel|ol|fedora)
-            $PKG_MANAGER install -y docker docker-compose
-            SERVICE_CMD="systemctl enable --now docker"
-            ;;
-    esac
+# 安装Docker Compose
+install_compose() {
+    color_echo blue "正在安装Docker Compose..."
+    local mirror_url="https://mirrors.aliyun.com/docker-toolbox/linux/compose/v$COMPOSE_VERSION/docker-compose-$(uname -s)-$(uname -m)"
+    curl -L $mirror_url -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
 }
 
-# 主函数
-main() {
-    # 检查root权限
-    if [ "$EUID" -ne 0 ]; then
-        print_error "请使用root权限运行脚本"
-        exit 1
+# 配置镜像加速
+config_mirror() {
+    local config_file="/etc/docker/daemon.json"
+    
+    if [ ! -s $config_file ]; then
+        color_echo yellow "创建镜像加速配置文件..."
+        tee $config_file << EOF
+{
+"registry-mirrors":[
+"https://docker.1panel.top",
+"https://proxy.1panel.live",
+"https://docker.m.daocloud.io",
+"https://docker.woskee.dns.army",
+"https://docker.woskee.dynv6.net"
+]
+}
+EOF
+        systemctl restart docker
+    else
+        color_echo yellow "已存在镜像加速配置文件："
+        cat $config_file
+        read -p "是否覆盖？[y/N]: " overwrite
+        if [[ $overwrite =~ [Yy] ]]; then
+            tee $config_file << EOF
+{
+"registry-mirrors":[
+"https://docker.1panel.top",
+"https://proxy.1panel.live",
+"https://docker.m.daocloud.io",
+"https://docker.woskee.dns.army",
+"https://docker.woskee.dynv6.net"
+]
+}
+EOF
+            systemctl restart docker
+        fi
     fi
+}
 
-    print_header "开始系统检测..."
-    detect_os
+# 主流程
+main() {
+    # 获取系统信息
+    get_os_info
+    color_echo green "检测到系统：$OS_ID $OS_VERSION"
+
+    # 设置包名
+    case $OS_ID in
+        debian|ubuntu) DOCKER_PKG="docker.io" ;;
+        centos|rhel)   DOCKER_PKG="docker-ce" ;;
+        fedora)        DOCKER_PKG="docker-ce" ;;
+        alpine)        DOCKER_PKG="docker" ;;
+    esac
 
     # 检查Docker
-    print_header "检查Docker安装..."
     if ! command -v docker &> /dev/null; then
-        print_warning "未检测到Docker"
-        if confirm "是否安装Docker？"; then
+        color_echo yellow "未检测到Docker"
+        read -p "是否安装Docker？[Y/n]: " confirm
+        if [[ ! $confirm =~ [Nn] ]]; then
             install_docker
-            print_success "Docker安装完成"
-            eval $SERVICE_CMD
-        else
-            print_error "用户取消安装"
-            exit 1
         fi
     else
-        print_success "Docker已安装：$(docker --version)"
+        color_echo green "Docker 已安装：$(docker --version)"
     fi
 
     # 检查Docker Compose
-    print_header "检查Docker Compose..."
     if ! command -v docker-compose &> /dev/null; then
-        print_warning "未检测到Docker Compose"
-        if confirm "是否安装Docker Compose？"; then
-            case $PKG_MANAGER in
-                apk) $PKG_MANAGER add docker-compose ;;
-                apt) $PKG_MANAGER install -y docker-compose ;;
-                yum|dnf) $PKG_MANAGER install -y docker-compose ;;
-            esac
-            print_success "Docker Compose安装完成"
-        else
-            print_error "用户取消安装"
-            exit 1
+        color_echo yellow "未检测到Docker Compose"
+        read -p "是否安装Docker Compose？[Y/n]: " confirm
+        if [[ ! $confirm =~ [Nn] ]]; then
+            COMPOSE_VERSION=$(curl -s https://mirrors.aliyun.com/docker-toolbox/linux/compose/latest | grep -oP 'v\d+\.\d+\.\d+')
+            install_compose
         fi
     else
-        print_success "Docker Compose已安装：$(docker-compose --version)"
+        color_echo green "Docker Compose 已安装：$(docker-compose --version)"
     fi
 
     # 配置镜像加速
-    print_header "配置镜像加速源..."
-    DAEMON_JSON="/etc/docker/daemon.json"
-    CONTENT='{\n  "registry-mirrors": [\n    "https://docker.1panel.top",\n    "https://proxy.1panel.live",\n    "https://docker.m.daocloud.io",\n    "https://docker.woskee.dns.army",\n    "https://docker.woskee.dynv6.net"\n  ]\n}'
+    config_mirror
 
-    if [ ! -f "$DAEMON_JSON" ] || [ ! -s "$DAEMON_JSON" ]; then
-        print_warning "配置文件不存在或为空"
-        echo -e "$CONTENT" > "$DAEMON_JSON"
-        print_success "已创建配置文件"
-        systemctl restart docker
-        print_success "Docker服务已重启"
-    else
-        print_success "配置文件已存在"
-        echo -e "${BOLD}当前文件内容：${RESET}"
-        cat "$DAEMON_JSON"
-        echo
-        
-        if confirm "是否覆盖现有配置？"; then
-            cp "$DAEMON_JSON" "${DAEMON_JSON}.bak"
-            echo -e "$CONTENT" > "$DAEMON_JSON"
-            print_success "配置已更新（原文件备份为${DAEMON_JSON}.bak）"
-            systemctl restart docker
-            print_success "Docker服务已重启"
-        else
-            print_warning "保持现有配置不变"
-        fi
-    fi
-
-    print_header "${GREEN}所有操作已完成！${RESET}"
+    color_echo green "\n安装完成！"
+    color_echo blue "Docker状态：$(systemctl is-active docker)"
+    color_echo blue "镜像配置："
+    docker info | grep -A1 "Registry Mirrors"
 }
 
 # 执行主函数
