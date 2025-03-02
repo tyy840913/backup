@@ -1,5 +1,6 @@
 自动备份 auto_backup.sh
 系统配置 init.sh
+修改中文显示 ziti.sh
 Docker安装 Docker.sh
 镜像源更新 mirror.sh
 PVE磁盘转换 qm.sh
