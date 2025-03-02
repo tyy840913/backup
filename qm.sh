@@ -3,13 +3,13 @@
 # 定义PVE的ISO/IMG存储目录
 source_dir="/var/lib/vz/template/iso"
 
-# 获取指定目录中的IMG文件
+# 获取指定目录中的IMG/ISO文件
 imgs=()
 while IFS= read -r -d $'\0' file; do
     imgs+=("$file")
 done < <(find "$source_dir" -maxdepth 1 -type f \( -iname "*.img" -o -iname "*.iso" \) -print0 2>/dev/null)
 
-# 检查是否有IMG文件
+# 检查是否有IMG/ISO文件
 if [ ${#imgs[@]} -eq 0 ]; then
     echo "错误：未在 $source_dir 中找到任何IMG/ISO文件。"
     exit 1
