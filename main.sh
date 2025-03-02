@@ -86,7 +86,7 @@ run_script() {
         echo -e "${COLOR_ERROR}脚本下载失败！${COLOR_RESET}"
     fi
     
-    echo -e "\n${COLOR_DIVIDER}════════════ 操作完成 ════════════${COLOR_RESET}"
+    echo -e "\n${COLOR_DIVIDER}═══════════════ 操作完成 ═══════════════${COLOR_RESET}"
 }
 
 # 主程序
