@@ -26,7 +26,7 @@ install_zh() {
             echo -e "${GREEN}配置Alpine系统中文支持...${NC}"
             apk update
             
-            # 安装glibc兼容层（关键步骤）[4,6](@ref)
+            # 安装glibc兼容层（关键步骤）
             GLIBC_VER="2.34-r0"
             GLIBC_PKGS=(
                 "glibc-${GLIBC_VER}.apk"
@@ -34,19 +34,20 @@ install_zh() {
                 "glibc-i18n-${GLIBC_VER}.apk"
             )
             
-            # 下载公钥和软件包
-            wget -q -O /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub
+            # 下载公钥和软件包（使用国内镜像）
+            curl -sSL -o /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub
             for pkg in "${GLIBC_PKGS[@]}"; do
-                wget -q "https://github.com/sgerrand/alpine-pkg-glibc/releases/download/${GLIBC_VER}/${pkg}"
-                apk add --force-overwrite "${pkg}"
+                curl -sSL -O "https://add.woskee.nyc.mn/github.com/sgerrand/alpine-pkg-glibc/releases/download/${GLIBC_VER}/${pkg}"
+                apk add --force-overwrite "./${pkg}"
+                rm -f "./${pkg}"
             done
             
-            # 生成中文locale[1,6](@ref)
+            # 生成中文locale
             /usr/glibc-compat/bin/localedef -i zh_CN -f UTF-8 zh_CN.UTF-8
             echo 'export LANG=zh_CN.UTF-8' >> /etc/profile.d/lang.sh
             source /etc/profile.d/lang.sh
             
-            # 安装中文字体[7](@ref)
+            # 安装中文字体
             apk add font-noto-cjk ttf-dejavu
             ;;
             
@@ -61,7 +62,7 @@ install_zh() {
             
         "redhat")
             echo -e "${GREEN}配置CentOS/RHEL中文支持...${NC}"
-            yum install -y glibc-langpack-zh fonts-chinese
+            yum install -y glibc-langpack-zh google-noto-cjk-fonts
             localedef -c -f UTF-8 -i zh_CN zh_CN.utf8
             echo 'LANG=zh_CN.UTF-8' > /etc/locale.conf
             ;;
