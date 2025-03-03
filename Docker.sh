@@ -3,8 +3,6 @@ set -e
 
 # 全局变量
 REGISTRY_MIRRORS='[
-  "https://docker.1panel.top",
-  "https://proxy.1panel.live",
   "https://docker.m.daocloud.io",
   "https://docker.woskee.dns.army",
   "https://docker.woskee.dynv6.net"
@@ -25,17 +23,22 @@ OS_VERSION=""
 PKG_MANAGER=""
 INIT_SYSTEM=""
 
+# 带颜色输出函数
+info() { echo -e "${YELLOW}[信息] $*${NC}"; sleep 0.5; }
+success() { echo -e "${GREEN}[成功] $*${NC}"; sleep 0.5; }
+error() { echo -e "${RED}[错误] $*${NC}"; exit 1; }
+warning() { echo -e "${YELLOW}[警告] $*${NC}"; sleep 0.5; }
+
 # 检查root权限
 check_root() {
   if [[ $(id -u) -ne 0 ]]; then
-    echo -e "${RED}错误：必须使用root权限运行此脚本${NC}"
-    exit 1
+    error "必须使用root权限运行此脚本"
   fi
 }
 
 # 检测系统信息
 detect_system() {
-  echo -e "${YELLOW}[信息] 正在检测系统信息...${NC}"
+  info "正在检测系统信息..."
   
   if [ -f /etc/alpine-release ]; then
     OS_NAME="alpine"
@@ -45,8 +48,7 @@ detect_system() {
     OS_NAME=$ID
     OS_VERSION=$VERSION_ID
   else
-    echo -e "${RED}错误：无法识别的操作系统${NC}"
-    exit 1
+    error "无法识别的操作系统"
   fi
 
   case $OS_NAME in
@@ -63,25 +65,24 @@ detect_system() {
       INIT_SYSTEM="openrc"
       ;;
     *)
-      echo -e "${RED}错误：不支持的发行版：$OS_NAME${NC}"
-      exit 1
+      error "不支持的发行版：$OS_NAME"
       ;;
   esac
 
-  echo -e "${GREEN}[成功] 检测到系统：${OS_NAME} ${OS_VERSION}${NC}"
+  success "检测到系统：${OS_NAME} ${OS_VERSION}"
 }
 
 # 检查Docker是否安装
 check_docker_installed() {
   if command -v docker &>/dev/null; then
     DOCKER_VERSION=$(docker --version | awk '{print $3}')
-    echo -e "${YELLOW}[警告] 检测到已安装Docker版本：$DOCKER_VERSION${NC}"
+    warning "检测到已安装Docker版本：$DOCKER_VERSION"
     read -p "是否重新安装？(y/n) " REINSTALL
     if [[ $REINSTALL =~ ^[Yy]$ ]]; then
       uninstall_docker
       return 1
     else
-      echo -e "${YELLOW}[信息] 跳过Docker安装${NC}"
+      info "跳过Docker安装"
       return 0
     fi
   fi
@@ -92,13 +93,13 @@ check_docker_installed() {
 check_compose_installed() {
   if command -v docker-compose &>/dev/null; then
     COMPOSE_VERSION=$(docker-compose --version | awk '{print $3}')
-    echo -e "${YELLOW}[警告] 检测到已安装Docker Compose版本：$COMPOSE_VERSION${NC}"
+    warning "检测到已安装Docker Compose版本：$COMPOSE_VERSION"
     read -p "是否重新安装？(y/n) " REINSTALL
     if [[ $REINSTALL =~ ^[Yy]$ ]]; then
       uninstall_compose
       return 1
     else
-      echo -e "${YELLOW}[信息] 跳过Docker Compose安装${NC}"
+      info "跳过Docker Compose安装"
       return 0
     fi
   fi
@@ -107,47 +108,45 @@ check_compose_installed() {
 
 # 卸载Docker
 uninstall_docker() {
-  echo -e "${YELLOW}[信息] 开始卸载Docker...${NC}"
+  info "开始卸载Docker..."
   
   case $PKG_MANAGER in
     apt)
-      echo -e "${YELLOW}[信息] 使用 apt 卸载 Docker...${NC}"
       apt-get remove -y docker docker-engine docker.io containerd runc
       ;;
     yum)
-      echo -e "${YELLOW}[信息] 使用 yum 卸载 Docker...${NC}"
       yum remove -y docker-ce docker-ce-cli containerd.io
       ;;
     apk)
-      echo -e "${YELLOW}[信息] 使用 apk 卸载 Docker...${NC}"
       apk del docker-cli docker-engine
       ;;
   esac
 
   # 清理 Docker 相关文件和配置
-  echo -e "${YELLOW}[信息] 清理 Docker 配置文件...${NC}"
   rm -rf /var/lib/docker
   rm -rf $DOCKER_CONFIG_DIR
   rm -f /etc/apt/sources.list.d/docker.list
   rm -f /etc/yum.repos.d/docker-ce.repo
 
-  echo -e "${GREEN}[成功] Docker已卸载${NC}"
+  success "Docker已卸载"
 }
 
 # 卸载Docker Compose
 uninstall_compose() {
-  echo -e "${YELLOW}[信息] 开始卸载Docker Compose...${NC}"
+  info "开始卸载Docker Compose..."
   rm -f /usr/local/bin/docker-compose
-  echo -e "${GREEN}[成功] Docker Compose已卸载${NC}"
+  success "Docker Compose已卸载"
 }
 
 # 安装Docker
 install_docker() {
-  echo -e "${YELLOW}[信息] 开始安装Docker...${NC}"
+  info "开始安装Docker..."
   
+  read -p "是否要安装Docker？(y/n) " ANSWER
+  [[ ! $ANSWER =~ ^[Yy]$ ]] && { info "已取消Docker安装"; return; }
+
   case $PKG_MANAGER in
     apt)
-      echo -e "${YELLOW}[信息] 使用 apt 安装 Docker...${NC}"
       apt-get update
       apt-get install -y apt-transport-https ca-certificates curl gnupg
       install -m 0755 -d /etc/apt/keyrings
@@ -157,59 +156,67 @@ install_docker() {
       apt-get install -y docker-ce docker-ce-cli containerd.io
       ;;
     yum)
-      echo -e "${YELLOW}[信息] 使用 yum 安装 Docker...${NC}"
       yum install -y yum-utils
       yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
       yum install -y docker-ce docker-ce-cli containerd.io
       ;;
     apk)
-      echo -e "${YELLOW}[信息] 使用 apk 安装 Docker...${NC}"
       apk add docker
       ;;
   esac
   
-  echo -e "${GREEN}[成功] Docker安装完成${NC}"
+  success "Docker安装完成"
 }
 
 # 安装Docker Compose
 install_compose() {
-  echo -e "${YELLOW}[信息] 开始安装Docker Compose...${NC}"
+  info "开始安装Docker Compose..."
   
+  read -p "是否要安装Docker Compose？(y/n) " ANSWER
+  [[ ! $ANSWER =~ ^[Yy]$ ]] && { info "已取消Docker Compose安装"; return; }
+
   case $PKG_MANAGER in
     apk)
-      echo -e "${YELLOW}[信息] 使用 apk 安装 Docker Compose...${NC}"
       apk add docker-compose
       ;;
     *)
-      echo -e "${YELLOW}[信息] 下载并安装 Docker Compose...${NC}"
       COMPOSE_URL="https://mirror.ghproxy.com/https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)"
       curl -L $COMPOSE_URL -o /usr/local/bin/docker-compose
       chmod +x /usr/local/bin/docker-compose
       ;;
   esac
   
-  echo -e "${GREEN}[成功] Docker Compose安装完成${NC}"
+  success "Docker Compose安装完成"
 }
 
 # 配置镜像加速
 configure_mirrors() {
-  echo -e "${YELLOW}[信息] 正在配置镜像加速...${NC}"
+  info "正在配置镜像加速..."
   
-  if [ ! -d "$DOCKER_CONFIG_DIR" ]; then
-    mkdir -p $DOCKER_CONFIG_DIR
-  fi
+  read -p "是否要配置镜像加速？(y/n) " ANSWER
+  [[ ! $ANSWER =~ ^[Yy]$ ]] && { info "已取消镜像加速配置"; return; }
 
+  # 检查现有配置
   if [ -f "$DOCKER_DAEMON_JSON" ]; then
+    warning "检测到已存在的Docker配置: $DOCKER_DAEMON_JSON"
+    if grep -q "registry-mirrors" "$DOCKER_DAEMON_JSON"; then
+      warning "当前已配置以下镜像加速地址:"
+      grep "registry-mirrors" -A 5 "$DOCKER_DAEMON_JSON"
+      read -p "是否要覆盖现有配置？(y/n) " OVERWRITE
+      [[ ! $OVERWRITE =~ ^[Yy]$ ]] && { info "保留现有镜像加速配置"; return; }
+    fi
     mv $DOCKER_DAEMON_JSON $DOCKER_DAEMON_JSON.bak
+    info "已备份原配置文件: $DOCKER_DAEMON_JSON.bak"
   fi
 
+  mkdir -p $DOCKER_CONFIG_DIR
   cat <<EOF > $DOCKER_DAEMON_JSON
 {
   "registry-mirrors": $REGISTRY_MIRRORS
 }
 EOF
 
-  echo -e "${GREEN}[成功] 镜像加速配置完成${NC}"
+  success "镜像加速配置完成"
 }
 
 # 配置开机启动
@@ -244,22 +251,20 @@ enable_service() {
   if docker ps &>/dev/null; then
     success "Docker开机启动配置完成"
   else
-    error "Docker服务开机启动设置失败，请检查配置"
+    error "Docker服务开机启动失败，请检查配置"
   fi
 }
 
 # 验证安装
 verify_installation() {
-  echo -e "\n${YELLOW}[信息] 验证安装...${NC}"
+  info "验证安装..."
   
   if ! docker --version; then
-    echo -e "${RED}错误：Docker安装失败${NC}"
-    exit 1
+    error "Docker安装失败"
   fi
   
   if ! docker-compose --version; then
-    echo -e "${RED}错误：Docker Compose安装失败${NC}"
-    exit 1
+    error "Docker Compose安装失败"
   fi
   
   echo -e "\n${GREEN}====================================="
@@ -275,16 +280,19 @@ verify_installation() {
 main() {
   check_root
   detect_system
+  
   if check_docker_installed; then
-    echo -e "${YELLOW}[信息] Docker已安装，跳过安装步骤${NC}"
+    info "Docker已安装，跳过安装步骤"
   else
     install_docker
   fi
+  
   if check_compose_installed; then
-    echo -e "${YELLOW}[信息] Docker Compose已安装，跳过安装步骤${NC}"
+    info "Docker Compose已安装，跳过安装步骤"
   else
     install_compose
   fi
+  
   configure_mirrors
   enable_service
   verify_installation
