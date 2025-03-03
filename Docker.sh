@@ -296,8 +296,8 @@ main() {
     install_compose
   fi
   
-  configure_mirrors
   enable_service
+  configure_mirrors
   verify_installation
 }
 
