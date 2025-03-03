@@ -99,17 +99,15 @@ check_timezone() {
     echo -e "\n${BLUE}=== 时区检查与配置 ===${NC}"
     local TARGET_ZONE="Asia/Shanghai"
     local ZONE_FILE="/usr/share/zoneinfo/${TARGET_ZONE}"
-    local CURRENT_TZ
 
-    # 函数：显示完整时区信息
+    # 显示当前时间信息
     show_time_info() {
-        echo -e "${BLUE}当前时间详情：${NC}"
+        echo -e "${BLUE}当前系统时间:${NC}"
         date "+%Y-%m-%d %H:%M:%S %Z (UTC%z)"
-        echo -e "时区数据库版本：$(zdump -v "${TARGET_ZONE}" | grep '2[0-9]' | head -1)"
     }
 
     # 判断是否已经是东八区
-    if date | grep -qE "CST|UTC+08|+0800"; then
+    if date +%z | grep -qE '(\+0800|CST)'; then
         echo -e "${GREEN}时区已正确设置为东八区${NC}"
         show_time_info
         return 0
@@ -117,29 +115,26 @@ check_timezone() {
 
     # 安装时区数据包（如缺失）
     if [ ! -f "$ZONE_FILE" ]; then
-        echo -e "${YELLOW}正在安装时区数据库..." 
+        echo -e "${YELLOW}正在安装时区数据包..."
         case $OS in
             debian) apt update && apt install -y tzdata ;;
             centos) yum install -y tzdata ;;
             alpine) apk add --no-cache tzdata ;;
         esac || {
-            echo -e "${RED}时区数据安装失败！请检查："
-            echo -e "1. 网络连接状态"
-            echo -e "2. 系统软件源配置"
-            echo -e "3. 软件包名称是否变化${NC}"
+            echo -e "${RED}时区数据安装失败！请检查网络或软件源配置${NC}"
             return 1
         }
     fi
 
     # 尝试符号链接配置
-    echo -e "${YELLOW}尝试符号链接配置..." 
+    echo -e "${YELLOW}尝试符号链接配置..."
     if [ -w /etc/localtime ]; then
         # 清除可能存在的旧配置
         [ -f /etc/localtime ] && rm -f /etc/localtime
         # 创建符号链接
         if ln -sf "$ZONE_FILE" /etc/localtime; then
-            echo -e "${GREEN}符号链接创建成功！" 
-            # 针对Alpine额外配置
+            echo -e "${GREEN}符号链接创建成功！"
+            # Alpine兼容性处理
             [ "$OS" = "alpine" ] && echo "$TARGET_ZONE" > /etc/timezone
             show_time_info
             return 0
@@ -151,13 +146,13 @@ check_timezone() {
     fi
 
     # 符号链接失败后改用系统工具
-    echo -e "${YELLOW}正在通过系统工具配置..." 
+    echo -e "${YELLOW}正在通过系统工具配置..."
     case $OS in
         debian|centos)
             timedatectl set-timezone "$TARGET_ZONE" || {
                 echo -e "${RED}timedatectl 配置失败，请检查："
-                echo -e "1. systemd服务状态"
-                echo -e "2. 用户权限（需要root）${NC}"
+                echo -e "1. 需要root权限执行"
+                echo -e "2. systemd服务是否运行${NC}"
                 return 1
             }
             ;;
@@ -168,12 +163,13 @@ check_timezone() {
     esac
 
     # 最终验证
-    if date | grep -qE "CST|UTC+08|+0800"; then
+    sleep 1 # 等待配置生效
+    if date +%z | grep -qE '(\+0800|CST)'; then
         echo -e "${GREEN}时区配置验证通过！${NC}"
         show_time_info
     else
-        echo -e "${RED}时区配置异常！当前状态：" 
-        timedatectl status 2>/dev/null || show_time_info
+        echo -e "${RED}时区配置异常！当前时间："
+        show_time_info
         return 1
     fi
 }
