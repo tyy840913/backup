@@ -96,61 +96,84 @@ check_ssh() {
 
 # 时区配置检查（增强版）
 check_timezone() {
-    echo -e "\n${BLUE}=== 时区检查 ===${NC}"
-    TARGET_ZONE="Asia/Shanghai"
-    ZONE_FILE="/usr/share/zoneinfo/${TARGET_ZONE}"
-    
-    # 自动安装缺失的时区文件
+    echo -e "\n${BLUE}=== 时区检查与配置 ===${NC}"
+    local TARGET_ZONE="Asia/Shanghai"
+    local ZONE_FILE="/usr/share/zoneinfo/${TARGET_ZONE}"
+    local CURRENT_TZ
+
+    # 函数：显示完整时区信息
+    show_time_info() {
+        echo -e "${BLUE}当前时间详情：${NC}"
+        date "+%Y-%m-%d %H:%M:%S %Z (UTC%z)"
+        echo -e "时区数据库版本：$(zdump -v "${TARGET_ZONE}" | grep '2[0-9]' | head -1)"
+    }
+
+    # 判断是否已经是东八区
+    if date | grep -qE "CST|UTC+08|+0800"; then
+        echo -e "${GREEN}时区已正确设置为东八区${NC}"
+        show_time_info
+        return 0
+    fi
+
+    # 安装时区数据包（如缺失）
     if [ ! -f "$ZONE_FILE" ]; then
-        echo -e "${YELLOW}时区文件缺失，正在安装时区数据包...${NC}"
+        echo -e "${YELLOW}正在安装时区数据库..." 
         case $OS in
             debian) apt update && apt install -y tzdata ;;
             centos) yum install -y tzdata ;;
             alpine) apk add --no-cache tzdata ;;
         esac || {
-            echo -e "${RED}时区数据包安装失败，请检查网络或软件源配置${NC}"
+            echo -e "${RED}时区数据安装失败！请检查："
+            echo -e "1. 网络连接状态"
+            echo -e "2. 系统软件源配置"
+            echo -e "3. 软件包名称是否变化${NC}"
             return 1
         }
-        
-        # 二次验证文件是否存在
-        if [ ! -f "$ZONE_FILE" ]; then
-            echo -e "${RED}时区文件安装后仍不存在：$ZONE_FILE${NC}"
-            return 1
-        fi
     fi
 
-    # Alpine专用处理逻辑
-    if [ "$OS" = "alpine" ]; then
-        echo -e "${YELLOW}Alpine系统强制使用文件拷贝方式...${NC}"
-        apk add --no-cache tzdata >/dev/null 2>&1
-        if [ -f /etc/localtime ]; then
-            rm -f /etc/localtime  # 删除可能存在的旧文件
-        fi
-        cp -f "$ZONE_FILE" /etc/localtime
-        echo "$TARGET_ZONE" > /etc/timezone
-    else
-        # 优先尝试符号链接方式
-        if [ -w /etc/localtime ]; then
-            # 强制删除可能存在的普通文件
-            [ -f /etc/localtime ] && rm -f /etc/localtime
-            ln -sf "$ZONE_FILE" /etc/localtime
+    # 尝试符号链接配置
+    echo -e "${YELLOW}尝试符号链接配置..." 
+    if [ -w /etc/localtime ]; then
+        # 清除可能存在的旧配置
+        [ -f /etc/localtime ] && rm -f /etc/localtime
+        # 创建符号链接
+        if ln -sf "$ZONE_FILE" /etc/localtime; then
+            echo -e "${GREEN}符号链接创建成功！" 
+            # 针对Alpine额外配置
+            [ "$OS" = "alpine" ] && echo "$TARGET_ZONE" > /etc/timezone
+            show_time_info
+            return 0
         else
-            echo -e "${YELLOW}无写入权限，使用timedatectl配置...${NC}"
+            echo -e "${RED}符号链接创建失败，错误代码：$?${NC}"
+        fi
+    else
+        echo -e "${YELLOW}/etc/localtime 无写入权限${NC}"
+    fi
+
+    # 符号链接失败后改用系统工具
+    echo -e "${YELLOW}正在通过系统工具配置..." 
+    case $OS in
+        debian|centos)
             timedatectl set-timezone "$TARGET_ZONE" || {
-                echo -e "${RED}时区设置命令失败，请检查权限${NC}"
+                echo -e "${RED}timedatectl 配置失败，请检查："
+                echo -e "1. systemd服务状态"
+                echo -e "2. 用户权限（需要root）${NC}"
                 return 1
             }
-        fi
-    fi
+            ;;
+        alpine)
+            cp -f "$ZONE_FILE" /etc/localtime
+            echo "$TARGET_ZONE" > /etc/timezone
+            ;;
+    esac
 
-    # 最终验证（兼容Alpine的date输出）
-    echo -e "\n${BLUE}当前系统时间信息:${NC}"
-    date "+%Y-%m-%d %H:%M:%S %Z (UTC%z)"  # 修改格式字符串
-
-    if date | grep -qE "CST|UTC+08|+08"; then
-        echo -e "${GREEN}时区已正确设置为东八区${NC}"
+    # 最终验证
+    if date | grep -qE "CST|UTC+08|+0800"; then
+        echo -e "${GREEN}时区配置验证通过！${NC}"
+        show_time_info
     else
-        echo -e "${RED}时区配置异常，当前时间：$(date)${NC}"
+        echo -e "${RED}时区配置异常！当前状态：" 
+        timedatectl status 2>/dev/null || show_time_info
         return 1
     fi
 }
