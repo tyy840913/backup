@@ -146,11 +146,18 @@ check_timezone() {
         esac
     fi
 
-    # 最终验证（兼容不同发行版时区缩写）
-    if [[ "$(date +%Z)" =~ (CST|UTC\+08|+08) ]]; then
+    # 最终时区验证（兼容不同发行版时区表示）
+    CURRENT_TZ_INFO=$(date "+%Z %z" | tr -d '\n')  # 示例输出: "CST +0800"
+    TARGET_TZ_IDENTIFIER="+08"                     # 目标时区标识符
+
+    echo -e "\n${BLUE}当前系统时间信息:${NC}"
+    date "+%Y-%m-%d %H:%M:%S %Z (UTC%:z)"          # 显示完整时间信息
+
+    if [[ "$CURRENT_TZ_INFO" == *"$TARGET_TZ_IDENTIFIER"* ]] || 
+       [[ "$CURRENT_TZ_INFO" == *"CST"* ]] ; then
         echo -e "${GREEN}时区已正确设置为东八区${NC}"
     else
-        echo -e "${RED}时区配置异常，当前时区：$(date +%Z)${NC}"
+        echo -e "${RED}时区配置异常，当前时区信息: ${CURRENT_TZ_INFO}${NC}"
         return 1
     fi
 }
