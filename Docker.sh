@@ -56,22 +56,22 @@ uninstall() {
     
     case $os_type in
         debian)
-            sudo apt-get -y remove docker docker-engine docker.io containerd runc
-            sudo apt-get -y purge docker-ce docker-ce-cli containerd.io
-            sudo rm -rf /var/lib/docker /etc/docker
+            apt-get -y remove docker docker-engine docker.io containerd runc
+            apt-get -y purge docker-ce docker-ce-cli containerd.io
+            rm -rf /var/lib/docker /etc/docker
             ;;
         redhat)
-            sudo yum -y remove docker-ce docker-ce-cli containerd.io
-            sudo rm -rf /var/lib/docker /etc/docker
+            yum -y remove docker-ce docker-ce-cli containerd.io
+            rm -rf /var/lib/docker /etc/docker
             ;;
         alpine)
-            sudo apk del docker docker-cli docker-compose
-            sudo rm -rf /var/lib/docker /etc/docker
+            apk del docker docker-cli docker-compose
+            rm -rf /var/lib/docker /etc/docker
             ;;
     esac
     
     # 删除docker-compose独立安装
-    sudo rm -f /usr/local/bin/docker-compose
+    rm -f /usr/local/bin/docker-compose
     echo "卸载完成"
 }
 
@@ -82,19 +82,19 @@ install() {
     
     case $os_type in
         debian)
-            sudo apt-get update
-            sudo apt-get -y install docker.io docker-compose-plugin
+            apt-get update
+            apt-get -y install docker.io docker-compose-plugin
             ;;
         redhat)
-            sudo yum install -y yum-utils
-            sudo yum-config-manager --enable extras
-            sudo yum install -y docker docker-compose-plugin
+            yum install -y yum-utils
+            yum-config-manager --enable extras
+            yum install -y docker docker-compose-plugin
             ;;
         alpine)
-            sudo apk update
-            sudo apk add docker docker-compose
-            sudo rc-update add docker boot
-            sudo service docker start
+            apk update
+            apk add docker docker-compose
+            rc-update add docker boot
+            service docker start
             ;;
     esac
     
@@ -118,13 +118,13 @@ configure_mirror() {
     DOCKER_DIR=/etc/docker
     CONFIG_FILE=$DOCKER_DIR/daemon.json
     
-    sudo mkdir -p $DOCKER_DIR
+    mkdir -p $DOCKER_DIR
     echo "{
   \"registry-mirrors\": [$REGISTRY_MIRRORS]
-}" | sudo tee $CONFIG_FILE > /dev/null
+}" | tee $CONFIG_FILE > /dev/null
     
     # 检查配置
-    if ! sudo grep -q registry-mirrors $CONFIG_FILE; then
+    if ! grep -q registry-mirrors $CONFIG_FILE; then
         echo "镜像加速配置失败!" >&2
         exit 1
     fi
@@ -139,14 +139,14 @@ enable_autostart() {
     case $os_type in
         debian|redhat)
             if ! systemctl is-enabled docker &> /dev/null; then
-                sudo systemctl enable docker
-                sudo systemctl restart docker
+                systemctl enable docker
+                systemctl restart docker
             fi
             ;;
         alpine)
             if ! rc-update show | grep -q docker; then
-                sudo rc-update add docker boot
-                sudo service docker restart
+                rc-update add docker boot
+                service docker restart
             fi
             ;;
     esac
