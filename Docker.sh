@@ -1,152 +1,182 @@
 #!/bin/bash
 
-# 美化输出函数
-color_echo() {
-    case $1 in
-        red)    echo -e "\033[31m$2\033[0m" ;;
-        green)  echo -e "\033[32m$2\033[0m" ;;
-        yellow) echo -e "\033[33m$2\033[0m" ;;
-        blue)   echo -e "\033[34m$2\033[0m" ;;
-        *)      echo "$2" ;;
-    esac
-}
+# 定义镜像加速源（可自行替换）
+REGISTRY_MIRRORS='"https://docker.1panel.top",
+"https://proxy.1panel.live",
+"https://docker.m.daocloud.io",
+"https://docker.woskee.dns.army",
+"https://docker.woskee.dynv6.net"'
 
-# 获取系统信息
-get_os_info() {
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        OS_ID=$ID
-        OS_VERSION=$VERSION_ID
-    elif [ -f /etc/alpine-release ]; then
-        OS_ID="alpine"
-        OS_VERSION=$(cat /etc/alpine-release | cut -d'.' -f1-2)
+# 检测系统类型
+detect_os() {
+    if [ -f /etc/alpine-release ]; then
+        echo "alpine"
+    elif [ -f /etc/debian_version ]; then
+        echo "debian"
+    elif [ -f /etc/redhat-release ]; then
+        echo "redhat"
     else
-        color_echo red "无法检测操作系统"
+        echo "unsupported"
         exit 1
     fi
 }
 
-# 安装Docker
-install_docker() {
-    color_echo blue "正在安装Docker..."
+# 检查安装状态
+check_installed() {
+    local os_type=$1
+    echo "=== 当前安装状态检查 ==="
     
-    case $OS_ID in
-        debian|ubuntu)
-            apt install -y $DOCKER_PKG
-            systemctl enable --now docker
-            ;;
-        centos|rhel|fedora)
-            if [ $OS_ID = "fedora" ]; then
-                dnf install -y $DOCKER_PKG
-            else
-                yum install -y $DOCKER_PKG
-            fi
-            systemctl enable --now docker
-            ;;
-        alpine)
-            apk add docker
-            rc-update add docker boot
-            service docker start
-            ;;
-        *)
-            color_echo red "不支持的发行版"
-            exit 1
-            ;;
-    esac
+    # 检查Docker
+    if command -v docker &> /dev/null; then
+        echo "[Docker] 已安装版本: $(docker --version | awk '{print $3}' | tr -d ',')"
+        DOCKER_INSTALLED=true
+    else
+        DOCKER_INSTALLED=false
+    fi
+    
+    # 检查Docker Compose
+    if command -v docker-compose &> /dev/null; then
+        echo "[Docker Compose] 已安装版本: $(docker-compose --version | awk '{print $3}' | tr -d ',')"
+        COMPOSE_INSTALLED=true
+    else
+        # 检查插件版compose
+        if docker compose version &> /dev/null; then
+            echo "[Docker Compose] 已集成版本: $(docker compose version | awk '/version/{print $3}')"
+            COMPOSE_INSTALLED=true
+        else
+            COMPOSE_INSTALLED=false
+        fi
+    fi
 }
 
-# 安装Docker Compose
-install_compose() {
-    color_echo blue "正在安装Docker Compose..."
-    local mirror_url="https://mirrors.aliyun.com/docker-toolbox/linux/compose/v$COMPOSE_VERSION/docker-compose-$(uname -s)-$(uname -m)"
-    curl -L $mirror_url -o /usr/local/bin/docker-compose
-    chmod +x /usr/local/bin/docker-compose
+# 卸载现有版本
+uninstall() {
+    local os_type=$1
+    echo "=== 开始卸载现有版本 ==="
+    
+    case $os_type in
+        debian)
+            sudo apt-get -y remove docker docker-engine docker.io containerd runc
+            sudo apt-get -y purge docker-ce docker-ce-cli containerd.io
+            sudo rm -rf /var/lib/docker /etc/docker
+            ;;
+        redhat)
+            sudo yum -y remove docker-ce docker-ce-cli containerd.io
+            sudo rm -rf /var/lib/docker /etc/docker
+            ;;
+        alpine)
+            sudo apk del docker docker-cli docker-compose
+            sudo rm -rf /var/lib/docker /etc/docker
+            ;;
+    esac
+    
+    # 删除docker-compose独立安装
+    sudo rm -f /usr/local/bin/docker-compose
+    echo "卸载完成"
+}
+
+# 安装流程
+install() {
+    local os_type=$1
+    echo "=== 开始安装流程 ==="
+    
+    case $os_type in
+        debian)
+            sudo apt-get update
+            sudo apt-get -y install docker.io docker-compose-plugin
+            ;;
+        redhat)
+            sudo yum install -y yum-utils
+            sudo yum-config-manager --enable extras
+            sudo yum install -y docker docker-compose-plugin
+            ;;
+        alpine)
+            sudo apk update
+            sudo apk add docker docker-compose
+            sudo rc-update add docker boot
+            sudo service docker start
+            ;;
+    esac
+    
+    # 验证安装
+    if ! command -v docker &> /dev/null; then
+        echo "Docker安装失败!" >&2
+        exit 1
+    fi
+    echo "Docker安装成功: $(docker --version)"
+    
+    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+        echo "Docker Compose安装失败!" >&2
+        exit 1
+    fi
+    echo "Docker Compose安装成功"
 }
 
 # 配置镜像加速
-config_mirror() {
-    local config_file="/etc/docker/daemon.json"
+configure_mirror() {
+    echo "=== 配置镜像加速 ==="
+    DOCKER_DIR=/etc/docker
+    CONFIG_FILE=$DOCKER_DIR/daemon.json
     
-    if [ ! -s $config_file ]; then
-        color_echo yellow "创建镜像加速配置文件..."
-        tee $config_file << EOF
-{
-"registry-mirrors":[
-"https://docker.1panel.top",
-"https://proxy.1panel.live",
-"https://docker.m.daocloud.io",
-"https://docker.woskee.dns.army",
-"https://docker.woskee.dynv6.net"
-]
-}
-EOF
-        systemctl restart docker
-    else
-        color_echo yellow "已存在镜像加速配置文件："
-        cat $config_file
-        read -p "是否覆盖？[y/N]: " overwrite
-        if [[ $overwrite =~ [Yy] ]]; then
-            tee $config_file << EOF
-{
-"registry-mirrors":[
-"https://docker.1panel.top",
-"https://proxy.1panel.live",
-"https://docker.m.daocloud.io",
-"https://docker.woskee.dns.army",
-"https://docker.woskee.dynv6.net"
-]
-}
-EOF
-            systemctl restart docker
-        fi
+    sudo mkdir -p $DOCKER_DIR
+    echo "{
+  \"registry-mirrors\": [$REGISTRY_MIRRORS]
+}" | sudo tee $CONFIG_FILE > /dev/null
+    
+    # 检查配置
+    if ! sudo grep -q registry-mirrors $CONFIG_FILE; then
+        echo "镜像加速配置失败!" >&2
+        exit 1
     fi
+    echo "镜像加速配置完成"
+}
+
+# 设置开机自启
+enable_autostart() {
+    local os_type=$1
+    echo "=== 设置开机自启 ==="
+    
+    case $os_type in
+        debian|redhat)
+            if ! systemctl is-enabled docker &> /dev/null; then
+                sudo systemctl enable docker
+                sudo systemctl restart docker
+            fi
+            ;;
+        alpine)
+            if ! rc-update show | grep -q docker; then
+                sudo rc-update add docker boot
+                sudo service docker restart
+            fi
+            ;;
+    esac
+    echo "开机自启已设置"
 }
 
 # 主流程
 main() {
-    # 获取系统信息
-    get_os_info
-    color_echo green "检测到系统：$OS_ID $OS_VERSION"
-
-    # 设置包名
-    case $OS_ID in
-        debian|ubuntu) DOCKER_PKG="docker.io" ;;
-        centos|rhel)   DOCKER_PKG="docker-ce" ;;
-        fedora)        DOCKER_PKG="docker-ce" ;;
-        alpine)        DOCKER_PKG="docker" ;;
-    esac
-
-    # 检查Docker
-    if ! command -v docker &> /dev/null; then
-        color_echo yellow "未检测到Docker"
-        read -p "是否安装Docker？[Y/n]: " confirm
-        if [[ ! $confirm =~ [Nn] ]]; then
-            install_docker
+    OS_TYPE=$(detect_os)
+    echo "检测到系统类型: $OS_TYPE"
+    
+    check_installed $OS_TYPE
+    
+    if $DOCKER_INSTALLED || $COMPOSE_INSTALLED; then
+        read -p "检测到已安装版本，是否重新安装？(y/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            uninstall $OS_TYPE
+        else
+            exit 0
         fi
-    else
-        color_echo green "Docker 已安装：$(docker --version)"
     fi
-
-    # 检查Docker Compose
-    if ! command -v docker-compose &> /dev/null; then
-        color_echo yellow "未检测到Docker Compose"
-        read -p "是否安装Docker Compose？[Y/n]: " confirm
-        if [[ ! $confirm =~ [Nn] ]]; then
-            COMPOSE_VERSION=$(curl -s https://mirrors.aliyun.com/docker-toolbox/linux/compose/latest | grep -oP 'v\d+\.\d+\.\d+')
-            install_compose
-        fi
-    else
-        color_echo green "Docker Compose 已安装：$(docker-compose --version)"
-    fi
-
-    # 配置镜像加速
-    config_mirror
-
-    color_echo green "\n安装完成！"
-    color_echo blue "Docker状态：$(systemctl is-active docker)"
-    color_echo blue "镜像配置："
-    docker info | grep -A1 "Registry Mirrors"
+    
+    install $OS_TYPE
+    enable_autostart $OS_TYPE
+    configure_mirror
+    
+    echo "=== 安装完成 ==="
+    docker --version
+    docker compose version
 }
 
-# 执行主函数
-main
+main "$@"
