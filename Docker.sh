@@ -42,6 +42,14 @@ check_root() {
 # 检测系统信息
 detect_system() {
   info "正在检测系统信息..."
+
+   # 新增版本代号检测
+  if [ -f /etc/os-release ]; then
+    source /etc/os-release
+    OS_NAME=$ID
+    OS_VERSION=$VERSION_ID
+    CODENAME=$VERSION_CODENAME  # 新增变量
+  fi
   
   if [ -f /etc/alpine-release ]; then
     OS_NAME="alpine"
@@ -124,12 +132,15 @@ uninstall_docker() {
       apk del docker-cli docker-engine
       ;;
   esac
-
+ 
   # 清理 Docker 相关文件和配置
   rm -rf /var/lib/docker
   rm -rf $DOCKER_CONFIG_DIR
   rm -f /etc/apt/sources.list.d/docker.list
   rm -f /etc/yum.repos.d/docker-ce.repo
+
+  # 增加残留配置清理
+  find /etc/apt/sources.list.d/ -name "*docker*" -exec rm -f {} \;
 
   success "Docker已卸载"
 }
@@ -151,13 +162,28 @@ install_docker() {
     return 1
   fi
 
-  case $PKG_MANAGER in
+ case $PKG_MANAGER in
     apt)
+      # 增加备用源配置
+      add_official_docker_repo() {
+        curl -fsSL https://add.woskee.nyc.mn/download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+      }
+
+      if ! apt-get install -y docker-ce docker-ce-cli containerd.io; then
+        warning "阿里镜像源安装失败，尝试使用官方源..."
+        add_official_docker_repo
+        apt-get update
+        apt-get install -y docker-ce docker-ce-cli containerd.io || error "Docker安装失败"
+      fi
+      ;;
+      
       apt-get update
       apt-get install -y apt-transport-https ca-certificates curl gnupg
       install -m 0755 -d /etc/apt/keyrings
       curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/$OS_NAME/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/$OS_NAME $OS_VERSION stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+      CODENAME=$(. /etc/os-release && echo $VERSION_CODENAME)
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/ubuntu $CODENAME stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
       apt-get update
       if ! apt-get install -y docker-ce docker-ce-cli containerd.io; then
         error "Docker安装失败"
