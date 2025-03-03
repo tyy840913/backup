@@ -3,8 +3,6 @@ set -e
 
 # 全局变量
 REGISTRY_MIRRORS='[
-  "https://docker.1panel.top",
-  "https://proxy.1panel.live",
   "https://docker.m.daocloud.io",
   "https://docker.woskee.dns.army",
   "https://docker.woskee.dynv6.net"
@@ -111,9 +109,11 @@ uninstall_docker() {
   case $PKG_MANAGER in
     apt)
       apt-get remove -y docker docker-engine docker.io containerd runc
+      rm -rf /var/lib/docker
       ;;
     yum)
       yum remove -y docker-ce docker-ce-cli containerd.io
+      rm -rf /var/lib/docker
       ;;
     apk)
       apk del docker-cli docker-engine
@@ -215,17 +215,6 @@ enable_service() {
   echo -e "${GREEN}[成功] 开机启动配置完成${NC}"
 }
 
-# 读取并输出镜像源配置
-read_mirrors_config() {
-  if [ -f "$DOCKER_DAEMON_JSON" ]; then
-    echo -e "${YELLOW}[信息] 镜像源配置如下：${NC}"
-    cat $DOCKER_DAEMON_JSON
-  else
-    echo -e "${RED}错误：未找到镜像源配置文件${NC}"
-    exit 1
-  fi
-}
-
 # 验证安装
 verify_installation() {
   echo -e "\n${YELLOW}[信息] 验证安装...${NC}"
@@ -245,7 +234,7 @@ verify_installation() {
   echo "Docker版本: $(docker --version)"
   echo "Docker Compose版本: $(docker-compose --version)"
   echo "镜像加速配置:"
-  read_mirrors_config
+  docker info | grep "Registry Mirrors" -A 5 | sed 's/Registry Mirrors://g' | tr -d '\\'
   echo "=====================================${NC}\n"
 }
 
