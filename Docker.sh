@@ -9,6 +9,7 @@ REGISTRY_MIRRORS='[
 ]'
 SUPPORTED_DISTROS=("debian" "ubuntu" "centos" "rhel" "alpine" "fedora")
 DOCKER_DAEMON_JSON="/etc/docker/daemon.json"
+DOCKER_CONFIG_DIR="/etc/docker"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -110,23 +111,24 @@ uninstall_docker() {
     apt)
       echo -e "${YELLOW}[信息] 使用 apt 卸载 Docker...${NC}"
       apt-get remove -y docker docker-engine docker.io containerd runc
-      rm -rf /var/lib/docker
-      rm -rf /etc/docker
       ;;
     yum)
       echo -e "${YELLOW}[信息] 使用 yum 卸载 Docker...${NC}"
       yum remove -y docker-ce docker-ce-cli containerd.io
-      rm -rf /var/lib/docker
-      rm -rf /etc/docker
       ;;
     apk)
       echo -e "${YELLOW}[信息] 使用 apk 卸载 Docker...${NC}"
       apk del docker-cli docker-engine
-      rm -rf /var/lib/docker
-      rm -rf /etc/docker
       ;;
   esac
-  
+
+  # 清理 Docker 相关文件和配置
+  echo -e "${YELLOW}[信息] 清理 Docker 配置文件...${NC}"
+  rm -rf /var/lib/docker
+  rm -rf $DOCKER_CONFIG_DIR
+  rm -f /etc/apt/sources.list.d/docker.list
+  rm -f /etc/yum.repos.d/docker-ce.repo
+
   echo -e "${GREEN}[成功] Docker已卸载${NC}"
 }
 
@@ -191,8 +193,8 @@ install_compose() {
 configure_mirrors() {
   echo -e "${YELLOW}[信息] 正在配置镜像加速...${NC}"
   
-  if [ ! -d "/etc/docker" ]; then
-    mkdir -p /etc/docker
+  if [ ! -d "$DOCKER_CONFIG_DIR" ]; then
+    mkdir -p $DOCKER_CONFIG_DIR
   fi
 
   if [ -f "$DOCKER_DAEMON_JSON" ]; then
@@ -246,7 +248,7 @@ verify_installation() {
   echo "Docker Compose版本: $(docker-compose --version)"
   echo "镜像加速配置:"
   docker info | grep "Registry Mirrors" -A 5 | sed 's/Registry Mirrors://g' | tr -d '\\'
-  echo "=====================================${NC}\n"
+  echo -e "=====================================${NC}"
 }
 
 # 主函数
