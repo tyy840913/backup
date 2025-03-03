@@ -146,7 +146,10 @@ install_docker() {
   info "开始安装Docker..."
   
   read -p "是否要安装Docker？(y/n) " ANSWER
-  [[ ! $ANSWER =~ ^[Yy]$ ]] && { info "已取消Docker安装"; return; }
+  if [[ ! $ANSWER =~ ^[Yy]$ ]]; then
+    info "已取消Docker安装"
+    return 1
+  fi
 
   case $PKG_MANAGER in
     apt)
@@ -156,19 +159,26 @@ install_docker() {
       curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/$OS_NAME/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
       echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/$OS_NAME $OS_VERSION stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
       apt-get update
-      apt-get install -y docker-ce docker-ce-cli containerd.io
+      if ! apt-get install -y docker-ce docker-ce-cli containerd.io; then
+        error "Docker安装失败"
+      fi
       ;;
     yum)
       yum install -y yum-utils
       yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
-      yum install -y docker-ce docker-ce-cli containerd.io
+      if ! yum install -y docker-ce docker-ce-cli containerd.io; then
+        error "Docker安装失败"
+      fi
       ;;
     apk)
-      apk add docker
+      if ! apk add docker; then
+        error "Docker安装失败"
+      fi
       ;;
   esac
   
   success "Docker安装完成"
+  return 0
 }
 
 # 安装Docker Compose
@@ -287,7 +297,11 @@ main() {
   if check_docker_installed; then
     info "Docker已安装，跳过安装步骤"
   else
-    install_docker
+    install_docker || true  # 允许继续执行后续检查
+    # 安装后强制检查Docker是否存在
+    if ! command -v docker &>/dev/null; then
+      error "未安装Docker，脚本终止"
+    fi
   fi
   
   if check_compose_installed; then
