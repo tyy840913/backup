@@ -150,7 +150,7 @@ check_timezone() {
     if [[ "$(date +%Z)" =~ (CST|UTC\+08|+08) ]]; then
         echo -e "${GREEN}时区已正确设置为东八区${NC}"
     else
-        echo -e "${RED}时区配置异常，当前时区：$(date %Y-%m-%d)${NC}"
+        echo -e "${RED}时区配置异常，当前时区：$(date +%Y-%m-%d)${NC}"
         return 1
     fi
 }
