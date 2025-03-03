@@ -190,7 +190,6 @@ install_docker() {
       fi
       ;;
       
-      apt-get update
       apt-get install -y apt-transport-https ca-certificates curl gnupg
       install -m 0755 -d /etc/apt/keyrings
       curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/$OS_NAME/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
