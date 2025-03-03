@@ -3,6 +3,8 @@ set -e
 
 # 全局变量
 REGISTRY_MIRRORS='[
+  "https://docker.1panel.top",
+  "https://proxy.1panel.live",
   "https://docker.m.daocloud.io",
   "https://docker.woskee.dns.army",
   "https://docker.woskee.dynv6.net"
