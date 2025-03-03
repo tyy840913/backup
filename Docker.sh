@@ -192,36 +192,6 @@ install_compose() {
   success "Docker Compose安装完成"
 }
 
-# 配置镜像加速
-configure_mirrors() {
-  info "正在配置镜像加速..."
-  
-  read -p "是否要配置镜像加速？(y/n) " ANSWER
-  [[ ! $ANSWER =~ ^[Yy]$ ]] && { info "已取消镜像加速配置"; return; }
-
-  # 检查现有配置
-  if [ -f "$DOCKER_DAEMON_JSON" ]; then
-    warning "检测到已存在的Docker配置: $DOCKER_DAEMON_JSON"
-    if grep -q "registry-mirrors" "$DOCKER_DAEMON_JSON"; then
-      warning "当前已配置以下镜像加速地址:"
-      grep "registry-mirrors" -A 5 "$DOCKER_DAEMON_JSON"
-      read -p "是否要覆盖现有配置？(y/n) " OVERWRITE
-      [[ ! $OVERWRITE =~ ^[Yy]$ ]] && { info "保留现有镜像加速配置"; return; }
-    fi
-    mv $DOCKER_DAEMON_JSON $DOCKER_DAEMON_JSON.bak
-    info "已备份原配置文件: $DOCKER_DAEMON_JSON.bak"
-  fi
-
-  mkdir -p $DOCKER_CONFIG_DIR
-  cat <<EOF > $DOCKER_DAEMON_JSON
-{
-  "registry-mirrors": $REGISTRY_MIRRORS
-}
-EOF
-
-  success "镜像加速配置完成"
-}
-
 # 配置开机启动
 enable_service() {
   info "正在检查Docker开机启动配置..."
@@ -256,6 +226,36 @@ enable_service() {
   else
     error "Docker服务开机启动失败，请检查配置"
   fi
+}
+
+# 配置镜像加速
+configure_mirrors() {
+  info "正在配置镜像加速..."
+  
+  read -p "是否要配置镜像加速？(y/n) " ANSWER
+  [[ ! $ANSWER =~ ^[Yy]$ ]] && { info "已取消镜像加速配置"; return; }
+
+  # 检查现有配置
+  if [ -f "$DOCKER_DAEMON_JSON" ]; then
+    warning "检测到已存在的Docker配置: $DOCKER_DAEMON_JSON"
+    if grep -q "registry-mirrors" "$DOCKER_DAEMON_JSON"; then
+      warning "当前已配置以下镜像加速地址:"
+      grep "registry-mirrors" -A 5 "$DOCKER_DAEMON_JSON"
+      read -p "是否要覆盖现有配置？(y/n) " OVERWRITE
+      [[ ! $OVERWRITE =~ ^[Yy]$ ]] && { info "保留现有镜像加速配置"; return; }
+    fi
+    mv $DOCKER_DAEMON_JSON $DOCKER_DAEMON_JSON.bak
+    info "已备份原配置文件: $DOCKER_DAEMON_JSON.bak"
+  fi
+
+  mkdir -p $DOCKER_CONFIG_DIR
+  cat <<EOF > $DOCKER_DAEMON_JSON
+{
+  "registry-mirrors": $REGISTRY_MIRRORS
+}
+EOF
+
+  success "镜像加速配置完成"
 }
 
 # 验证安装
