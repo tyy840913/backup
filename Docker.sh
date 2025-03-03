@@ -163,13 +163,25 @@ install_docker() {
   fi
 
  case $PKG_MANAGER in
-    apt)
+     apt)
       # 增加备用源配置
       add_official_docker_repo() {
-        curl -fsSL https://add.woskee.nyc.mn/download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
       }
 
+      # 安装必要依赖
+      apt-get update
+      apt-get install -y apt-transport-https ca-certificates curl gnupg
+      install -m 0755 -d /etc/apt/keyrings
+
+      # 配置阿里云镜像源
+      curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/$OS_NAME/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      CODENAME=$(. /etc/os-release && echo $VERSION_CODENAME)
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/ubuntu $CODENAME stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+      apt-get update
+
+      # 尝试安装
       if ! apt-get install -y docker-ce docker-ce-cli containerd.io; then
         warning "阿里镜像源安装失败，尝试使用官方源..."
         add_official_docker_repo
