@@ -1,6 +1,18 @@
 #!/bin/bash
 set -e
 
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+# 带颜色输出函数
+info() { echo -e "${YELLOW}[信息] $*${NC}"; sleep 0.5; }
+success() { echo -e "${GREEN}[成功] $*${NC}"; sleep 0.5; }
+error() { echo -e "${RED}[错误] $*${NC}"; exit 1; }
+warning() { echo -e "${YELLOW}[警告] $*${NC}"; sleep 0.5; }
+
 # 全局变量
 REGISTRY_MIRRORS='[
   "https://docker.1panel.top",
@@ -13,23 +25,12 @@ SUPPORTED_DISTROS=("debian" "ubuntu" "centos" "rhel" "alpine" "fedora")
 DOCKER_DAEMON_JSON="/etc/docker/daemon.json"
 DOCKER_CONFIG_DIR="/etc/docker"
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-NC='\033[0m'
-
 # 初始化变量
 OS_NAME=""
 OS_VERSION=""
 PKG_MANAGER=""
 INIT_SYSTEM=""
 
-# 带颜色输出函数
-info() { echo -e "${YELLOW}[信息] $*${NC}"; sleep 0.5; }
-success() { echo -e "${GREEN}[成功] $*${NC}"; sleep 0.5; }
-error() { echo -e "${RED}[错误] $*${NC}"; exit 1; }
-warning() { echo -e "${YELLOW}[警告] $*${NC}"; sleep 0.5; }
 
 # 检查root权限
 check_root() {
