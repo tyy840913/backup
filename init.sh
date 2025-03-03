@@ -100,15 +100,31 @@ check_timezone() {
     TARGET_ZONE="Asia/Shanghai"
     ZONE_FILE="/usr/share/zoneinfo/${TARGET_ZONE}"
     
-    # 检查时区文件是否存在
+    # 自动安装缺失的时区文件
     if [ ! -f "$ZONE_FILE" ]; then
-        echo -e "${RED}错误：时区文件 $ZONE_FILE 不存在${NC}"
-        return 1
+        echo -e "${YELLOW}时区文件缺失，正在安装时区数据包...${NC}"
+        case $OS in
+            debian)
+                apt update && apt install -y tzdata ;;
+            centos)
+                yum install -y tzdata ;;
+            alpine)
+                apk add --no-cache tzdata ;;
+        esac || {
+            echo -e "${RED}时区数据包安装失败，请检查网络或软件源配置${NC}"
+            return 1
+        }
+        
+        # 二次验证文件是否存在
+        if [ ! -f "$ZONE_FILE" ]; then
+            echo -e "${RED}时区文件安装后仍不存在：$ZONE_FILE${NC}"
+            return 1
+        fi
     fi
 
     # 优先尝试符号链接方式
     if [ -w /etc/localtime ]; then
-        CURRENT_ZONE=$(readlink /etc/localtime | sed 's|.*/zoneinfo/||')
+        CURRENT_ZONE=$(readlink /etc/localtime | sed 's|.*/zoneinfo/||' 2>/dev/null)
         if [ "$CURRENT_ZONE" != "$TARGET_ZONE" ]; then
             echo -e "${YELLOW}当前时区: ${CURRENT_ZONE}, 正在配置为东八区...${NC}"
             ln -sf "$ZONE_FILE" /etc/localtime
@@ -117,19 +133,21 @@ check_timezone() {
         echo -e "${YELLOW}无法创建符号链接，改用专用配置...${NC}"
         case $OS in
             debian|centos)
-                timedatectl set-timezone $TARGET_ZONE
+                timedatectl set-timezone $TARGET_ZONE || {
+                    echo -e "${RED}时区设置命令失败，请手动检查timedatectl服务状态${NC}"
+                    return 1
+                }
                 ;;
             alpine)
                 apk add --no-cache tzdata
                 cp "$ZONE_FILE" /etc/localtime
                 echo $TARGET_ZONE > /etc/timezone
-                apk del tzdata
                 ;;
         esac
     fi
 
-    # 最终验证
-    if [ "$(date +%Z)" == "CST" ]; then
+    # 最终验证（兼容不同发行版时区缩写）
+    if [[ "$(date +%Z)" =~ (CST|UTC\+08|+08) ]]; then
         echo -e "${GREEN}时区已正确设置为东八区${NC}"
     else
         echo -e "${RED}时区配置异常，当前时区：$(date +%Z)${NC}"
