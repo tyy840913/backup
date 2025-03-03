@@ -1,11 +1,13 @@
 #!/bin/bash
 
 # 定义镜像加速源（可自行替换）
-REGISTRY_MIRRORS='"https://docker.1panel.top",
+REGISTRY_MIRRORS='[
+"https://docker.1panel.top",
 "https://proxy.1panel.live",
 "https://docker.m.daocloud.io",
 "https://docker.woskee.dns.army",
-"https://docker.woskee.dynv6.net"'
+"https://docker.woskee.dynv6.net"
+]'
 
 # 检测系统类型
 detect_os() {
@@ -120,14 +122,14 @@ configure_mirror() {
     
     mkdir -p $DOCKER_DIR
     echo "{
-  \"registry-mirrors\": [$REGISTRY_MIRRORS]
+  \"registry-mirrors\": $REGISTRY_MIRRORS,
+  \"log-driver\": \"json-file\",
+  \"log-opts\": {
+    \"max-size\": \"100m\"
+  }
 }" | tee $CONFIG_FILE > /dev/null
     
-    # 检查配置
-    if ! grep -q registry-mirrors $CONFIG_FILE; then
-        echo "镜像加速配置失败!" >&2
-        exit 1
-    fi
+    systemctl restart docker
     echo "镜像加速配置完成"
 }
 
