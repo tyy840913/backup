@@ -3,6 +3,8 @@ set -e
 
 # 全局变量
 REGISTRY_MIRRORS='[
+  "https://docker.1panel.top",
+  "https://proxy.1panel.live",
   "https://docker.m.daocloud.io",
   "https://docker.woskee.dns.army",
   "https://docker.woskee.dynv6.net"
@@ -212,20 +214,38 @@ EOF
 
 # 配置开机启动
 enable_service() {
-  echo -e "${YELLOW}[信息] 配置Docker开机启动...${NC}"
-  
+  info "正在检查Docker开机启动配置..."
+  sleep 0.5
+
   case $INIT_SYSTEM in
     systemd)
-      systemctl enable docker
-      systemctl restart docker
+      if systemctl is-enabled docker &>/dev/null; then
+        success "Docker已设置开机启动（systemd）"
+        return
+      else
+        info "未检测到开机启动配置，正在设置..."
+        systemctl enable docker
+        systemctl restart docker
+      fi
       ;;
     openrc)
-      rc-update add docker default
-      service docker restart
+      if rc-update show default | grep -q docker; then
+        success "Docker已设置开机启动（openrc）"
+        return
+      else
+        info "未检测到开机启动配置，正在设置..."
+        rc-update add docker default
+        service docker restart
+      fi
       ;;
   esac
   
-  echo -e "${GREEN}[成功] 开机启动配置完成${NC}"
+  # 二次验证配置结果
+  if docker ps &>/dev/null; then
+    success "Docker开机启动配置完成"
+  else
+    error "Docker服务开机启动设置失败，请检查配置"
+  fi
 }
 
 # 验证安装
