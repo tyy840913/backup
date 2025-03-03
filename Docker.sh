@@ -108,16 +108,22 @@ uninstall_docker() {
   
   case $PKG_MANAGER in
     apt)
+      echo -e "${YELLOW}[信息] 使用 apt 卸载 Docker...${NC}"
       apt-get remove -y docker docker-engine docker.io containerd runc
       rm -rf /var/lib/docker
+      rm -rf /etc/docker
       ;;
     yum)
+      echo -e "${YELLOW}[信息] 使用 yum 卸载 Docker...${NC}"
       yum remove -y docker-ce docker-ce-cli containerd.io
       rm -rf /var/lib/docker
+      rm -rf /etc/docker
       ;;
     apk)
+      echo -e "${YELLOW}[信息] 使用 apk 卸载 Docker...${NC}"
       apk del docker-cli docker-engine
       rm -rf /var/lib/docker
+      rm -rf /etc/docker
       ;;
   esac
   
@@ -137,6 +143,7 @@ install_docker() {
   
   case $PKG_MANAGER in
     apt)
+      echo -e "${YELLOW}[信息] 使用 apt 安装 Docker...${NC}"
       apt-get update
       apt-get install -y apt-transport-https ca-certificates curl gnupg
       install -m 0755 -d /etc/apt/keyrings
@@ -146,11 +153,13 @@ install_docker() {
       apt-get install -y docker-ce docker-ce-cli containerd.io
       ;;
     yum)
+      echo -e "${YELLOW}[信息] 使用 yum 安装 Docker...${NC}"
       yum install -y yum-utils
       yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
       yum install -y docker-ce docker-ce-cli containerd.io
       ;;
     apk)
+      echo -e "${YELLOW}[信息] 使用 apk 安装 Docker...${NC}"
       apk add docker
       ;;
   esac
@@ -164,9 +173,11 @@ install_compose() {
   
   case $PKG_MANAGER in
     apk)
+      echo -e "${YELLOW}[信息] 使用 apk 安装 Docker Compose...${NC}"
       apk add docker-compose
       ;;
     *)
+      echo -e "${YELLOW}[信息] 下载并安装 Docker Compose...${NC}"
       COMPOSE_URL="https://mirror.ghproxy.com/https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)"
       curl -L $COMPOSE_URL -o /usr/local/bin/docker-compose
       chmod +x /usr/local/bin/docker-compose
