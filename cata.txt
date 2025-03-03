@@ -1,6 +1,6 @@
-自动备份 auto_backup.sh
-系统配置 init.sh
-修改中文显示 ziti.sh
-Docker安装 Docker.sh
-镜像源更新 mirror.sh
-PVE磁盘转换 qm.sh
+自动备份Docker容器数据 auto_backup.sh
+安装SSH服务，修改时区 init.sh
+修改系统中文显示 ziti.sh
+Docker及docker-compose安装 Docker.sh
+更换系统源为国内园镜像源 mirror.sh
+PVE磁盘转换，支持IMG/ISO qm.sh
