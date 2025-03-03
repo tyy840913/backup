@@ -104,12 +104,9 @@ check_timezone() {
     if [ ! -f "$ZONE_FILE" ]; then
         echo -e "${YELLOW}时区文件缺失，正在安装时区数据包...${NC}"
         case $OS in
-            debian)
-                apt update && apt install -y tzdata ;;
-            centos)
-                yum install -y tzdata ;;
-            alpine)
-                apk add --no-cache tzdata ;;
+            debian) apt update && apt install -y tzdata ;;
+            centos) yum install -y tzdata ;;
+            alpine) apk add --no-cache tzdata ;;
         esac || {
             echo -e "${RED}时区数据包安装失败，请检查网络或软件源配置${NC}"
             return 1
@@ -122,42 +119,38 @@ check_timezone() {
         fi
     fi
 
-    # 优先尝试符号链接方式
-    if [ -w /etc/localtime ]; then
-        CURRENT_ZONE=$(readlink /etc/localtime | sed 's|.*/zoneinfo/||' 2>/dev/null)
-        if [ "$CURRENT_ZONE" != "$TARGET_ZONE" ]; then
-            echo -e "${YELLOW}当前时区: ${CURRENT_ZONE}, 正在配置为东八区...${NC}"
-            ln -sf "$ZONE_FILE" /etc/localtime
+    # Alpine专用处理逻辑
+    if [ "$OS" = "alpine" ]; then
+        echo -e "${YELLOW}Alpine系统强制使用文件拷贝方式...${NC}"
+        apk add --no-cache tzdata >/dev/null 2>&1
+        if [ -f /etc/localtime ]; then
+            rm -f /etc/localtime  # 删除可能存在的旧文件
         fi
+        cp -f "$ZONE_FILE" /etc/localtime
+        echo "$TARGET_ZONE" > /etc/timezone
     else
-        echo -e "${YELLOW}无法创建符号链接，改用专用配置...${NC}"
-        case $OS in
-            debian|centos)
-                timedatectl set-timezone $TARGET_ZONE || {
-                    echo -e "${RED}时区设置命令失败，请手动检查timedatectl服务状态${NC}"
-                    return 1
-                }
-                ;;
-            alpine)
-                apk add --no-cache tzdata
-                cp "$ZONE_FILE" /etc/localtime
-                echo $TARGET_ZONE > /etc/timezone
-                ;;
-        esac
+        # 优先尝试符号链接方式
+        if [ -w /etc/localtime ]; then
+            # 强制删除可能存在的普通文件
+            [ -f /etc/localtime ] && rm -f /etc/localtime
+            ln -sf "$ZONE_FILE" /etc/localtime
+        else
+            echo -e "${YELLOW}无写入权限，使用timedatectl配置...${NC}"
+            timedatectl set-timezone "$TARGET_ZONE" || {
+                echo -e "${RED}时区设置命令失败，请检查权限${NC}"
+                return 1
+            }
+        fi
     fi
 
-    # 最终时区验证（兼容不同发行版时区表示）
-    CURRENT_TZ_INFO=$(date "+%Z %z" | tr -d '\n')  # 示例输出: "CST +0800"
-    TARGET_TZ_IDENTIFIER="+08"                     # 目标时区标识符
-
+    # 最终验证（兼容Alpine的date输出）
     echo -e "\n${BLUE}当前系统时间信息:${NC}"
-    date "+%Y-%m-%d %H:%M:%S %Z (UTC%:z)"          # 显示完整时间信息
+    date "+%Y-%m-%d %H:%M:%S %Z (UTC%z)"  # 修改格式字符串
 
-    if [[ "$CURRENT_TZ_INFO" == *"$TARGET_TZ_IDENTIFIER"* ]] || 
-       [[ "$CURRENT_TZ_INFO" == *"CST"* ]] ; then
+    if date | grep -qE "CST|UTC+08|+08"; then
         echo -e "${GREEN}时区已正确设置为东八区${NC}"
     else
-        echo -e "${RED}时区配置异常，当前时区信息: ${CURRENT_TZ_INFO}${NC}"
+        echo -e "${RED}时区配置异常，当前时间：$(date)${NC}"
         return 1
     fi
 }
