@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -96,7 +97,7 @@ install_docker() {
             apt-get install -y ca-certificates curl gnupg
 
             install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https:// download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            curl -fsSL https://download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
             chmod a+r /etc/apt/keyrings/docker.gpg
 
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
@@ -170,13 +171,6 @@ configure_mirror() {
         "https://docker.woskee.dynv6.net"
     )
 
-    # 将数组转换为JSON格式
-    MIRRORS_JSON=$(printf '%s\n' "${MIRRORS[@]}" | jq -R . | jq -s .)
-    
-    # 生成并写入配置
-    jq -n --argjson mirrors "$MIRRORS_JSON" '{"registry-mirrors": $mirrors}' > "$DAEMON_JSON"
-}
-
     echo -e "\n${CYAN}=== 镜像加速配置 ===${NC}"
     
     # 确保目录存在
@@ -220,11 +214,10 @@ configure_mirror() {
 
     # 重启服务
     echo -e "\n${YELLOW}正在重启Docker服务...${NC}"
-     if [ "$OS" = "alpine" ]; then
-        rc-update add docker default
-        service docker start
+    if [ "$OS" = "alpine" ]; then
+        service docker restart
     else
-        systemctl enable --now docker 2>/dev/null
+        systemctl restart docker
     fi
 }
 
