@@ -1,224 +1,169 @@
 #!/bin/bash
+# Docker安装脚本 - 支持Alpine/Debian/Ubuntu/CentOS系统
+# 2025-03-04 更新
 
 # 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # 无颜色
+RED='\033[31m'
+GREEN='\033[32m'
+YELLOW='\033[33m'
+BLUE='\033[34m'
+RESET='\033[0m'
 
-# 延时函数
-sleepy() {
-    echo -e "${BLUE}[INFO]${NC} 等待0.5秒..."
+# 权限检测
+SUDO_CMD=""
+if [ "$(id -u)" -ne 0 ]; then
+    SUDO_CMD="sudo"
+    echo -e "${YELLOW}检测到非root权限，后续操作将使用sudo执行${RESET}"
     sleep 0.5
-}
+fi
 
-# 检测系统类型
+# 系统检测
 detect_os() {
     if [ -f /etc/alpine-release ]; then
         OS="alpine"
+    elif [ -f /etc/debian_version ]; then
+        OS="debian"
+    elif [ -f /etc/centos-release ]; then
+        OS="centos"
     elif [ -f /etc/os-release ]; then
         . /etc/os-release
-        OS=$ID
+        OS=$(echo $ID | tr '[:upper:]' '[:lower:]')
     else
-        echo -e "${RED}[ERROR]${NC} 无法检测操作系统类型"
+        echo -e "${RED}无法识别的操作系统${RESET}"
         exit 1
     fi
+    echo -e "${BLUE}检测到系统类型：${OS}${RESET}"
+    sleep 0.5
 }
 
-# 权限检测和sudo处理
-check_sudo() {
-    if [ "$(id -u)" -ne 0 ]; then
-        echo -e "${YELLOW}[WARN]${NC} 需要root权限，将使用sudo"
-        SUDO="sudo"
-    else
-        SUDO=""
-    fi
-}
-
-# Docker安装
+# Docker安装函数
 install_docker() {
     case $OS in
         alpine)
-            $SUDO apk add --no-cache docker docker-cli docker-compose
+            $SUDO_CMD apk add docker docker-cli docker-compose
             ;;
         debian|ubuntu)
-            $SUDO apt-get update
-            $SUDO apt-get install -y docker.io docker-compose
+            # 使用国内镜像源
+            $SUDO_CMD apt-get update
+            $SUDO_CMD apt-get install -y apt-transport-https ca-certificates curl
+            curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/$OS/gpg | $SUDO_CMD apt-key add -
+            $SUDO_CMD add-apt-repository "deb [arch=amd64] https://mirrors.aliyun.com/docker-ce/linux/$OS $(lsb_release -cs) stable"
+            $SUDO_CMD apt-get update
+            $SUDO_CMD apt-get install -y docker-ce docker-ce-cli containerd.io
             ;;
-        centos|rhel|fedora)
-            if [ "$OS" = "fedora" ]; then
-                $SUDO dnf -y install dnf-plugins-core
-                $SUDO dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
-                $SUDO dnf -y install docker-ce docker-ce-cli containerd.io docker-compose-plugin
-            else
-                $SUDO yum install -y yum-utils
-                $SUDO yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-                $SUDO yum -y install docker-ce docker-ce-cli containerd.io docker-compose-plugin
-            fi
+        centos)
+            # 使用阿里源
+            $SUDO_CMD yum install -y yum-utils
+            $SUDO_CMD yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
+            $SUDO_CMD yum makecache fast
+            $SUDO_CMD yum install -y docker-ce docker-ce-cli containerd.io
             ;;
         *)
-            echo -e "${RED}[ERROR]${NC} 不支持的发行版: $OS"
+            echo -e "${RED}不支持的操作系统${RESET}"
             exit 1
             ;;
     esac
 }
 
 # Docker Compose安装
-install_docker_compose() {
-    if ! command -v docker-compose &> /dev/null; then
-        $SUDO curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
-        -o /usr/local/bin/docker-compose
-        $SUDO chmod +x /usr/local/bin/docker-compose
-    fi
+install_compose() {
+    echo -e "${YELLOW}安装Docker Compose...${RESET}"
+    COMPOSE_URL="https://ghproxy.com/https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)"
+    $SUDO_CMD curl -L $COMPOSE_URL -o /usr/local/bin/docker-compose
+    $SUDO_CMD chmod +x /usr/local/bin/docker-compose
+    sleep 0.5
 }
 
-# 卸载Docker
-uninstall_docker() {
-    case $OS in
-        alpine)
-            $SUDO apk del docker docker-cli docker-compose
-            ;;
-        debian|ubuntu)
-            $SUDO apt-get purge -y docker.io docker-compose
-            ;;
-        centos|rhel|fedora)
-            $SUDO yum remove -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-            ;;
-    esac
-    $SUDO rm -rf /var/lib/docker /etc/docker
-}
-
-# 设置镜像加速
+# 镜像源配置
 configure_mirror() {
     DAEMON_JSON="/etc/docker/daemon.json"
-    MIRRORS=(
-        "https://proxy.1panel.live"
-        "https://docker.1panel.top"
-        "https://docker.m.daocloud.io"
-        "https://docker.woskee.dns.army"
-        "https://docker.woskee.dynv6.net"
-    )
-
+    echo -e "${YELLOW}配置镜像加速源...${RESET}"
+    if [ ! -d /etc/docker ]; then
+        $SUDO_CMD mkdir -p /etc/docker
+    fi
+    
     if [ -f $DAEMON_JSON ]; then
-        echo -e "${YELLOW}[WARN]${NC} 已存在docker配置文件:"
+        echo -e "${YELLOW}检测到现有配置文件："
         cat $DAEMON_JSON
-        read -p "是否要替换配置文件？[y/N]: " choice
-        if [[ $choice =~ ^[Yy]$ ]]; then
-            $SUDO rm $DAEMON_JSON
+        read -p "是否替换镜像源配置？(y/N) " choice
+        if [[ $choice =~ [Yy] ]]; then
+            $SUDO_CMD cp $DAEMON_JSON "${DAEMON_JSON}.bak"
         else
             return
         fi
     fi
 
-    echo -e "${BLUE}[INFO]${NC} 创建新的镜像加速配置"
-    $SUDO mkdir -p /etc/docker
-    $SUDO tee $DAEMON_JSON > /dev/null <<EOF
+    $SUDO_CMD tee $DAEMON_JSON > /dev/null <<EOF
 {
-  "registry-mirrors": [
-EOF
-
-    for mirror in "${MIRRORS[@]}"; do
-        $SUDO tee -a $DAEMON_JSON > /dev/null <<EOF
-    "$mirror",
-EOF
-    done
-
-    $SUDO sed -i '$ s/,$//' $DAEMON_JSON  # 删除最后一个逗号
-    $SUDO tee -a $DAEMON_JSON > /dev/null <<EOF
-  ]
+    "registry-mirrors": [
+        "https://docker.m.daocloud.io",
+        "https://hub-mirror.c.163.com",
+        "https://mirror.baidubce.com"
+    ]
 }
 EOF
+    sleep 0.5
 }
 
-# 设置开机启动
-enable_service() {
-    case $OS in
-        alpine)
-            $SUDO rc-update add docker default
-            $SUDO service docker start
-            ;;
-        *)
-            $SUDO systemctl enable --now docker
-            ;;
-    esac
-}
+# 主逻辑
+detect_os
 
-# 主流程
-main() {
-    echo -e "${GREEN}[START]${NC} 开始安装Docker环境..."
-    sleepy
-
-    # 系统检测
-    detect_os
-    echo -e "${BLUE}[INFO]${NC} 检测到操作系统: $OS"
-    sleepy
-
-    # 权限检查
-    check_sudo
-
-    # Docker安装检查
-    if command -v docker &> /dev/null; then
-        echo -e "${YELLOW}[WARN]${NC} 检测到已安装Docker:"
-        docker --version
-        read -p "是否要重新安装？[y/N]: " choice
-        if [[ $choice =~ ^[Yy]$ ]]; then
-            echo -e "${BLUE}[INFO]${NC} 开始卸载旧版本..."
-            uninstall_docker
-            sleepy
-        else
-            echo -e "${BLUE}[INFO]${NC} 跳过Docker安装"
-        fi
-    else
-        read -p "是否要安装Docker？[Y/n]: " choice
-        if [[ ! $choice =~ ^[Nn]$ ]]; then
-            echo -e "${BLUE}[INFO]${NC} 开始安装Docker..."
-            install_docker
-            sleepy
-        else
-            echo -e "${RED}[ERROR]${NC} 用户取消安装"
-            exit 0
-        fi
+# Docker安装检查
+if command -v docker &> /dev/null; then
+    echo -e "${GREEN}检测到已安装Docker版本：$(docker --version)${RESET}"
+    read -p "是否覆盖安装？(y/N) " choice
+    if [[ $choice =~ [Yy] ]]; then
+        echo -e "${YELLOW}卸载旧版本...${RESET}"
+        case $OS in
+            alpine) $SUDO_CMD apk del docker* ;;
+            debian|ubuntu) $SUDO_CMD apt-get purge -y docker* ;;
+            centos) $SUDO_CMD yum remove -y docker* ;;
+        esac
+        install_docker
     fi
-
-    # Docker Compose检查
-    if ! command -v docker-compose &> /dev/null; then
-        read -p "是否要安装Docker Compose？[Y/n]: " choice
-        if [[ ! $choice =~ ^[Nn]$ ]]; then
-            install_docker_compose
-        fi
+else
+    read -p "是否安装Docker？(Y/n) " choice
+    if [[ ! $choice =~ [Nn] ]]; then
+        install_docker
     else
-        echo -e "${YELLOW}[WARN]${NC} 检测到已安装Docker Compose:"
-        docker-compose --version
-        read -p "是否要重新安装？[y/N]: " choice
-        if [[ $choice =~ ^[Yy]$ ]]; then
-            install_docker_compose
-        fi
+        exit 0
     fi
-    sleepy
+fi
 
-    # 设置镜像加速
-    echo -e "${BLUE}[INFO]${NC} 配置镜像加速..."
-    configure_mirror
-    sleepy
+# Docker Compose检查
+if ! command -v docker-compose &> /dev/null; then
+    read -p "是否安装Docker Compose？(Y/n) " choice
+    if [[ ! $choice =~ [Nn] ]]; then
+        install_compose
+    fi
+else
+    echo -e "${GREEN}检测到已安装Docker Compose版本：$(docker-compose --version)${RESET}"
+    read -p "是否覆盖安装？(y/N) " choice
+    if [[ $choice =~ [Yy] ]]; then
+        install_compose
+    fi
+fi
 
-    # 设置开机启动
-    echo -e "${BLUE}[INFO]${NC} 设置开机启动..."
-    enable_service
-    sleepy
+# 开机自启配置
+echo -e "${YELLOW}配置服务自启动...${RESET}"
+case $OS in
+    alpine)
+        $SUDO_CMD rc-update add docker default
+        $SUDO_CMD service docker start
+        ;;
+    *)
+        $SUDO_CMD systemctl enable --now docker
+        ;;
+esac
+sleep 0.5
 
-    # 重启Docker
-    echo -e "${BLUE}[INFO]${NC} 重启Docker服务..."
-    case $OS in
-        alpine) $SUDO service docker restart ;;
-        *) $SUDO systemctl restart docker ;;
-    esac
+# 镜像源配置
+configure_mirror
 
-    # 验证安装
-    echo -e "${GREEN}[RESULT]${NC} 安装完成，版本信息："
-    docker --version
-    docker-compose --version
-}
-
-# 执行主函数
-main
+# 验证安装
+echo -e "${GREEN}验证安装结果："
+docker --version
+docker-compose --version
+echo -e "镜像源配置："
+cat /etc/docker/daemon.json 2>/dev/null
+echo -e "${RESET}"
