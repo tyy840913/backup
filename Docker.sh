@@ -217,12 +217,6 @@ configure_mirror() {
     
     echo -e "${GREEN}镜像加速配置已更新，应用以下镜像源：${NC}"
     jq '.registry-mirrors' "$DAEMON_JSON"
-    
-    # 检查JSON语法
-       if ! jq empty "$DAEMON_JSON" &>/dev/null; then
-       echo -e "${RED}错误：配置文件语法错误，请检查JSON格式${NC}"
-       exit 1
-    fi
 
     # 重启服务
     echo -e "\n${YELLOW}正在重启Docker服务...${NC}"
