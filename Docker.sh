@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -160,7 +159,7 @@ install_compose() {
     esac
 }
 
-# 镜像加速配置（增强版）
+# 镜像加速配置（最终修复版）
 configure_mirror() {
     local DAEMON_JSON="/etc/docker/daemon.json"
     declare -a MIRRORS=(
@@ -173,17 +172,14 @@ configure_mirror() {
 
     echo -e "\n${CYAN}=== 镜像加速配置 ===${NC}"
     
-    # 确保目录存在（保留原功能）
-    if [ ! -d "$(dirname "$DAEMON_JSON")" ]; then
-        echo -e "${YELLOW}创建docker配置目录: $(dirname "$DAEMON_JSON")${NC}"
-        mkdir -pv "$(dirname "$DAEMON_JSON")"
-    fi
+    # 确保目录存在
+    mkdir -pv "$(dirname "$DAEMON_JSON")"
 
-    # 处理现有配置文件（保留交互逻辑）
+    # 处理现有配置文件
     if [ -f "$DAEMON_JSON" ]; then
         echo -e "${GREEN}发现现有配置文件: $DAEMON_JSON${NC}"
         echo -e "${BLUE}当前配置内容：${NC}"
-        jq . "$DAEMON_JSON" 2>/dev/null || cat "$DAEMON_JSON"
+        jq . "$DAEMON_JSON" 2>/dev/null || { echo -e "${RED}无效JSON内容："; cat "$DAEMON_JSON"; }
         
         read -p $'\n是否要替换现有配置？(y/N): ' replace_choice
         case "$replace_choice" in
@@ -200,36 +196,36 @@ configure_mirror() {
         touch "$DAEMON_JSON"
     fi
 
-    # 修正点1：正确的JSON键名引号
-    # 修正点2：规范的变量传递
+    # 生成新配置（关键修复点）
     MIRRORS_JSON=$(printf '%s\n' "${MIRRORS[@]}" | jq -R . | jq -s .)
-    if ! NEW_CONFIG=$(jq -n --argjson mirrors "$MIRRORS_JSON" '{"registry-mirrors": $mirrors}'); then
-        echo -e "${RED}错误：生成JSON配置失败，请检查镜像源格式${NC}"
+    if ! jq -n --argjson mirrors "$MIRRORS_JSON" '{ "registry-mirrors": $mirrors }' > "$DAEMON_JSON"; then
+        echo -e "${RED}错误：生成配置文件失败，请检查镜像源格式${NC}"
         exit 1
     fi
 
-    # 写入配置（保留权限设置）
-    echo "$NEW_CONFIG" | jq . > "$DAEMON_JSON"
-    chmod 600 "$DAEMON_JSON"
-    
-    # 修正点3：安全的配置读取
+    # 安全读取验证（修复jq解析错误）
     echo -e "${GREEN}镜像加速配置已更新，应用以下镜像源：${NC}"
-    if ! jq -r '.registry-mirrors[]' "$DAEMON_JSON"; then
-        echo -e "${RED}错误：读取镜像源配置失败${NC}"
+    if ! jq -r '.["registry-mirrors"] // empty | .[]' "$DAEMON_JSON"; then
+        echo -e "${RED}错误：镜像源配置读取失败，请检查以下文件："
+        cat "$DAEMON_JSON"
         exit 1
     fi
 
-    # 重启服务（保留系统判断）
+    # 重启服务
     echo -e "\n${YELLOW}正在重启Docker服务...${NC}"
     if [ "$OS" = "alpine" ]; then
-        service docker restart
+        service docker restart || { echo -e "${RED}Alpine系统重启失败，请手动执行：rc-service docker restart${NC}"; exit 1; }
     else
-        systemctl restart docker
+        systemctl restart docker || { echo -e "${RED}systemd系统重启失败，请检查状态：systemctl status docker${NC}"; exit 1; }
     fi
 
-    # 新增验证点
-    if ! docker info 2>/dev/null | grep -q "Registry Mirrors"; then
-        echo -e "${YELLOW}警告：镜像加速可能未生效，请手动验证${NC}"
+    # 最终验证
+    if ! docker info 2>/dev/null | grep -A 5 "Registry Mirrors" | grep -q "http"; then
+        echo -e "${YELLOW}警告：镜像加速可能未生效，请手动验证："
+        echo -e "检查命令：docker info | grep -A 5 'Registry Mirrors'"
+        echo -e "配置文件：cat $DAEMON_JSON${NC}"
+    else
+        echo -e "${GREEN}验证通过：镜像加速已生效${NC}"
     fi
 }
 
