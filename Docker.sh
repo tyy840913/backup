@@ -118,7 +118,11 @@ tee /etc/apt/sources.list.d/docker.list > /dev/null
             service docker start ;;
     esac
 
-    if [ "$OS" != "alpine" ]; then
+    # Alpine系统特殊处理
+    if [ "$OS" = "alpine" ]; then
+        rc-update add docker default
+        service docker start
+    else
         systemctl enable --now docker 2>/dev/null
     fi
 }
@@ -163,6 +167,7 @@ configure_mirror() {
 }
 EOF
 
+    # 重启服务
     if [ "$OS" = "alpine" ]; then
         service docker restart
     else
@@ -229,12 +234,25 @@ main() {
     echo -e "${GREEN}Docker版本: $(docker --version 2>/dev/null || echo '未安装')${NC}"
     echo -e "${GREEN}Docker Compose版本: $(docker-compose --version 2>/dev/null || echo '未安装')${NC}"
 
-    # 服务状态检查
+    # 服务状态检查（双重验证）
     echo -e "\n${CYAN}=== 服务状态 ===${NC}"
     if [ "$OS" = "alpine" ]; then
-        rc-status docker | grep -q started && echo -e "Docker状态: ${GREEN}运行中${NC}" || echo -e "Docker状态: ${RED}未运行${NC}"
+        if rc-service docker status | grep -q started; then
+            echo -e "服务检测: ${GREEN}运行中${NC}"
+        else
+            echo -e "服务检测: ${RED}未运行${NC}"
+        fi
     else
-        systemctl is-active docker | grep -q active && echo -e "Docker状态: ${GREEN}运行中${NC}" || echo -e "Docker状态: ${RED}未运行${NC}"
+        systemctl is-active docker | grep -q active && \
+        echo -e "服务检测: ${GREEN}运行中${NC}" || \
+        echo -e "服务检测: ${RED}未运行${NC}"
+    fi
+
+    # 进程级验证
+    if docker ps >/dev/null 2>&1; then
+        echo -e "进程验证: ${GREEN}Docker正在响应${NC}"
+    else
+        echo -e "进程验证: ${RED}Docker未响应${NC}"
     fi
 }
 
