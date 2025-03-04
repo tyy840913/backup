@@ -96,11 +96,11 @@ install_docker() {
             apt-get install -y ca-certificates curl gnupg
 
             install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https://add.woskee.nyc.mn/download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            curl -fsSL https:// download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
             chmod a+r /etc/apt/keyrings/docker.gpg
 
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://add.woskee.nyc.mn/download.docker.com/linux/$OS $CODENAME stable" | \
+https://download.docker.com/linux/$OS $CODENAME stable" | \
 tee /etc/apt/sources.list.d/docker.list > /dev/null
 
             apt-get update
@@ -108,7 +108,7 @@ tee /etc/apt/sources.list.d/docker.list > /dev/null
 
         "centos"|"rhel"|"fedora")
             yum install -y yum-utils
-            yum-config-manager --add-repo https://add.woskee.nyc.mn/download.docker.com/linux/centos/docker-ce.repo
+            yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
             yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin ;;
 
         "alpine")
@@ -133,7 +133,7 @@ install_compose() {
             apk add --no-cache docker-compose ;;
         *)
             COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
-            BINARY_URL="https://add.woskee.nyc.mn/github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
+            BINARY_URL="https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
             
             # 使用临时目录和install命令
             TEMP_DIR=$(mktemp -d)
@@ -169,6 +169,13 @@ configure_mirror() {
         "https://docker.woskee.dns.army"
         "https://docker.woskee.dynv6.net"
     )
+
+    # 将数组转换为JSON格式
+    MIRRORS_JSON=$(printf '%s\n' "${MIRRORS[@]}" | jq -R . | jq -s .)
+    
+    # 生成并写入配置
+    jq -n --argjson mirrors "$MIRRORS_JSON" '{"registry-mirrors": $mirrors}' > "$DAEMON_JSON"
+}
 
     echo -e "\n${CYAN}=== 镜像加速配置 ===${NC}"
     
@@ -210,13 +217,20 @@ configure_mirror() {
     
     echo -e "${GREEN}镜像加速配置已更新，应用以下镜像源：${NC}"
     jq '.registry-mirrors' "$DAEMON_JSON"
+    
+    # 检查JSON语法
+       if ! jq empty "$DAEMON_JSON" &>/dev/null; then
+       echo -e "${RED}错误：配置文件语法错误，请检查JSON格式${NC}"
+       exit 1
+    fi
 
     # 重启服务
     echo -e "\n${YELLOW}正在重启Docker服务...${NC}"
     if [ "$OS" = "alpine" ]; then
-        service docker restart
-    else
-        systemctl restart docker
+    service docker restart
+else
+    systemctl stop docker.service docker.socket  # 彻底停止服务 
+    systemctl start docker
     fi
 }
 
