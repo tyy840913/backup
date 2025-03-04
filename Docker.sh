@@ -160,7 +160,6 @@ set_mirror() {
     echo -e "${GREEN}镜像加速源配置完成！${NC}"
     sleepy
 }
-}
 
 # 增强的服务管理函数
 enable_service() {
