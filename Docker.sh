@@ -220,11 +220,11 @@ configure_mirror() {
 
     # 重启服务
     echo -e "\n${YELLOW}正在重启Docker服务...${NC}"
-    if [ "$OS" = "alpine" ]; then
-    service docker restart
-else
-    systemctl stop docker.service docker.socket  # 彻底停止服务 
-    systemctl start docker
+     if [ "$OS" = "alpine" ]; then
+        rc-update add docker default
+        service docker start
+    else
+        systemctl enable --now docker 2>/dev/null
     fi
 }
 
