@@ -78,14 +78,14 @@ install_docker() {
             apt-get update
             apt-get install -y ca-certificates curl gnupg
             install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https://download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$OS ${CODENAME} stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+            curl -fsSL https://add.woskee.nyc.mn/download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://add.woskee.nyc.mn/download.docker.com/linux/$OS ${CODENAME} stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
             apt-get update
             apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin ;;
 
         "centos"|"rhel"|"fedora")
             yum install -y yum-utils
-            yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+            yum-config-manager --add-repo https://add.woskee.nyc.mn/download.docker.com/linux/centos/docker-ce.repo
             yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin ;;
 
         "alpine")
@@ -103,8 +103,8 @@ install_compose() {
         "alpine")
             apk add --no-cache docker-compose ;;
         *)
-            COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep tag_name | cut -d'"' -f4)
-            curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            COMPOSE_VERSION=$(curl -s https://add.woskee.nyc.mn/api.github.com/repos/docker/compose/releases/latest | grep tag_name | cut -d'"' -f4)
+            curl -L "https://add.woskee.nyc.mn/github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
             chmod +x /usr/local/bin/docker-compose
             ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose 2>/dev/null ;;
     esac
@@ -113,7 +113,15 @@ install_compose() {
 # 镜像加速配置
 configure_mirror() {
     DAEMON_JSON="/etc/docker/daemon.json"
-    MIRROR_URL="https://registry.cn-hangzhou.aliyuncs.com"
+    MIRROR_URL="https:https://proxy.1panel.live"
+
+                "https://docker.1panel.top"
+
+                "https://docker.m.daocloud.io"
+
+                "https://docker.woskee.dns.army"
+
+                "https://docker.woskee.dynv6.net"
 
     echo -e "${YELLOW}配置镜像加速源...${NC}"
     if [ -f $DAEMON_JSON ]; then
