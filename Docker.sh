@@ -55,6 +55,28 @@ install_docker() {
             ;;
     esac
     
+    # 增加安装后验证
+    if ! command -v docker &> /dev/null; then
+        echo -e "${RED}严重错误：Docker安装失败！${NC}"
+        exit 1
+    fi
+    
+    # 检查服务文件是否存在
+    case $OS_ID in
+        alpine)
+            if [ ! -f "/etc/init.d/docker" ]; then
+                echo -e "${RED}错误：Alpine系统docker服务文件未找到${NC}"
+                exit 1
+            fi
+            ;;
+        *)
+            if [ ! -f "/usr/lib/systemd/system/docker.service" ]; then
+                echo -e "${RED}错误：docker.service文件未找到${NC}"
+                exit 1
+            fi
+            ;;
+    esac
+    echo -e "${GREEN}Docker安装验证通过${NC}"
     sleepy
 }
 
@@ -138,20 +160,60 @@ set_mirror() {
     echo -e "${GREEN}镜像加速源配置完成！${NC}"
     sleepy
 }
+}
 
-# 设置开机启动
+# 增强的服务管理函数
 enable_service() {
     echo -e "${YELLOW}设置Docker开机启动...${NC}"
+    
+    # 检查docker是否真实存在
+    if ! command -v docker &> /dev/null; then
+        echo -e "${RED}错误：Docker未正确安装，无法设置开机启动${NC}"
+        return 1
+    fi
+
     case $OS_ID in
         alpine)
-            rc-update add docker boot
-            service docker restart
+            if rc-update | grep -q docker; then
+                echo -e "${YELLOW}Alpine系统已存在docker启动项${NC}"
+            else
+                rc-update add docker boot
+            fi
+            if service docker status | grep -q 'stopped'; then
+                service docker start
+            fi
             ;;
         *)
-            systemctl enable docker
-            systemctl restart docker
+            if systemctl is-enabled docker &> /dev/null; then
+                echo -e "${YELLOW}系统已设置Docker开机启动${NC}"
+            else
+                systemctl enable docker
+            fi
+            
+            if ! systemctl is-active docker &> /dev/null; then
+                systemctl restart docker
+            fi
             ;;
     esac
+    
+    # 二次验证服务状态
+    sleepy
+    case $OS_ID in
+        alpine)
+            if ! service docker status | grep -q 'started'; then
+                echo -e "${RED}错误：Docker服务启动失败${NC}"
+                return 1
+            fi
+            ;;
+        *)
+            if ! systemctl is-active docker &> /dev/null; then
+                echo -e "${RED}错误：Docker服务启动失败${NC}"
+                return 1
+            fi
+            ;;
+    esac
+    
+    echo -e "${GREEN}Docker服务启动成功！${NC}"
     sleepy
 }
 
@@ -163,9 +225,11 @@ set_mirror
 enable_service
 
 # 验证安装
-echo -e "${YELLOW}验证安装...${NC}"
-docker --version
-if command -v docker-compose &> /dev/null; then
-    docker-compose --version
-fi
-echo -e "${GREEN}所有操作已完成！${NC}"
+    echo -e "${YELLOW}验证安装...${NC}"
+            if command -v docker &> /dev/null; then
+               docker --version || echo -e "${RED}警告：找到docker命令但无法获取版本${NC}"
+    else
+    echo -e "${RED}严重错误：docker命令未找到！${NC}"
+    exit 1
+ fi
+    echo -e "${GREEN}所有操作已完成！${NC}"
