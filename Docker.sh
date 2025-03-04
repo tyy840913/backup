@@ -1,150 +1,142 @@
 #!/bin/bash
 
-# 定义颜色
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# 延时函数
-sleep_with_output() {
-    echo -e "${BLUE}等待0.5秒...${NC}"
+# 交互式延时函数
+delay() {
     sleep 0.5
 }
 
 # 检测系统发行版
-detect_distro() {
+detect_os() {
+    echo "▌[系统检测] 正在识别操作系统..."
     if [ -f /etc/os-release ]; then
         . /etc/os-release
-        DISTRO=$ID
-        VERSION=$VERSION_ID
+        OS=$ID
+        VER=$VERSION_ID
     elif [ -f /etc/alpine-release ]; then
-        DISTRO="alpine"
-        VERSION=$(cat /etc/alpine-release)
+        OS=alpine
+        VER=$(cat /etc/alpine-release)
     else
-        echo -e "${RED}无法检测系统发行版${NC}"
+        echo "⚠ 错误：不支持的Linux发行版"
         exit 1
     fi
-    echo -e "${GREEN}检测到系统发行版: ${DISTRO} ${VERSION}${NC}"
+    delay
+    echo "▌[系统检测] 识别到系统：$OS $VER"
 }
 
-# 安装Docker
-install_docker() {
-    case $DISTRO in
-        ubuntu|debian)
-            echo -e "${BLUE}开始安装Docker...${NC}"
-            sudo apt-get update
-            sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
-            curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | sudo tee /etc/apt/trusted.gpg.d/docker.asc > /dev/null
-            sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/$DISTRO $(lsb_release -cs) stable"
-            sudo apt-get update
-            sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+# 设置发行版相关参数
+set_dist_params() {
+    case $OS in
+        debian|ubuntu)
+            PKG_MGR="apt-get"
+            INSTALL_CMD="install -y"
+            DOCKER_PKG="docker.io"
+            COMPOSE_PKG="docker-compose"
+            SRV_RESTART="systemctl restart docker"
+            SRV_ENABLE="systemctl enable docker"
+            CONF_DIR="/etc/docker"
             ;;
-        centos|rhel)
-            echo -e "${BLUE}开始安装Docker...${NC}"
-            sudo yum install -y yum-utils
-            sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-            sudo yum install -y docker-ce docker-ce-cli containerd.io
+        centos|fedora|rhel)
+            PKG_MGR="yum"
+            INSTALL_CMD="install -y"
+            DOCKER_PKG="docker-ce"
+            COMPOSE_PKG="docker-compose"
+            SRV_RESTART="systemctl restart docker"
+            SRV_ENABLE="systemctl enable docker"
+            CONF_DIR="/etc/docker"
             ;;
         alpine)
-            echo -e "${BLUE}开始安装Docker...${NC}"
-            sudo apk add docker
+            PKG_MGR="apk"
+            INSTALL_CMD="add"
+            DOCKER_PKG="docker"
+            COMPOSE_PKG="docker-compose"
+            SRV_RESTART="service docker restart"
+            SRV_ENABLE="rc-update add docker default"
+            CONF_DIR="/etc/docker"
             ;;
         *)
-            echo -e "${RED}不支持的系统发行版${NC}"
+            echo "⚠ 错误：不支持的发行版"
             exit 1
             ;;
     esac
-    echo -e "${GREEN}Docker安装完成${NC}"
+    delay
 }
 
-# 卸载Docker
+# 检查已安装组件
+check_installed() {
+    echo "▌[环境检查] 正在检测已安装组件..."
+    if command -v docker &> /dev/null; then
+        DOCKER_VER=$(docker --version | awk '{print $3}' | tr -d ',')
+        echo "▌[环境检查] 已安装Docker版本：$DOCKER_VER"
+    else
+        DOCKER_VER="未安装"
+    fi
+
+    if command -v docker-compose &> /dev/null; then
+        COMPOSE_VER=$(docker-compose --version | awk '{print $3}' | tr -d ',')
+        echo "▌[环境检查] 已安装Docker Compose版本：$COMPOSE_VER"
+    else
+        COMPOSE_VER="未安装"
+    fi
+    delay
+}
+
+# 卸载现有组件
 uninstall_docker() {
-    case $DISTRO in
-        ubuntu|debian)
-            echo -e "${BLUE}开始卸载Docker...${NC}"
-            sudo apt-get purge -y docker-ce docker-ce-cli containerd.io
-            sudo rm -rf /var/lib/docker
+    echo "▌[卸载清理] 开始移除旧版本..."
+    case $OS in
+        debian|ubuntu)
+            apt-get purge -y docker* containerd runc
+            rm -rf /var/lib/docker
             ;;
-        centos|rhel)
-            echo -e "${BLUE}开始卸载Docker...${NC}"
-            sudo yum remove -y docker-ce docker-ce-cli containerd.io
-            sudo rm -rf /var/lib/docker
+        centos|fedora|rhel)
+            yum remove -y docker* containerd.io
+            rm -rf /var/lib/docker
             ;;
         alpine)
-            echo -e "${BLUE}开始卸载Docker...${NC}"
-            sudo apk del docker
-            ;;
-        *)
-            echo -e "${RED}不支持的系统发行版${NC}"
-            exit 1
+            apk del docker* containerd runc
+            rm -rf /var/lib/docker
             ;;
     esac
-    echo -e "${GREEN}Docker卸载完成${NC}"
+    delay
+    echo "▌[卸载清理] 旧版本组件已清理完成"
+}
+
+# 安装Docker核心
+install_docker() {
+    echo "▌[安装Docker] 正在配置安装源..."
+    case $OS in
+        debian|ubuntu)
+            curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/$OS/gpg | gpg --dearmor -o /etc/apt/trusted.gpg.d/docker.gpg
+            echo "deb [arch=$(dpkg --print-architecture)] https://mirrors.aliyun.com/docker-ce/linux/$OS $VERSION_CODENAME stable" > /etc/apt/sources.list.d/docker.list
+            apt-get update
+            ;;
+        centos|fedora)
+            yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
+            ;;
+        alpine)
+            echo "https://mirrors.aliyun.com/alpine/latest-stable/main" > /etc/apk/repositories
+            echo "https://mirrors.aliyun.com/alpine/latest-stable/community" >> /etc/apk/repositories
+            apk update
+            ;;
+    esac
+
+    echo "▌[安装Docker] 正在安装核心组件..."
+    $PKG_MGR $INSTALL_CMD $DOCKER_PKG
+    delay
 }
 
 # 安装Docker Compose
-install_docker_compose() {
-    echo -e "${BLUE}开始安装Docker Compose...${NC}"
-    sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose
-    echo -e "${GREEN}Docker Compose安装完成${NC}"
+install_compose() {
+    echo "▌[安装Compose] 正在下载组件..."
+    curl -L "https://ghproxy.com/https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" \
+         -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    delay
 }
 
-# 卸载Docker Compose
-uninstall_docker_compose() {
-    echo -e "${BLUE}开始卸载Docker Compose...${NC}"
-    sudo rm -f /usr/local/bin/docker-compose
-    echo -e "${GREEN}Docker Compose卸载完成${NC}"
-}
-
-# 检查Docker是否已安装
-check_docker_installed() {
-    if command -v docker &> /dev/null; then
-        DOCKER_VERSION=$(docker --version)
-        echo -e "${GREEN}Docker已安装: ${DOCKER_VERSION}${NC}"
-        return 0
-    else
-        echo -e "${YELLOW}Docker未安装${NC}"
-        return 1
-    fi
-}
-
-# 检查Docker Compose是否已安装
-check_docker_compose_installed() {
-    if command -v docker-compose &> /dev/null; then
-        DOCKER_COMPOSE_VERSION=$(docker-compose --version)
-        echo -e "${GREEN}Docker Compose已安装: ${DOCKER_COMPOSE_VERSION}${NC}"
-        return 0
-    else
-        echo -e "${YELLOW}Docker Compose未安装${NC}"
-        return 1
-    fi
-}
-
-# 设置开机自启
-enable_docker_startup() {
-    case $DISTRO in
-        ubuntu|debian|centos|rhel)
-            echo -e "${BLUE}设置Docker开机自启...${NC}"
-            sudo systemctl enable docker
-            ;;
-        alpine)
-            echo -e "${BLUE}设置Docker开机自启...${NC}"
-            sudo rc-update add docker
-            ;;
-        *)
-            echo -e "${RED}不支持的系统发行版${NC}"
-            exit 1
-            ;;
-    esac
-    echo -e "${GREEN}Docker开机自启已设置${NC}"
-}
-
-# 配置镜像加速源
+# 配置镜像加速
 configure_mirror() {
-    MIRROR_FILE="/etc/docker/daemon.json"
+    echo "▌[镜像加速] 正在配置加速源..."
     MIRRORS=(
         "https://docker.1panel.top"
         "https://proxy.1panel.live"
@@ -153,86 +145,78 @@ configure_mirror() {
         "https://docker.woskee.dynv6.net"
     )
 
-    if [ ! -f $MIRROR_FILE ]; then
-        echo -e "${BLUE}创建镜像加速源文件...${NC}"
-        sudo mkdir -p /etc/docker
-        echo '{"registry-mirrors": []}' | sudo tee $MIRROR_FILE > /dev/null
+    CONF_FILE="$CONF_DIR/daemon.json"
+    if [ ! -d "$CONF_DIR" ]; then
+        mkdir -p $CONF_DIR
+        echo "▌[镜像加速] 已创建配置目录：$CONF_DIR"
     fi
 
-    echo -e "${BLUE}当前镜像加速源:${NC}"
-    sudo cat $MIRROR_FILE
-
-    read -p "是否覆盖写入镜像加速源? (y/n): " choice
-    if [ "$choice" = "y" ]; then
-        echo -e "${BLUE}写入镜像加速源...${NC}"
-        sudo jq '.registry-mirrors = $mirrors' --argjson mirrors "$(printf '%s\n' "${MIRRORS[@]}" | jq -R . | jq -s .)" $MIRROR_FILE > /tmp/daemon.json
-        sudo mv /tmp/daemon.json $MIRROR_FILE
-        echo -e "${GREEN}镜像加速源已更新${NC}"
-        return 0
-    else
-        echo -e "${YELLOW}镜像加速源未修改${NC}"
-        return 1
+    if [ -f "$CONF_FILE" ]; then
+        echo "▌[镜像加速] 检测到现有配置文件："
+        cat $CONF_FILE
+        read -p "⚠ 是否覆盖现有配置？[y/N] " OVERRIDE
+        if [[ ! $OVERRIDE =~ ^[Yy] ]]; then
+            echo "▌[镜像加速] 已跳过配置修改"
+            return
+        fi
     fi
+
+    cat > $CONF_FILE << EOF
+{
+    "registry-mirrors": [$(printf '"%s",' "${MIRRORS[@]}" | sed 's/,$//')]
+}
+EOF
+    echo "▌[镜像加速] 加速源已写入配置文件"
+    delay
 }
 
-# 重启Docker
-restart_docker() {
-    case $DISTRO in
-        ubuntu|debian|centos|rhel)
-            echo -e "${BLUE}重启Docker...${NC}"
-            sudo systemctl restart docker
-            ;;
-        alpine)
-            echo -e "${BLUE}重启Docker...${NC}"
-            sudo service docker restart
-            ;;
-        *)
-            echo -e "${RED}不支持的系统发行版${NC}"
-            exit 1
-            ;;
-    esac
-    echo -e "${GREEN}Docker已重启${NC}"
-}
-
-# 主函数
+# 主执行流程
 main() {
-    detect_distro
-    sleep_with_output
+    detect_os
+    set_dist_params
+    check_installed
 
-    if check_docker_installed; then
-        read -p "Docker已安装，是否重新安装? (y/n): " choice
-        if [ "$choice" = "y" ]; then
+    # Docker安装判断
+    if [ "$DOCKER_VER" != "未安装" ]; then
+        read -p "⚠ 检测到已安装Docker，是否重新安装？[y/N] " REINSTALL
+        if [[ $REINSTALL =~ ^[Yy] ]]; then
             uninstall_docker
-            sleep_with_output
             install_docker
         fi
     else
-        read -p "Docker未安装，是否安装? (y/n): " choice
-        if [ "$choice" = "y" ]; then
+        read -p "➤ 是否安装Docker？[Y/n] " INSTALL
+        if [[ ! $INSTALL =~ ^[Nn] ]]; then
             install_docker
         fi
     fi
-    sleep_with_output
 
-    if check_docker_compose_installed; then
-        echo -e "${GREEN}Docker Compose已安装${NC}"
-    else
-        read -p "Docker Compose未安装，是否安装? (y/n): " choice
-        if [ "$choice" = "y" ]; then
-            install_docker_compose
+    # Compose安装判断
+    check_installed
+    if [ "$COMPOSE_VER" == "未安装" ]; then
+        read -p "➤ 是否安装Docker Compose？[Y/n] " INSTALL_COMPOSE
+        if [[ ! $INSTALL_COMPOSE =~ ^[Nn] ]]; then
+            install_compose
         fi
     fi
-    sleep_with_output
 
-    enable_docker_startup
-    sleep_with_output
+    # 服务管理
+    echo "▌[服务管理] 正在设置开机启动..."
+    eval $SRV_ENABLE
+    delay
 
-    if configure_mirror; then
-        restart_docker
-    fi
-    sleep_with_output
+    # 镜像加速配置
+    configure_mirror
 
-    echo -e "${GREEN}脚本执行完成${NC}"
+    # 重启服务
+    echo "▌[服务重启] 正在应用配置更改..."
+    eval $SRV_RESTART
+    delay
+
+    # 验证安装
+    echo "▌[安装验证] 最终版本检测："
+    docker --version
+    docker-compose --version
 }
 
+# 执行入口
 main
