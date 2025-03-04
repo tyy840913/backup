@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -160,7 +159,7 @@ install_compose() {
     esac
 }
 
-# 镜像加速配置
+# 镜像加速配置（增强版）
 configure_mirror() {
     local DAEMON_JSON="/etc/docker/daemon.json"
     declare -a MIRRORS=(
@@ -171,26 +170,54 @@ configure_mirror() {
         "https://docker.woskee.dynv6.net"
     )
 
-    echo -e "${YELLOW}正在配置所有镜像加速源...${NC}"
+    echo -e "\n${CYAN}=== 镜像加速配置 ===${NC}"
     
-    if [ -f $DAEMON_JSON ]; then
-        cp $DAEMON_JSON ${DAEMON_JSON}.bak
-        echo -e "${GREEN}已备份原配置文件至 ${DAEMON_JSON}.bak${NC}"
+    # 确保目录存在
+    if [ ! -d "$(dirname "$DAEMON_JSON")" ]; then
+        echo -e "${YELLOW}创建docker配置目录: $(dirname "$DAEMON_JSON")${NC}"
+        mkdir -pv "$(dirname "$DAEMON_JSON")"
     fi
 
-    mkdir -p $(dirname $DAEMON_JSON)
-    cat <<-EOF > $DAEMON_JSON
-{
-    "registry-mirrors": $(printf '%s\n' "${MIRRORS[@]}" | jq -R . | jq -s .)
-}
-EOF
+    # 处理现有配置文件
+    if [ -f "$DAEMON_JSON" ]; then
+        echo -e "${GREEN}发现现有配置文件: $DAEMON_JSON${NC}"
+        echo -e "${BLUE}当前配置内容：${NC}"
+        jq . "$DAEMON_JSON" 2>/dev/null || cat "$DAEMON_JSON"
+        
+        read -p $'\n是否要替换现有配置？(y/N): ' replace_choice
+        case "$replace_choice" in
+            y|Y)
+                # 备份原配置
+                BACKUP_FILE="${DAEMON_JSON}.bak_$(date +%Y%m%d%H%M%S)"
+                cp -v "$DAEMON_JSON" "$BACKUP_FILE"
+                echo -e "${GREEN}已备份原配置到: $BACKUP_FILE${NC}" ;;
+            *)
+                echo -e "${BLUE}保留现有配置，跳过镜像加速设置${NC}"
+                return ;;
+        esac
+    else
+        echo -e "${YELLOW}创建新配置文件: $DAEMON_JSON${NC}"
+        touch "$DAEMON_JSON"
+    fi
 
+    # 生成新配置
+    NEW_CONFIG=$(jq -n --argjson mirrors "$(printf '%s\n' "${MIRRORS[@]}" | jq -R . | jq -s .)" \
+        '{registry-mirrors: $mirrors}')
+
+    # 写入配置
+    echo "$NEW_CONFIG" | jq . > "$DAEMON_JSON"
+    chmod 600 "$DAEMON_JSON"  # 设置安全权限
+    
+    echo -e "${GREEN}镜像加速配置已更新，应用以下镜像源：${NC}"
+    jq '.registry-mirrors' "$DAEMON_JSON"
+
+    # 重启服务
+    echo -e "\n${YELLOW}正在重启Docker服务...${NC}"
     if [ "$OS" = "alpine" ]; then
         service docker restart
     else
         systemctl restart docker
     fi
-    echo -e "${GREEN}镜像加速配置完成，已添加全部镜像源${NC}"
 }
 
 # 主逻辑
