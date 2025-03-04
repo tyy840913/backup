@@ -1,180 +1,238 @@
 #!/bin/bash
-# 设置全局参数
-export LC_ALL=C
-TMP_DIR=/tmp/docker_install
-MIRRORS=(
+set -e
+
+# 常量定义
+REGISTRY=(
+  "https://docker.1panel.top"
+  "https://proxy.1panel.live"
   "https://docker.m.daocloud.io"
-  "https://docker.woskee.dns.army" 
+  "https://docker.woskee.dns.army"
   "https://docker.woskee.dynv6.net"
 )
+PROXY_URL="https://add.woskee.nyc.mn/"
 
-# 颜色定义
+# 文本颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# 初始化环境
-init_env() {
-  clear
-  echo -e "${BLUE}▶ 初始化安装环境...${NC}"
+# 系统信息检测
+detect_os() {
+  echo -e "${BLUE}▶ 检测系统信息...${NC}"
   sleep 0.5
-  mkdir -p $TMP_DIR
-  [ -f /etc/os-release ] && . /etc/os-release
-  detect_pkg_manager
-}
+  
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS=$ID
+    VER=$VERSION_ID
+  elif type lsb_release >/dev/null 2>&1; then
+    OS=$(lsb_release -si | tr '[:upper:]' '[:lower:]')
+    VER=$(lsb_release -sr)
+  elif [ -f /etc/alpine-release ]; then
+    OS=alpine
+    VER=$(cat /etc/alpine-release)
+  else
+    echo -e "${RED}× 无法检测操作系统${NC}"
+    exit 1
+  fi
 
-# 检测包管理器
-detect_pkg_manager() {
-  echo -e "${BLUE}▶ 检测系统环境...${NC}"
-  case $ID in
-    alpine) PKG_MANAGER="apk"; INSTALL_CMD="add";;
-    debian|ubuntu) PKG_MANAGER="apt"; INSTALL_CMD="install";;
-    centos|rhel|fedora|ol) PKG_MANAGER="yum";;
-    *) echo -e "${RED}✗ 不支持的发行版${NC}"; exit 1;;
+  # 设置包管理器
+  case $OS in
+    ubuntu|debian)
+      PKG_INSTALL="apt-get install -y"
+      PKG_REMOVE="apt-get purge -y"
+      UPDATE_CMD="apt-get update"
+      ;;
+    centos|rhel|fedora)
+      PKG_INSTALL="yum install -y"
+      PKG_REMOVE="yum remove -y"
+      UPDATE_CMD="yum update -y"
+      ;;
+    alpine)
+      PKG_INSTALL="apk add --no-cache"
+      PKG_REMOVE="apk del"
+      UPDATE_CMD="apk update"
+      ;;
+    *)
+      echo -e "${RED}× 不支持的发行版: $OS${NC}"
+      exit 1
+      ;;
   esac
+
+  echo -e "${GREEN}✓ 系统类型: $OS $VER${NC}"
   sleep 0.5
 }
 
-# 系统服务管理
+# 服务管理命令
 service_cmd() {
-  case $ID in
-    alpine) echo "rc-service $1 $2";;
-    *) echo "systemctl $2 $1";;
+  case $OS in
+    ubuntu|debian|centos|rhel|fedora)
+      echo "systemctl $1 docker"
+      ;;
+    alpine)
+      echo "rc-service docker $1"
+      ;;
   esac
 }
 
-# 安装前准备
-pre_install() {
-  echo -e "${BLUE}▶ 更新软件索引...${NC}"
-  case $PKG_MANAGER in
-    apk) apk update;;
-    apt) apt update;;
-    yum) yum makecache;;
+# 检查是否安装
+check_installed() {
+  if command -v docker &>/dev/null; then
+    DOCKER_VER=$(docker --version | awk '{print $3}' | tr -d ',')
+    echo -e "${GREEN}✓ Docker 已安装 - 版本: $DOCKER_VER${NC}"
+    return 0
+  else
+    echo -e "${YELLOW}⚠ Docker 未安装${NC}"
+    return 1
+  fi
+}
+
+# 卸载Docker
+uninstall_docker() {
+  echo -e "${BLUE}▶ 开始卸载旧版本...${NC}"
+  sleep 0.5
+
+  case $OS in
+    ubuntu|debian)
+      $PKG_REMOVE docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+      rm -rf /var/lib/docker /etc/docker
+      ;;
+    centos|rhel|fedora)
+      $PKG_REMOVE docker-ce docker-ce-cli containerd.io
+      rm -rf /var/lib/docker
+      ;;
+    alpine)
+      $PKG_REMOVE docker-cli docker-engine
+      rm -rf /etc/docker
+      ;;
   esac
+
+  echo -e "${GREEN}✓ 旧版本已卸载${NC}"
   sleep 0.5
 }
 
-# Docker安装函数
+# 安装Docker
 install_docker() {
   echo -e "${BLUE}▶ 开始安装Docker...${NC}"
-  case $ID in
+  sleep 0.5
+
+  case $OS in
+    ubuntu|debian)
+      # 添加Docker源
+      curl -fsSL ${PROXY_URL}https://download.docker.com/linux/$OS/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://mirrors.aliyun.com/docker-ce/linux/$OS $VER stable" > /etc/apt/sources.list.d/docker.list
+      $UPDATE_CMD
+      $PKG_INSTALL docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+      ;;
+    centos|rhel|fedora)
+      yum-config-manager --add-repo ${PROXY_URL}https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
+      sed -i 's+download.docker.com+mirrors.aliyun.com/docker-ce+' /etc/yum.repos.d/docker-ce.repo
+      $PKG_INSTALL docker-ce docker-ce-cli containerd.io
+      ;;
     alpine)
-      $PKG_MANAGER $INSTALL_CMD docker
-      ;;
-    debian|ubuntu)
-      curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /etc/apt/trusted.gpg.d/docker.gpg
-      echo "deb [arch=$(dpkg --print-architecture)] https://mirrors.aliyun.com/docker-ce/linux/$ID $VERSION_CODENAME stable" > /etc/apt/sources.list.d/docker.list
-      apt update
-      apt $INSTALL_CMD docker-ce docker-ce-cli containerd.io
-      ;;
-    centos|rhel|fedora|ol)
-      yum install -y yum-utils
-      yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
-      yum install -y docker-ce docker-ce-cli containerd.io
+      $PKG_INSTALL docker
       ;;
   esac
+
+  echo -e "${GREEN}✓ Docker安装完成${NC}"
   sleep 0.5
 }
 
-# Docker Compose安装
-install_compose() {
-  echo -e "${BLUE}▶ 检测Docker Compose...${NC}"
-  if ! command -v docker-compose &> /dev/null; then
-    echo -e "${YELLOW}✓ 未检测到Docker Compose${NC}"
-    read -t 15 -p "是否安装Docker Compose？[Y/n]" COMPOSE_INSTALL
-    case ${COMPOSE_INSTALL:-Y} in
-      Y|y)
-        echo -e "${BLUE}▶ 开始安装Docker Compose...${NC}"
-        curl -L "https://ghproxy.com/https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-        chmod +x /usr/local/bin/docker-compose
-        ;;
-      *) return ;;
-    esac
-  else
-    echo -e "${GREEN}✓ Docker Compose已安装${NC}"
-  fi
+# 设置开机启动
+set_service() {
+  echo -e "${BLUE}▶ 设置开机启动...${NC}"
+  case $OS in
+    ubuntu|debian|centos|rhel|fedora)
+      systemctl enable docker
+      ;;
+    alpine)
+      rc-update add docker default
+      ;;
+  esac
+  echo -e "${GREEN}✓ 已设置开机启动${NC}"
   sleep 0.5
 }
 
 # 配置镜像加速
-config_mirror() {
+config_daemon() {
   echo -e "${BLUE}▶ 配置镜像加速...${NC}"
-  DOCKER_DAEMON=/etc/docker/daemon.json
-  mkdir -p /etc/docker
-  
-  if [ ! -f $DOCKER_DAEMON ]; then
-    echo '{"registry-mirrors":[]}' > $DOCKER_DAEMON
-  fi
-
-  current_mirrors=$(jq '."registry-mirrors"' $DOCKER_DAEMON)
-  new_mirrors=$(printf '%s\n' "${MIRRORS[@]}" | jq -R . | jq -s .)
-  
-  if [ "$current_mirrors" != "$new_mirrors" ]; then
-    jq --argjson new "$new_mirrors" '."registry-mirrors"=$new' $DOCKER_DAEMON > $TMP_DIR/daemon.json
-    mv $TMP_DIR/daemon.json $DOCKER_DAEMON
-    echo -e "${GREEN}✓ 镜像加速配置已更新${NC}"
-    RESTART_DOCKER=true
-  else
-    echo -e "${YELLOW}✓ 镜像配置无需修改${NC}"
-  fi
   sleep 0.5
+
+  DAEMON_JSON=/etc/docker/daemon.json
+  mkdir -p $(dirname $DAEMON_JSON)
+
+  # 生成镜像加速配置
+  registry_str=$(printf ',\n      "%s"' "${REGISTRY[@]}")
+  registry_str=${registry_str:2}
+
+  new_content=$(cat <<EOF
+{
+  "registry-mirrors": [
+    $registry_str
+  ]
 }
+EOF
+)
 
-# 服务管理
-manage_service() {
-  echo -e "${BLUE}▶ 设置开机启动...${NC}"
-  if [ "$ID" = "alpine" ]; then
-    rc-update add docker default
-  else
-    systemctl enable docker
+  # 检查是否需要修改
+  if [ -f $DAEMON_JSON ]; then
+    current_content=$(cat $DAEMON_JSON | tr -d '[:space:]')
+    compare_content=$(echo "$new_content" | tr -d '[:space:]')
+
+    if [ "$current_content" == "$compare_content" ]; then
+      echo -e "${GREEN}✓ 镜像配置无需修改${NC}"
+      return
+    fi
+
+    echo -e "${YELLOW}⚠ 检测到现有配置文件:"
+    cat $DAEMON_JSON
+    read -p "是否覆盖配置？(y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      echo -e "${YELLOW}⚠ 跳过镜像加速配置${NC}"
+      return
+    fi
   fi
-  sleep 0.5
+
+  echo "$new_content" > $DAEMON_JSON
+  echo -e "${GREEN}✓ 镜像加速已配置${NC}"
   
-  if [ "$RESTART_DOCKER" = "true" ]; then
-    echo -e "${BLUE}▶ 重启Docker服务...${NC}"
-    eval $(service_cmd docker restart)
-    sleep 1
-  fi
+  # 重启Docker
+  echo -e "${BLUE}▶ 重启Docker服务...${NC}"
+  $(service_cmd restart)
+  sleep 2
 }
 
 # 主执行流程
 main() {
-  init_env
-  pre_install
+  detect_os
 
-  # 检测Docker安装状态
-  if command -v docker &> /dev/null; then
-    echo -e "${GREEN}✓ 检测到已安装Docker${NC}"
-    read -t 15 -p "是否重新安装？[y/N]" REINSTALL
-    case ${REINSTALL:-N} in
-      Y|y)
-        echo -e "${BLUE}▶ 开始卸载旧版本...${NC}"
-        case $ID in
-          alpine) apk del docker;;
-          debian|ubuntu) apt purge -y docker*;;
-          centos|rhel) yum remove -y docker*;;
-        esac
-        rm -rf /var/lib/docker
-        sleep 0.5
-        install_docker
-        ;;
-      *) ;;
-    esac
+  # 检查Docker安装状态
+  if check_installed; then
+    read -p "检测到已安装Docker，是否重新安装？(y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      uninstall_docker
+      install_docker
+    fi
   else
-    install_docker
+    read -p "是否安装Docker？(Y/n) " -n 1 -r
+    echo
+    [[ ! $REPLY =~ ^[Nn]$ ]] && install_docker
   fi
 
-  install_compose
-  config_mirror
-  manage_service
+  # 设置开机启动
+  set_service
+
+  # 配置镜像加速
+  config_daemon
 
   # 验证安装结果
-  echo -e "\n${GREEN}✔ 安装完成${NC}"
-  echo -e "${BLUE}Docker版本: ${NC}$(docker --version)"
-  echo -e "${BLUE}Compose版本: ${NC}$(docker-compose --version)"
+  echo -e "\n${GREEN}✅ 安装完成！"
+  docker --version
+  echo -e "${NC}"
 }
 
-# 执行主函数
 main
