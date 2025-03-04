@@ -173,13 +173,13 @@ configure_mirror() {
 
     echo -e "\n${CYAN}=== 镜像加速配置 ===${NC}"
     
-    # 确保目录存在
+    # 确保目录存在（保留原功能）
     if [ ! -d "$(dirname "$DAEMON_JSON")" ]; then
         echo -e "${YELLOW}创建docker配置目录: $(dirname "$DAEMON_JSON")${NC}"
         mkdir -pv "$(dirname "$DAEMON_JSON")"
     fi
 
-    # 处理现有配置文件
+    # 处理现有配置文件（保留交互逻辑）
     if [ -f "$DAEMON_JSON" ]; then
         echo -e "${GREEN}发现现有配置文件: $DAEMON_JSON${NC}"
         echo -e "${BLUE}当前配置内容：${NC}"
@@ -188,7 +188,6 @@ configure_mirror() {
         read -p $'\n是否要替换现有配置？(y/N): ' replace_choice
         case "$replace_choice" in
             y|Y)
-                # 备份原配置
                 BACKUP_FILE="${DAEMON_JSON}.bak_$(date +%Y%m%d%H%M%S)"
                 cp -v "$DAEMON_JSON" "$BACKUP_FILE"
                 echo -e "${GREEN}已备份原配置到: $BACKUP_FILE${NC}" ;;
@@ -201,23 +200,36 @@ configure_mirror() {
         touch "$DAEMON_JSON"
     fi
 
-    # 生成新配置
-    NEW_CONFIG=$(jq -n --argjson mirrors "$(printf '%s\n' "${MIRRORS[@]}" | jq -R . | jq -s .)" \
-        '{registry-mirrors: $mirrors}')
+    # 修正点1：正确的JSON键名引号
+    # 修正点2：规范的变量传递
+    MIRRORS_JSON=$(printf '%s\n' "${MIRRORS[@]}" | jq -R . | jq -s .)
+    if ! NEW_CONFIG=$(jq -n --argjson mirrors "$MIRRORS_JSON" '{"registry-mirrors": $mirrors}'); then
+        echo -e "${RED}错误：生成JSON配置失败，请检查镜像源格式${NC}"
+        exit 1
+    fi
 
-    # 写入配置
+    # 写入配置（保留权限设置）
     echo "$NEW_CONFIG" | jq . > "$DAEMON_JSON"
-    chmod 600 "$DAEMON_JSON"  # 设置安全权限
+    chmod 600 "$DAEMON_JSON"
     
+    # 修正点3：安全的配置读取
     echo -e "${GREEN}镜像加速配置已更新，应用以下镜像源：${NC}"
-    jq '.registry-mirrors' "$DAEMON_JSON"
+    if ! jq -r '.registry-mirrors[]' "$DAEMON_JSON"; then
+        echo -e "${RED}错误：读取镜像源配置失败${NC}"
+        exit 1
+    fi
 
-    # 重启服务
+    # 重启服务（保留系统判断）
     echo -e "\n${YELLOW}正在重启Docker服务...${NC}"
     if [ "$OS" = "alpine" ]; then
         service docker restart
     else
         systemctl restart docker
+    fi
+
+    # 新增验证点
+    if ! docker info 2>/dev/null | grep -q "Registry Mirrors"; then
+        echo -e "${YELLOW}警告：镜像加速可能未生效，请手动验证${NC}"
     fi
 }
 
