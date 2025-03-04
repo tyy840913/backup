@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -11,8 +12,8 @@ NC='\033[0m'
 # 系统检测
 detect_os() {
     if [ -f /etc/os-release ]; then
-        OS=$(grep -oP '^ID=\K\w+' /etc/os-release)
-        CODENAME=$(grep -oP 'VERSION_CODENAME=\K\w+' /etc/os-release)
+        OS=$(grep '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"')
+        CODENAME=$(grep 'VERSION_CODENAME=' /etc/os-release | cut -d= -f2 | tr -d '"')
     elif [ -f /etc/alpine-release ]; then
         OS="alpine"
         CODENAME=$(cat /etc/alpine-release | cut -d'.' -f1-2)
@@ -33,6 +34,7 @@ check_dependencies() {
             "alpine") missing+=("gnupg") ;;
         esac
     }
+    command -v jq >/dev/null 2>&1 || missing+=("jq")
 
     if [ ${#missing[@]} -gt 0 ]; then
         echo -e "${YELLOW}安装依赖: ${missing[*]}${NC}"
@@ -89,24 +91,19 @@ install_docker() {
     echo -e "${CYAN}开始安装Docker...${NC}"
     case $OS in
         "ubuntu"|"debian")
-            # 处理Ubuntu的codename特殊情况
             [ "$OS" = "ubuntu" ] && [ "$CODENAME" = "lunar" ] && CODENAME="jammy"
             
-            # 安装依赖
             apt-get update
             apt-get install -y ca-certificates curl gnupg
 
-            # 添加Docker官方GPG密钥
             install -m 0755 -d /etc/apt/keyrings
             curl -fsSL https://download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
             chmod a+r /etc/apt/keyrings/docker.gpg
 
-            # 设置仓库
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
 https://download.docker.com/linux/$OS $CODENAME stable" | \
 tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-            # 安装Docker
             apt-get update
             apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin ;;
 
@@ -121,7 +118,6 @@ tee /etc/apt/sources.list.d/docker.list > /dev/null
             service docker start ;;
     esac
 
-    # 启动服务
     if [ "$OS" != "alpine" ]; then
         systemctl enable --now docker 2>/dev/null
     fi
@@ -134,10 +130,7 @@ install_compose() {
         "alpine")
             apk add --no-cache docker-compose ;;
         *)
-            # 获取最新稳定版
             COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
-            
-            # 下载并安装
             curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" \
             -o /usr/local/bin/docker-compose
             chmod +x /usr/local/bin/docker-compose
@@ -148,71 +141,38 @@ install_compose() {
 # 镜像加速配置
 configure_mirror() {
     local DAEMON_JSON="/etc/docker/daemon.json"
-    declare -A MIRRORS=(
+    declare -a MIRRORS=(
         "https://proxy.1panel.live"
-
         "https://docker.1panel.top"
-
         "https://docker.m.daocloud.io"
-
         "https://docker.woskee.dns.army"
-
         "https://docker.woskee.dynv6.net"
-)
+    )
 
-    echo -e "\n${CYAN}请选择镜像加速源：${NC}"
-    select key in "${!MIRRORS[@]}" "手动输入" "跳过"; do
-        case $key in
-            "手动输入")
-                read -p "请输入镜像加速URL: " custom_url
-                MIRROR_URL=$custom_url
-                break ;;
-            "跳过")
-                return ;;
-            *)
-                [ -n "$key" ] && MIRROR_URL=${MIRRORS[$key]} && break ;;
-        esac
-    done
-
-    echo -e "${YELLOW}配置镜像加速源: $MIRROR_URL${NC}"
+    echo -e "${YELLOW}正在配置所有镜像加速源...${NC}"
     
-    # 备份原有配置
     if [ -f $DAEMON_JSON ]; then
         cp $DAEMON_JSON ${DAEMON_JSON}.bak
         echo -e "${GREEN}已备份原配置文件至 ${DAEMON_JSON}.bak${NC}"
     fi
 
-    # 创建或修改配置
     mkdir -p $(dirname $DAEMON_JSON)
-    if [ -s $DAEMON_JSON ]; then
-        # 使用jq修改现有配置
-        if command -v jq &>/dev/null; then
-            jq --arg url "$MIRROR_URL" '.registry-mirrors |= [(.registry-mirrors // [] | .[]), $url] | unique' $DAEMON_JSON > ${DAEMON_JSON}.tmp
-            mv ${DAEMON_JSON}.tmp $DAEMON_JSON
-        else
-            echo -e "${YELLOW}检测到jq未安装，采用追加模式配置${NC}"
-            sed -i "s/\"registry-mirrors\":.*/&, \"$MIRROR_URL\"/" $DAEMON_JSON
-        fi
-    else
-        cat <<-EOF > $DAEMON_JSON
-        {
-            "registry-mirrors": ["$MIRROR_URL"]
-        }
+    cat <<-EOF > $DAEMON_JSON
+{
+    "registry-mirrors": $(printf '%s\n' "${MIRRORS[@]}" | jq -R . | jq -s .)
+}
 EOF
-    fi
 
-    # 重启服务
     if [ "$OS" = "alpine" ]; then
         service docker restart
     else
         systemctl restart docker
     fi
-    echo -e "${GREEN}镜像加速配置完成${NC}"
+    echo -e "${GREEN}镜像加速配置完成，已添加全部镜像源${NC}"
 }
 
 # 主逻辑
 main() {
-    # 检查root权限
     if [ "$(id -u)" -ne 0 ]; then
         echo -e "${RED}请使用sudo或root用户运行此脚本${NC}"
         exit 1
@@ -243,13 +203,25 @@ main() {
     fi
 
     # Docker Compose安装流程
-    if ! check_compose; then
-        install_compose
+    if check_compose; then
+        read -p "检测到已安装Docker Compose，是否要重新安装？(y/N): " compose_choice
+        case "$compose_choice" in
+            y|Y)
+                install_compose ;;
+            *)
+                echo -e "${BLUE}跳过Docker Compose安装${NC}" ;;
+        esac
     else
-        echo -e "${BLUE}检测到Docker Compose已安装${NC}"
+        read -p "是否要安装Docker Compose？(Y/n): " compose_choice
+        case "$compose_choice" in
+            n|N)
+                echo -e "${RED}跳过Docker Compose安装${NC}" ;;
+            *)
+                install_compose ;;
+        esac
     fi
 
-    # 配置镜像加速
+    # 强制配置镜像加速
     configure_mirror
 
     # 验证安装
