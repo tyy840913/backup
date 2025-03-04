@@ -96,11 +96,11 @@ install_docker() {
             apt-get install -y ca-certificates curl gnupg
 
             install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https://download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            curl -fsSL https://add.woskee.nyc.mn/download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
             chmod a+r /etc/apt/keyrings/docker.gpg
 
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://download.docker.com/linux/$OS $CODENAME stable" | \
+https://add.woskee.nyc.mn/download.docker.com/linux/$OS $CODENAME stable" | \
 tee /etc/apt/sources.list.d/docker.list > /dev/null
 
             apt-get update
