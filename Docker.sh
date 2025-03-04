@@ -118,7 +118,6 @@ tee /etc/apt/sources.list.d/docker.list > /dev/null
             service docker start ;;
     esac
 
-    # Alpine系统特殊处理
     if [ "$OS" = "alpine" ]; then
         rc-update add docker default
         service docker start
@@ -127,7 +126,7 @@ tee /etc/apt/sources.list.d/docker.list > /dev/null
     fi
 }
 
-# 安装Docker Compose
+# 安装Docker Compose（修复版）
 install_compose() {
     echo -e "${CYAN}开始安装Docker Compose...${NC}"
     case $OS in
@@ -135,10 +134,29 @@ install_compose() {
             apk add --no-cache docker-compose ;;
         *)
             COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
-            curl -L "https://add.woskee.nyc.mn/github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" \
-            -o /usr/local/bin/docker-compose
-            chmod +x /usr/local/bin/docker-compose
-            ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose ;;
+            BINARY_URL="https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
+            
+            # 使用临时目录和install命令
+            TEMP_DIR=$(mktemp -d)
+            echo -e "${YELLOW}下载Docker Compose到临时目录: $TEMP_DIR${NC}"
+            
+            if ! curl -L "$BINARY_URL" -o "$TEMP_DIR/docker-compose"; then
+                echo -e "${RED}错误：Docker Compose 下载失败${NC}"
+                rm -rf "$TEMP_DIR"
+                exit 1
+            fi
+
+            if [ ! -s "$TEMP_DIR/docker-compose" ]; then
+                echo -e "${RED}错误：下载文件为空，请检查网络连接${NC}"
+                rm -rf "$TEMP_DIR"
+                exit 1
+            fi
+
+            echo -e "${GREEN}文件下载验证通过，正在安装...${NC}"
+            install -v -D -m 755 "$TEMP_DIR/docker-compose" /usr/local/bin/docker-compose
+            ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+            rm -rf "$TEMP_DIR"
+            ;;
     esac
 }
 
@@ -167,7 +185,6 @@ configure_mirror() {
 }
 EOF
 
-    # 重启服务
     if [ "$OS" = "alpine" ]; then
         service docker restart
     else
