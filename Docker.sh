@@ -150,14 +150,22 @@ set_mirror() {
         fi
     fi
 
-    echo -e "${YELLOW}正在配置镜像加速源...${NC}"
-    echo '{ "registry-mirrors": [' > "$DAEMON_JSON"
-    for mirror in "${MIRRORS[@]}"; do
-        echo "  \"$mirror\"," >> "$DAEMON_JSON"
-    done
-    sed -i '$ s/,$//' "$DAEMON_JSON"
-    echo ']}' >> "$DAEMON_JSON"
-    echo -e "${GREEN}镜像加速源配置完成！${NC}"
+     
+echo -e "${YELLOW}正在配置镜像加速源...${NC}"
+
+# 生成逗号分隔的镜像列表并去除末尾逗号
+mirrors_list=$(printf '"%s",' "${MIRRORS[@]}")
+mirrors_list="[${mirrors_list%,}]"
+
+# 使用 heredoc 语法创建规范的 JSON 格式
+cat > "$DAEMON_JSON" <<EOF
+{
+  "registry-mirrors": $mirrors_list
+}
+EOF
+
+echo -e "${GREEN}镜像加速源配置完成！${NC}"
+ 
     sleepy
 }
 
