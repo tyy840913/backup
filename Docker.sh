@@ -26,13 +26,17 @@ detect_os() {
 check_dependencies() {
     local missing=()
     command -v curl >/dev/null 2>&1 || missing+=("curl")
-    command -v gpg >/dev/null 2>&1 || {
-        case $OS in
-            "ubuntu"|"debian") missing+=("gnupg") ;;
-            "centos"|"rhel"|"fedora") missing+=("gnupg2") ;;
-            "alpine") missing+=("gnupg") ;;
-        esac
-    }
+    
+    # 非Alpine系统检查gpg相关依赖
+    if [ "$OS" != "alpine" ]; then
+        command -v gpg >/dev/null 2>&1 || {
+            case $OS in
+                "ubuntu"|"debian") missing+=("gnupg") ;;
+                "centos"|"rhel"|"fedora") missing+=("gnupg2") ;;
+            esac
+        }
+    fi
+
     command -v jq >/dev/null 2>&1 || missing+=("jq")
 
     if [ ${#missing[@]} -gt 0 ]; then
@@ -112,7 +116,7 @@ tee /etc/apt/sources.list.d/docker.list > /dev/null
             yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin ;;
 
         "alpine")
-            apk add --no-cache docker-cli docker-engine docker-openrc
+            apk add --no-cache docker docker-openrc
             rc-update add docker default
             service docker start ;;
     esac
