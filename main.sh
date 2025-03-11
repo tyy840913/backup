@@ -76,9 +76,68 @@ run_script() {
         
         # 根据后缀选择执行方式
         case "${filenames[index]##*.}" in
-            sh) bash "$tmp_script" ;;
-            py) python3 "$tmp_script" ;;
-            *)  echo -e "${COLOR_ERROR}不支持的脚本格式！${COLOR_RESET}" ;;
+            sh) 
+                bash "$tmp_script" 
+                ;;
+            py) 
+                # 检查Python3是否安装
+                if ! command -v python3 &> /dev/null; then
+                    echo -e "${COLOR_ERROR}未检测到Python3，无法执行该脚本。${COLOR_RESET}"
+                    echo -en "${COLOR_INPUT}是否自动安装Python3？[Y/n]: ${COLOR_RESET}"
+                    read -r answer
+                    case "$answer" in
+                        [Nn]*)
+                            echo -e "${COLOR_ERROR}用户取消安装，返回主界面。${COLOR_RESET}"
+                            rm -f "$tmp_script"
+                            return 1
+                            ;;
+                        *)
+                            echo "正在尝试安装Python3..."
+                            # 根据不同的包管理器安装
+                            if command -v apt &> /dev/null; then
+                                sudo apt update && sudo apt install -y python3 || {
+                                    echo -e "${COLOR_ERROR}安装失败，请检查网络或权限。${COLOR_RESET}"
+                                    rm -f "$tmp_script"
+                                    return 1
+                                }
+                            elif command -v yum &> /dev/null; then
+                                sudo yum install -y python3 || {
+                                    echo -e "${COLOR_ERROR}安装失败，请检查网络或权限。${COLOR_RESET}"
+                                    rm -f "$tmp_script"
+                                    return 1
+                                }
+                            elif command -v dnf &> /dev/null; then
+                                sudo dnf install -y python3 || {
+                                    echo -e "${COLOR_ERROR}安装失败，请检查网络或权限。${COLOR_RESET}"
+                                    rm -f "$tmp_script"
+                                    return 1
+                                }
+                            elif command -v zypper &> /dev/null; then
+                                sudo zypper install -y python3 || {
+                                    echo -e "${COLOR_ERROR}安装失败，请检查网络或权限。${COLOR_RESET}"
+                                    rm -f "$tmp_script"
+                                    return 1
+                                }
+                            else
+                                echo -e "${COLOR_ERROR}无法检测到支持的包管理器，请手动安装Python3。${COLOR_RESET}"
+                                rm -f "$tmp_script"
+                                return 1
+                            fi
+                            # 安装成功后再次检查
+                            if ! command -v python3 &> /dev/null; then
+                                echo -e "${COLOR_ERROR}Python3安装失败，请手动安装。${COLOR_RESET}"
+                                rm -f "$tmp_script"
+                                return 1
+                            fi
+                            ;;
+                    esac
+                fi
+                # 执行Python脚本
+                python3 "$tmp_script"
+                ;;
+            *)  
+                echo -e "${COLOR_ERROR}不支持的脚本格式！${COLOR_RESET}"
+                ;;
         esac
         
         rm -f "$tmp_script"
