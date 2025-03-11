@@ -2,7 +2,8 @@
 
 # 基础配置
 base_url="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main"
-catalog_file="/tmp/cata.$$.txt"
+memory_tmpdir="/dev/shm/script_platform_$$"  # 内存临时目录（使用PID保证唯一性）
+catalog_file="${memory_tmpdir}/cata.txt"    # 内存中的目录文件
 descriptions=()
 filenames=()
 
@@ -14,10 +15,38 @@ COLOR_INPUT=$'\033[1;35m'
 COLOR_ERROR=$'\033[1;31m'
 COLOR_RESET=$'\033[0m'
 
-# 下载目录文件
+# 退出时清理函数
+cleanup() {
+    echo -e "\n${COLOR_TITLE}清理内存临时文件...${COLOR_RESET}"
+    # 安全删除内存临时目录
+    if [ -d "$memory_tmpdir" ]; then
+        rm -rf "$memory_tmpdir" && echo "已清理内存目录: $memory_tmpdir"
+    fi
+}
+
+# 注册退出清理钩子
+trap cleanup EXIT INT TERM
+
+# 初始化内存工作区
+init_memory_space() {
+    # 检查是否支持内存文件系统
+    if [ ! -d "/dev/shm" ]; then
+        echo -e "${COLOR_ERROR}错误：系统不支持内存临时文件系统(/dev/shm)！${COLOR_RESET}" >&2
+        exit 1
+    fi
+
+    # 创建唯一临时目录
+    if ! mkdir -p "$memory_tmpdir"; then
+        echo -e "${COLOR_ERROR}无法创建内存临时目录！${COLOR_RESET}" >&2
+        exit 1
+    fi
+    echo -e "${COLOR_TITLE}内存工作区已创建: ${memory_tmpdir}${COLOR_RESET}"
+}
+
+# 下载目录文件到内存
 download_catalog() {
     if [ ! -f "$catalog_file" ]; then
-        echo -e "${COLOR_TITLE}正在获取脚本目录...${COLOR_RESET}"
+        echo -e "${COLOR_TITLE}正在获取脚本目录到内存...${COLOR_RESET}"
         if ! curl -s "${base_url}/cata.txt" -o "$catalog_file"; then
             echo -e "${COLOR_ERROR}错误：目录文件下载失败！${COLOR_RESET}" >&2
             exit 1
@@ -48,7 +77,7 @@ show_interface() {
     # 显示标题
     echo -e "${COLOR_TITLE}"
     print_divider
-    echo "             智能脚本平台"
+    echo "             全内存脚本平台"
     print_divider
     echo -e "${COLOR_RESET}"
 
@@ -64,11 +93,11 @@ show_interface() {
     echo -en "${COLOR_INPUT}请输入序号选择脚本 (0 退出): ${COLOR_RESET}"
 }
 
-# 执行子脚本
+# 执行子脚本（完全内存操作）
 run_script() {
     local index=$(($1 - 1))
     local script_url="${base_url}/${filenames[index]}"
-    local tmp_script=$(mktemp)
+    local tmp_script="${memory_tmpdir}/${filenames[index]##*/}"  # 内存临时脚本
     
     echo -e "\n${COLOR_TITLE}正在获取 ${COLOR_OPTION}${filenames[index]}${COLOR_RESET}"
     if curl -s "$script_url" -o "$tmp_script"; then
@@ -88,7 +117,6 @@ run_script() {
                     case "$answer" in
                         [Nn]*)
                             echo -e "${COLOR_ERROR}用户取消安装，返回主界面。${COLOR_RESET}"
-                            rm -f "$tmp_script"
                             return 1
                             ;;
                         *)
@@ -97,36 +125,30 @@ run_script() {
                             if command -v apt &> /dev/null; then
                                 sudo apt update && sudo apt install -y python3 || {
                                     echo -e "${COLOR_ERROR}安装失败，请检查网络或权限。${COLOR_RESET}"
-                                    rm -f "$tmp_script"
                                     return 1
                                 }
                             elif command -v yum &> /dev/null; then
                                 sudo yum install -y python3 || {
                                     echo -e "${COLOR_ERROR}安装失败，请检查网络或权限。${COLOR_RESET}"
-                                    rm -f "$tmp_script"
                                     return 1
                                 }
                             elif command -v dnf &> /dev/null; then
                                 sudo dnf install -y python3 || {
                                     echo -e "${COLOR_ERROR}安装失败，请检查网络或权限。${COLOR_RESET}"
-                                    rm -f "$tmp_script"
                                     return 1
                                 }
                             elif command -v zypper &> /dev/null; then
                                 sudo zypper install -y python3 || {
                                     echo -e "${COLOR_ERROR}安装失败，请检查网络或权限。${COLOR_RESET}"
-                                    rm -f "$tmp_script"
                                     return 1
                                 }
                             else
                                 echo -e "${COLOR_ERROR}无法检测到支持的包管理器，请手动安装Python3。${COLOR_RESET}"
-                                rm -f "$tmp_script"
                                 return 1
                             fi
                             # 安装成功后再次检查
                             if ! command -v python3 &> /dev/null; then
                                 echo -e "${COLOR_ERROR}Python3安装失败，请手动安装。${COLOR_RESET}"
-                                rm -f "$tmp_script"
                                 return 1
                             fi
                             ;;
@@ -139,8 +161,6 @@ run_script() {
                 echo -e "${COLOR_ERROR}不支持的脚本格式！${COLOR_RESET}"
                 ;;
         esac
-        
-        rm -f "$tmp_script"
     else
         echo -e "${COLOR_ERROR}脚本下载失败！${COLOR_RESET}"
     fi
@@ -149,6 +169,7 @@ run_script() {
 }
 
 # 主程序
+init_memory_space
 download_catalog
 parse_catalog
 
@@ -162,8 +183,7 @@ while true; do
         if [[ "$choice" =~ ^[0-9]+$ ]]; then
             if ((choice == 0)); then
                 echo -e "\n${COLOR_TITLE}感谢使用，再见！${COLOR_RESET}"
-                rm -f "$catalog_file"
-                exit 0
+                exit 0  # 退出时会自动触发cleanup
             elif ((choice > 0 && choice <= ${#descriptions[@]})); then
                 break
             fi
