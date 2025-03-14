@@ -10,7 +10,7 @@ curl -LsO https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/m
 
 # 一键运行docker容器，不是docker-compose
 ```bash
-bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker.sh)"
+bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker-run.sh)"
 ```
 
 
