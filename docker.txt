@@ -1,0 +1,17 @@
+# Portainer
+docker run -d --name portainer --restart always -v /var/run/docker.sock:/var/run/docker.sock -p 9000:9000 6053537/portainer-ce:latest
+
+# Alist
+docker run -d --name alist --restart always -v /data/alist:/opt/alist/data -p 5244:5244 -e TZ=Asia/Shanghai xhofe/alist:latest
+
+# Lucky
+docker run -d --name lucky --restart always --network host -v /data/luckyconf:/goodluck -e TZ=Asia/Shanghai gdy666/lucky:latest
+
+# EasyNode
+docker run -d --name easynode --restart always -v /data/easynode:/easynode/app/db -p 8082:8080 -e TZ=Asia/Shanghai chaoszhu/easynode:latest
+
+# Vaultwarden
+docker run -d --name vaultwarden --restart always -v /data/bitwarden:/data -p 8081:80 -e TZ=Asia/Shanghai -e WEB_VAULT_ENABLED=true -e SIGNUPS_ALLOWED=true vaultwarden/server:latest
+
+# Watchtower
+docker run -d --name watchtower --restart always --network host -v /var/run/docker.sock:/var/run/docker.sock -e TZ=Asia/Shanghai containrrr/watchtower:latest --schedule "0 30 5 * * *" --cleanup --remove-volumes
