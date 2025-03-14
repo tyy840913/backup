@@ -12,13 +12,23 @@ fi
 process_command() {
     local cmd="$1"
     
-    # 提取容器名（支持--name=、--name和带引号的情况）
-    local container_name=$(echo "$cmd" | grep -oP -- '--name[=\s]+\K[^"\s]+|--name[=\s]+\"\K[^"]+')
-    if [ -z "$container_name" ]; then
+    # 使用awk兼容提取容器名（支持--name和--name=格式）
+    local container_name=$(echo "$cmd" | awk '{
+        for(i=1; i<=NF; i++) {
+            if ($i == "--name" && i < NF) { 
+                print $(i+1); exit 
+            }
+            else if ($i ~ /^--name=/) { 
+                sub(/^--name=/, "", $i); print $i; exit 
+            }
+        }
+    }')
+    
+    [ -z "$container_name" ] && {
         echo "错误：无法提取容器名，跳过命令: $cmd"
         return
-    fi
-    
+    }
+
     # 检查容器是否存在
     if docker ps -a --format '{{.Names}}' | grep -qw "$container_name"; then
         read -p "发现已存在的容器 [$container_name]，是否重新安装？[y/N] " -n 1 -r
@@ -34,10 +44,10 @@ process_command() {
         
         # 删除关联镜像
         local image_name=$(docker inspect --format='{{.Config.Image}}' "$container_name" 2>/dev/null)
-        if [ -n "$image_name" ]; then
+        [ -n "$image_name" ] && {
             echo "正在删除镜像 [$image_name]..."
             docker rmi -f "$image_name" >/dev/null 2>&1
-        fi
+        }
     fi
     
     # 执行命令
