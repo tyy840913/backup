@@ -8,7 +8,7 @@ docker run -d --name alist --restart always -v /data/alist:/opt/alist/data -p 52
 docker run -d --name lucky --restart always --network host -v /data/luckyconf:/goodluck -e TZ=Asia/Shanghai gdy666/lucky:latest
 
 # EasyNode
-docker run -d --name easynode --restart always -v /data/easynode:/easynode/app/db -p 8082:8080 -e TZ=Asia/Shanghai chaoszhu/easynode:latest
+docker run -d -p 8082:8082 --name=easynode --restart=always -v /data/easynode:/easynode/app/db chaoszhu/easynode
 
 # Vaultwarden
 docker run -d --name vaultwarden --restart always -v /data/bitwarden:/data -p 8081:80 -e TZ=Asia/Shanghai -e WEB_VAULT_ENABLED=true -e SIGNUPS_ALLOWED=true vaultwarden/server:latest
