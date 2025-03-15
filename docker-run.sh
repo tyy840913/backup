@@ -19,9 +19,9 @@ process_line() {
 
     # 检查容器是否存在
     if docker ps -a --format "{{.Names}}" | grep -qxF "$container_name"; then
-        # 新增默认值逻辑：用户直接回车则视为 'n'
-        read -p "发现已存在容器 [$container_name]，是否重新安装？(y/N 默认N): " answer </dev/tty
-        answer="${answer:-n}"  # 如果用户直接回车，自动填充默认值 'n'
+        # 新增默认值逻辑：用户直接回车则视为 'y'
+        read -p "发现已存在容器 [$container_name]，是否重新安装？(y/N 默认Y): " answer </dev/tty
+        answer="${answer:-y}"  # 如果用户直接回车，自动填充默认值 y''
         if [[ "${answer,,}" != "y" && "${answer,,}" != "yes" ]]; then
             echo "已跳过容器 [$container_name] 安装"
             return
