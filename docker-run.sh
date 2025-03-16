@@ -1,53 +1,37 @@
 #!/bin/bash
-
 set -e
 
-DOWNLOAD_URL="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker.txt"
-echo "正在下载docker.txt文件..."
-if ! curl -sSfL "$DOWNLOAD_URL" -o docker.txt; then
-    echo "下载失败，请检查网络连接或URL有效性"
+DOWNLOAD_URL="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker.txt"  # 替换为真实的配置文件URL
+
+# 内存处理函数
+process_in_memory() {
+    local content="$1"
+    # 过滤注释和空行并处理换行符
+    grep -vE '^#|^$' <<< "$content" | tr -d '\r' | while IFS= read -r line; do
+        local cmd=$(echo "$line" | sed 's/#.*//')  # 去除行内注释
+        local container_name=$(echo "$cmd" | sed -nE 's/.*--name[= ]([^ ]+).*/\1/p')
+        
+        # 容器名有效性校验
+        [ -z "$container_name" ] && continue
+        
+        # 存在性检查（包含已停止的容器）
+        if docker ps -a --format "{{.Names}}" | grep -qxF "$container_name"; then
+            continue  # 静默跳过
+        fi
+        
+        echo "正在安装容器: $container_name"
+        eval "$cmd" 2>/dev/null || echo "安装失败: $container_name" >&2
+    done
+}
+
+# 主流程
+echo "开始容器安装流程..."
+if ! content=$(curl -sSfL "$DOWNLOAD_URL"); then
+    echo "配置文件下载失败" >&2
     exit 1
 fi
 
-process_line() {
-    local cmd="$1"
-    local container_name=$(echo "$cmd" | sed -nE 's/.*--name[= ]([^ ]+).*/\1/p')
-    if [ -z "$container_name" ]; then
-        echo "错误：未检测到容器名称，跳过命令: $cmd"
-        return
-    fi
-
-    # 检查容器是否存在
-    if docker ps -a --format "{{.Names}}" | grep -qxF "$container_name"; then
-        # 新增默认值逻辑：用户直接回车则视为 'y'
-        read -p "发现已存在容器 [$container_name]，是否重新安装？(y/N 默认Y): " answer </dev/tty
-        answer="${answer:-y}"  # 如果用户直接回车，自动填充默认值 y''
-        if [[ "${answer,,}" != "y" && "${answer,,}" != "yes" ]]; then
-            echo "已跳过容器 [$container_name] 安装"
-            return
-        fi
-
-        echo "正在移除旧容器 [$container_name]..."
-        docker rm -f "$container_name" 2>/dev/null || true
-
-        local image_name=$(echo "$cmd" | awk '{print $NF}' | tr -d '\r')
-        if [ -n "$image_name" ]; then
-            echo "正在清理旧镜像 [$image_name]..."
-            docker rmi -f "$image_name" 2>/dev/null || true
-        fi
-    fi
-
-    echo "正在启动容器 [$container_name]..."
-    eval "$cmd"
-    echo "--------------------------------------"
-}
-
-# 使用文件描述符3读取文件，保留标准输入用于用户交互
-exec 3< <(grep -vE '^#|^$' docker.txt)
-while IFS= read -r -u3 line; do
-    process_line "$(echo "$line" | tr -d '\r')"
-done
-exec 3<&-
-
+process_in_memory "$content"
 echo "所有容器操作已完成"
-rm -f docker.txt
+
+# 内存清理（Bash会自动回收变量内存)
