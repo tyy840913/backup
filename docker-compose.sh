@@ -10,7 +10,7 @@ mkdir -p "$DEST_DIR"
 
 # 下载文件
 echo "正在下载 docker-compose.yml 文件..."
-curl -s -O "$DEST_DIR" "$URL"
+curl -s -o "$DEST_FILE" "$URL"
 
 # 检查文件是否下载成功
 if [ -f "$DEST_FILE" ]; then
