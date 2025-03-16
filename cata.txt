@@ -6,7 +6,7 @@
 
 Docker及docker-compose安装 Docker.sh
 
-运行docker容器 docker-run.sh
+运行docker容器 docker-compose.sh
 
 更换系统源为国内园镜像源 mirror.sh
 
