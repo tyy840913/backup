@@ -1,49 +1,57 @@
 #!/bin/bash
 set -eo pipefail
 
-DOWNLOAD_URL="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker.txt"  # 替换为实际配置文件URL
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+DOWNLOAD_URL="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker.txt"
 
-# 内存处理函数（兼容不同Shell版本）
-process_in_memory() {
+process_commands() {
     local content="$1"
-    # 过滤注释/空行并处理换行符（兼容Windows格式）
-    grep -vE '^#|^$' <<< "$content" | sed 's/#.*//;s/\r$//' | while IFS= read -r line; do
-        local cmd=$(echo "$line" | xargs)  # 去除首尾空白
+    declare -a missing_containers
+
+    # 提取容器名并检查状态
+    while IFS= read -r line; do
+        cmd=$(echo "$line" | xargs)
         [ -z "$cmd" ] && continue
-        
-        # 解析容器名称（兼容--name=和--name两种格式）
-        local container_name=$(echo "$cmd" | sed -nE 's/.*--name[= ]([^ ]+).*/\1/p')
-        [ -z "$container_name" ] && continue
-        
-        # 存在性检查（包含已停止的容器）
-        if docker ps -a --format "{{.Names}}" | grep -qxF "$container_name"; then
-            continue  # 静默跳过
-        fi
-        
-        echo "正在安装容器: $container_name"
-        # 执行命令并抑制输出（错误信息仍显示）
-        if ! eval "$cmd" >/dev/null; then
-            echo "错误：容器 [$container_name] 启动失败" >&2
-            echo "失败命令: $cmd" >&2
+        container_name=$(echo "$cmd" | sed -nE 's/.*--name[= ]([^ ]+).*/\1/p')
+        [ -n "$container_name" ] && names+=("$container_name")
+    done < <(echo "$content")
+
+    # 去重后检查缺失容器
+    for name in $(echo "${names[@]}" | tr ' ' '\n' | sort -u); do
+        if ! docker ps -a --format "{{.Names}}" | grep -qx "$name"; then
+            missing_containers+=("$name")
         fi
     done
+
+    # 安装缺失容器
+    if [ ${#missing_containers[@]} -gt 0 ]; then
+        echo -e "${CYAN}以下容器将被安装：${NC}"
+        printf "%s\n" "${missing_containers[@]}"
+        while IFS= read -r line; do
+            cmd=$(echo "$line" | xargs)
+            container_name=$(echo "$cmd" | sed -nE 's/.*--name[= ]([^ ]+).*/\1/p')
+            if [[ " ${missing_containers[@]} " =~ " $container_name " ]]; then
+                echo -e "${CYAN}安装容器: $container_name${NC}"
+                eval "$cmd" || { echo -e "安装失败: $cmd"; exit 1; }
+            fi
+        done < <(echo "$content")
+    else
+        echo -e "${YELLOW}所有容器已存在，无需操作${NC}"
+    fi
 }
 
-# 主流程
 main() {
-    echo "开始容器安装流程..."
-    
-    # 下载配置到内存（启用失败重试）
+    echo -e "${CYAN}开始下载并处理Docker命令...${NC}"
+    local content
     if ! content=$(curl -sSfL --retry 3 "$DOWNLOAD_URL"); then
-        echo "配置文件下载失败，请检查:" >&2
-        echo "1. URL有效性 [$DOWNLOAD_URL]" >&2
-        echo "2. 网络连接状态" >&2
+        echo -e "下载失败，请检查URL或网络连接" >&2
         exit 1
     fi
-    
-    process_in_memory "$content"
-    
-    echo "所有容器操作已完成"
+    process_commands "$content"
+    echo -e "${GREEN}操作完成${NC}"
 }
 
 main
