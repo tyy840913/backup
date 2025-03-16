@@ -1,0 +1,78 @@
+version: '3'
+services:
+
+  # 1. Portainer - Docker 可视化管理
+  portainer:
+    image: 6053537/portainer-ce:latest
+    container_name: portainer
+    restart: always
+
+    network_mode: bridge
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9000:9000"
+
+  # 2. Alist - 文件列表服务
+  alist:
+    image: xhofe/alist:latest
+    container_name: alist
+    restart: always
+    network_mode: bridge
+    volumes:
+      - /data/alist:/opt/alist/data
+    ports:
+      - "5244:5244"
+    environment:
+      - TZ=Asia/Shanghai
+
+  # 3. Lucky - 反向代理工具（Host 网络）
+  lucky:
+    image: gdy666/lucky:latest
+    container_name: lucky
+    restart: always
+    network_mode: host
+    volumes:
+      - /data/luckyconf:/goodluck
+    environment:
+      - TZ=Asia/Shanghai
+
+  # 4. EasyNode - SSH 管理工具
+  easynode:
+    image: chaoszhu/easynode:latest
+    container_name: easynode
+    restart: always
+    network_mode: bridge
+    ports:
+      - "8082:8082"
+    volumes:
+      - /data/easynode:/easynode/app/db
+    environment:
+      - TZ=Asia/Shanghai
+
+  # 6. Vaultwarden - 密码管理服务
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: always
+    network_mode: bridge
+    volumes:
+      - /data/bitwarden:/data
+    ports:
+      - 8081:80
+    environment:
+      - TZ=Asia/Shanghai
+      - WEB_VAULT_ENABLED=true
+      - SIGNUPS_ALLOWED=true
+
+  # 7. Watchtower - 自动更新容器
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: always
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=Asia/Shanghai
+    command: --schedule "0 30 5 * * *" --cleanup --remove-volumes
