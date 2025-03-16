@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 定义变量
-URL="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker.txt"
+URL="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker-compose.yml"
 DEST_DIR="/data/docker"
 DEST_FILE="$DEST_DIR/docker-compose.yml"
 
