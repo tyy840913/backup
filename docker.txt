@@ -1,17 +1,76 @@
-# Portainer
-docker run -d --name portainer --restart always -v /var/run/docker.sock:/var/run/docker.sock -p 9000:9000 6053537/portainer-ce:latest
+version: '3'
+services:
+  # 1. Portainer - Docker 可视化管理
+  portainer:
+    image: 6053537/portainer-ce:latest
+    container_name: portainer
+    restart: always
+    network_mode: bridge
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9000:9000"
 
-# Alist
-docker run -d --name alist --restart always -v /data/alist:/opt/alist/data -p 5244:5244 -e TZ=Asia/Shanghai xhofe/alist:latest
+  # 2. Alist - 文件列表服务
+  alist:
+    image: xhofe/alist:latest
+    container_name: alist
+    restart: always
+    network_mode: bridge
+    volumes:
+      - /data/alist:/opt/alist/data
+    ports:
+      - "5244:5244"
+    environment:
+      - TZ=Asia/Shanghai
 
-# Lucky
-docker run -d --name lucky --restart always --network host -v /data/luckyconf:/goodluck -e TZ=Asia/Shanghai gdy666/lucky:latest
+  # 3. Lucky - 反向代理工具（Host 网络）
+  lucky:
+    image: gdy666/lucky:latest
+    container_name: lucky
+    restart: always
+    network_mode: host
+    volumes:
+      - /data/luckyconf:/goodluck
+    environment:
+      - TZ=Asia/Shanghai
 
-# EasyNode
-docker run -d -p 8082:8082 --name=easynode --restart=always -v /data/easynode:/easynode/app/db chaoszhu/easynode
+  # 4. EasyNode - SSH 管理工具
+  easynode:
+    image: chaoszhu/easynode:latest
+    container_name: easynode
+    restart: always
+    network_mode: bridge
+    ports:
+      - "8082:8082"
+    volumes:
+      - /data/easynode:/easynode/app/db
+    environment:
+      - TZ=Asia/Shanghai
 
-# Vaultwarden
-docker run -d --name vaultwarden --restart always -v /data/bitwarden:/data -p 8081:80 -e TZ=Asia/Shanghai -e WEB_VAULT_ENABLED=true -e SIGNUPS_ALLOWED=true vaultwarden/server:latest
+  # 6. Vaultwarden - 密码管理服务
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: always
+    network_mode: bridge
+    volumes:
+      - /data/bitwarden:/data
+    ports:
+      - 8081:80
+    environment:
+      - TZ=Asia/Shanghai
+      - WEB_VAULT_ENABLED=true
+      - SIGNUPS_ALLOWED=true
 
-# Watchtower
-docker run -d --name watchtower --restart always --network host -v /var/run/docker.sock:/var/run/docker.sock -e TZ=Asia/Shanghai containrrr/watchtower:latest --schedule "0 30 5 * * *" --cleanup --remove-volumes
+  # 7. Watchtower - 自动更新容器
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: always
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=Asia/Shanghai
+    command: --schedule "0 30 5 * * *" --cleanup --remove-volumes
