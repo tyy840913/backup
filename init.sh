@@ -68,18 +68,24 @@ check_ssh() {
     fi
 
     # 自启动配置
-    case $OS in
-        debian|centos)
-            if ! systemctl is-enabled $SERVICE &>/dev/null; then
-                systemctl enable $SERVICE
-            fi
-            ;;
-        alpine)
-            if ! rc-update show | grep -q $SERVICE; then
-                rc-update add $SERVICE
-            fi
-            ;;
-    esac
+case $OS in
+    debian|centos)
+        if ! systemctl is-enabled $SERVICE &>/dev/null; then
+            systemctl enable $SERVICE
+            echo "已成功启用 $SERVICE 开机自启动"
+        else
+            echo "服务 $SERVICE 已启用自启动，无需重复操作"
+        fi
+        ;;
+    alpine)
+        if ! rc-update show | grep -q $SERVICE; then
+            rc-update add $SERVICE
+            echo "已成功将 $SERVICE 添加至运行级别"
+        else
+            echo "服务 $SERVICE 已在运行级别中，无需重复添加"
+        fi
+        ;;
+esac
 
     # 配置文件优化
     SSH_CONFIG="/etc/ssh/sshd_config"
