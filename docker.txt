@@ -6,7 +6,6 @@ services:
     image: 6053537/portainer-ce:latest
     container_name: portainer
     restart: always
-
     network_mode: bridge
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
