@@ -57,7 +57,7 @@ install_tools() {
 download_script() {
   echo "下载自动化脚本..."
   # 使用curl通过WebDAV下载脚本，使用基础认证
-  if ! curl --user "$JIANGUO_USER:$JIANGUO_PASS" -O "$SCRIPT_URL" >/dev/null 2>&1; then
+  if ! curl -sL --user "$JIANGUO_USER:$JIANGUO_PASS" -O "$SCRIPT_URL" >/dev/null 2>&1; then
     echo "脚本下载失败!"
     exit 1
   fi
