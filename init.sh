@@ -119,6 +119,7 @@ if [ $CONFIG_CHANGED -eq 1 ]; then
 else
     echo -e "${GREEN}[SSH] 配置无变动，跳过服务重启${NC}"
 fi
+}
 
 # 时区配置检查（增强版）
 check_timezone() {
