@@ -100,9 +100,14 @@ check_timezone() {
     local TARGET_ZONE="Asia/Shanghai"
     local ZONE_FILE="/usr/share/zoneinfo/${TARGET_ZONE}"
 
+    # 强制root权限检查
+    if [ "$(id -u)" -ne 0 ]; then
+        echo -e "${RED}错误：此操作需要root权限！${NC}"
+        return 1
+    fi
+
     # 显示当前时间信息
     show_time_info() {
-        echo -e "${BLUE}当前系统时间:${NC}"
         date "+%Y-%m-%d %H:%M:%S %Z (UTC%z)"
     }
 
@@ -113,9 +118,9 @@ check_timezone() {
         return 0
     fi
 
-    # 安装时区数据包（如缺失）
+    # 安装时区数据包（仅在缺失时）
     if [ ! -f "$ZONE_FILE" ]; then
-        echo -e "${YELLOW}正在安装时区数据包..."
+        echo -e "${YELLOW}时区文件缺失，正在安装tzdata..."
         case $OS in
             debian) apt update && apt install -y tzdata ;;
             centos) yum install -y tzdata ;;
@@ -126,52 +131,60 @@ check_timezone() {
         }
     fi
 
-    # 尝试符号链接配置
-    echo -e "${YELLOW}尝试符号链接配置..."
-    if [ -w /etc/localtime ]; then
-        # 清除可能存在的旧配置
-        [ -f /etc/localtime ] && rm -f /etc/localtime
-        # 创建符号链接
-        if ln -sf "$ZONE_FILE" /etc/localtime; then
-            echo -e "${GREEN}符号链接创建成功！"
-            # Alpine兼容性处理
+    # 配置时区：符号链接 → 文件复制 → 系统工具（优先级递增）
+    echo -e "${YELLOW}尝试配置时区..."
+
+    # 方法1: 符号链接（Alpine允许但需同时更新/etc/timezone）
+    if ln -sf "$ZONE_FILE" /etc/localtime 2>/dev/null; then
+        echo -e "${GREEN}符号链接创建成功！"
+        [ "$OS" = "alpine" ] && echo "$TARGET_ZONE" > /etc/timezone
+    else
+        # 方法2: 直接复制文件（适用于符号链接受限环境）
+        if cp -f "$ZONE_FILE" /etc/localtime 2>/dev/null; then
+            echo -e "${YELLOW}使用文件复制成功！"
             [ "$OS" = "alpine" ] && echo "$TARGET_ZONE" > /etc/timezone
+        else
+            # 方法3: 调用系统工具（Alpine专用）
+            echo -e "${YELLOW}尝试通过系统工具配置..."
+            case $OS in
+                alpine)
+                    if command -v setup-timezone >/dev/null; then
+                        setup-timezone -z "$TARGET_ZONE" && echo -e "${GREEN}setup-timezone 配置成功！"
+                    else
+                        echo -e "${RED}Alpine系统缺少setup-timezone工具，请手动安装tzdata！${NC}"
+                        return 1
+                    fi
+                    ;;
+                debian|centos)
+                    timedatectl set-timezone "$TARGET_ZONE" || {
+                        echo -e "${RED}timedatectl 配置失败！请检查:"
+                        echo -e "1. 是否以root运行"
+                        echo -e "2. systemd服务是否正常${NC}"
+                        return 1
+                    }
+                    ;;
+            esac
+        fi
+    fi
+
+    # 最终验证（增加重试逻辑）
+    local RETRY=3
+    while [ $RETRY -gt 0 ]; do
+        sleep 1
+        if date +%z | grep -qE '(\+0800|CST)'; then
+            echo -e "${GREEN}时区配置验证通过！${NC}"
             show_time_info
             return 0
-        else
-            echo -e "${RED}符号链接创建失败，错误代码：$?${NC}"
         fi
-    else
-        echo -e "${YELLOW}/etc/localtime 无写入权限${NC}"
-    fi
+        RETRY=$((RETRY-1))
+    done
 
-    # 符号链接失败后改用系统工具
-    echo -e "${YELLOW}正在通过系统工具配置..."
-    case $OS in
-        debian|centos)
-            timedatectl set-timezone "$TARGET_ZONE" || {
-                echo -e "${RED}timedatectl 配置失败，请检查："
-                echo -e "1. 需要root权限执行"
-                echo -e "2. systemd服务是否运行${NC}"
-                return 1
-            }
-            ;;
-        alpine)
-            cp -f "$ZONE_FILE" /etc/localtime
-            echo "$TARGET_ZONE" > /etc/timezone
-            ;;
-    esac
-
-    # 最终验证
-    sleep 1 # 等待配置生效
-    if date +%z | grep -qE '(\+0800|CST)'; then
-        echo -e "${GREEN}时区配置验证通过！${NC}"
-        show_time_info
-    else
-        echo -e "${RED}时区配置异常！当前时间："
-        show_time_info
-        return 1
-    fi
+    # 所有方法均失败
+    echo -e "${RED}时区配置失败！请手动执行以下操作:"
+    echo -e "1. 确保文件存在: ls -l $ZONE_FILE"
+    echo -e "2. 手动设置: ln -sf $ZONE_FILE /etc/localtime"
+    echo -e "3. Alpine系统需额外写入: echo $TARGET_ZONE > /etc/timezone${NC}"
+    return 1
 }
 
 # 主程序
