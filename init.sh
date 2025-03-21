@@ -87,18 +87,38 @@ case $OS in
         ;;
 esac
 
-    # 配置文件优化
-    SSH_CONFIG="/etc/ssh/sshd_config"
-    sed -i 's/#*PermitRootLogin.*/PermitRootLogin yes/' $SSH_CONFIG
-    sed -i 's/#*PasswordAuthentication.*/PasswordAuthentication yes/' $SSH_CONFIG
-    
-    # 服务重启
+# 配置文件优化（增加状态检测）
+SSH_CONFIG="/etc/ssh/sshd_config"
+CONFIG_CHANGED=0
+
+# 检查Root登录配置
+if ! grep -E "^PermitRootLogin yes" $SSH_CONFIG &>/dev/null; then
+    sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' $SSH_CONFIG
+    echo "已更新允许Root登录配置"
+    CONFIG_CHANGED=1
+else
+    echo "Root登录配置已启用，无需修改"
+fi
+
+# 检查密码认证配置
+if ! grep -E "^PasswordAuthentication yes" $SSH_CONFIG &>/dev/null; then
+    sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' $SSH_CONFIG
+    echo "已启用密码认证配置"
+    CONFIG_CHANGED=1
+else
+    echo "密码认证配置已启用，无需修改"
+fi
+
+# 仅在配置变更时重启服务
+if [ $CONFIG_CHANGED -eq 1 ]; then
     if ! manage_service $SERVICE restart; then
         echo -e "${RED}SSH服务重启失败${NC}"
         exit 1
     fi
-    echo -e "${GREEN}[SSH] 服务已配置完成${NC}"
-}
+    echo -e "${GREEN}[SSH] 服务配置已更新并生效${NC}"
+else
+    echo -e "${GREEN}[SSH] 配置无变动，跳过服务重启${NC}"
+fi
 
 # 时区配置检查（增强版）
 check_timezone() {
