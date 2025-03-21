@@ -20,19 +20,19 @@ elif [ ${#imgs[@]} -eq 1 ]; then
     echo -e "\033[33m$(basename "$selected_img")\n\033[0m"
 else
     # 多个文件显示选择菜单
-    echo -e "\033[33m发现多个镜像文件，请选择使用哪一个：\033[0m"
+    echo -e "\033[33m存在多个镜像文件，请选择使用的镜像文件：\033[0m"
     for i in "${!imgs[@]}"; do
         printf "\033[33m%2d) %s\033[0m\n" $((i+1)) "$(basename "${imgs[$i]}")"
     done
 
     # 用户选择文件
     while true; do
-        read -p "请输入要转换的文件编号： " file_num
+        read -p "请输入要转换的镜像文件序号： " file_num
         if [[ "$file_num" =~ ^[0-9]+$ ]] && [ "$file_num" -ge 1 ] && [ "$file_num" -le ${#imgs[@]} ]; then
             selected_img="${imgs[$((file_num-1))]}"
             break
         else
-            echo "输入无效，请输入正确的编号。"
+            echo "输入无效，请输入正确的序号。"
         fi
     done
 fi
