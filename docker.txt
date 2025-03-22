@@ -78,8 +78,8 @@ services:
 
 # 8. BIND - DNS解析服务器
 bind:
+    image: sameersbn/bind
     restart: always
-    image: sameersbn/bind:9.16.1-20200524
     network_mode: bridge
     ports:
     - "53:53/udp"
