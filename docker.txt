@@ -92,4 +92,4 @@ services:
       - "53:53/udp"                        # DNS 服务 UDP 端口
       - "10000:10000/tcp"                  # Webmin 管理界面端口[[1][13]]
     volumes:
-      - ./data/bind:/data                  # 持久化存储配置和区域文件[[1][12]]
+      - /data/bind:/data                  # 持久化存储配置和区域文件[[1][12]]
