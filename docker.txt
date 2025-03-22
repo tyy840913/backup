@@ -86,7 +86,7 @@ services:
       TZ: 'Asia/Shanghai'                  # 时区设置（可选）
       ROOT_PASSWORD: '1234567890..'  # Webmin 登录密码（必填）
       WEBMIN_ENABLED: 'true'               # 启用 Webmin 管理界面[[1][13]]
-      WEBMIN_INIT_SSL_ENABLED: 'true'      # 禁用 SSL（若需 HTTPS 可设为 true）
+      WEBMIN_INIT_SSL_ENABLED: 'false'      # 禁用 SSL（若需 HTTPS 可设为 true）
     ports:
       - "53:53/tcp"                        # DNS 服务 TCP 端口
       - "53:53/udp"                        # DNS 服务 UDP 端口
