@@ -81,7 +81,7 @@ services:
     image: sameersbn/bind:9.16.1-20200524  # 官方镜像，集成 BIND9 和 Webmin[[1][13]]
     container_name: bind9-server
     restart: always
-    network_mode: host
+    network_mode: bridge
     environment:
       TZ: 'Asia/Shanghai'                  # 时区设置（可选）
       ROOT_PASSWORD: '1234567890..'  # Webmin 登录密码（必填）
