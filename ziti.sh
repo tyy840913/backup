@@ -242,7 +242,7 @@ main() {
     fi
     
     echo -e "\n${YELLOW}中文环境配置完成！某些更改需要重启才能完全生效。${NC}"
-    echo -e "${YELLOW}按 Enter 回车键 立即重启，或输入 n 取消:${NC} "
+    echo -e "\n${YELLOW}按 Enter 回车键 立即重启，或输入 n 取消:${NC} "
     read -p "[默认: 立即重启] " choice
     case "$choice" in
         n|N ) 
