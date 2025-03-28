@@ -1,167 +1,225 @@
 #!/bin/bash
+# 多发行版中文环境配置脚本
+# 功能：自动检测并配置系统中文环境，支持主流Linux发行版
+# 作者：Shell脚本专家
+# 版本：2.1
+# 最后更新：2023-10-20
 
-# 颜色定义
+set -eo pipefail  # 遇到错误立即退出，管道命令错误处理
+
+# 颜色定义用于输出美化
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
+YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # 恢复默认颜色
+NC='\033[0m' # No Color
 
 # 初始化变量
+SUPPORTED_DISTROS=("debian" "ubuntu" "centos" "fedora" "arch" "opensuse")
 PKG_MANAGER=""
-LANG_PACKAGE=""
-SUPPORT_PKGS=()
-OS_ID=""
+CHINESE_PKGS=()
+CURRENT_DISTRO=""
+CONFIG_FILE="/etc/locale.conf"
+LANG_SETTING="zh_CN.UTF-8"
+DEPENDENCY_INSTALLED=false
+
+# 日志输出函数
+log() {
+    local level=$1
+    local message=$2
+    case $level in
+        "INFO") echo -e "${BLUE}[INFO]${NC} - $message" ;;
+        "SUCCESS") echo -e "${GREEN}[SUCCESS]${NC} - $message" ;;
+        "WARNING") echo -e "${YELLOW}[WARNING]${NC} - $message" ;;
+        "ERROR") echo -e "${RED}[ERROR]${NC} - $message" >&2 ;;
+    esac
+}
+
+# 错误处理函数
+error_exit() {
+    log "ERROR" "$1"
+    exit 1
+}
 
 # 检测系统发行版
-detect_os() {
-    echo -e "${CYAN}[信息] 正在检测系统发行版...${NC}"
+detect_distro() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
-        OS_ID="$ID"
-        case $ID in
-            ubuntu|debian)
-                PKG_MANAGER="apt"
-                LANG_PACKAGE="language-pack-zh-hans"
-                SUPPORT_PKGS=("language-pack-zh-hans" "language-pack-zh-hans-base")
-                ;;
-            centos|rhel|rocky)
-                PKG_MANAGER="yum"
-                LANG_PACKAGE="glibc-langpack-zh"
-                ;;
-            fedora)
-                PKG_MANAGER="dnf"
-                LANG_PACKAGE="glibc-langpack-zh"
-                ;;
-            arch|manjaro)
-                PKG_MANAGER="pacman"
-                LANG_PACKAGE="glibc"
-                ;;
-            opensuse*|sles)
-                PKG_MANAGER="zypper"
-                LANG_PACKAGE="glibc-locale-zh"
-                ;;
-            *)
-                echo -e "${RED}[错误] 不支持的Linux发行版: $ID${NC}"
-                exit 1
-                ;;
-        esac
-        echo -e "${GREEN}[成功] 检测到系统发行版: $PRETTY_NAME${NC}"
-        sleep 0.5
+        CURRENT_DISTRO=$ID
     else
-        echo -e "${RED}[错误] 无法检测系统发行版${NC}"
-        exit 1
+        error_exit "无法检测系统发行版"
+    fi
+
+    if ! printf '%s\n' "${SUPPORTED_DISTROS[@]}" | grep -q "^$CURRENT_DISTRO$"; then
+        error_exit "不支持的发行版: $CURRENT_DISTRO"
     fi
 }
 
-# 检查中文环境是否已配置
-check_locale() {
-    echo -e "${CYAN}[信息] 正在检查语言环境设置...${NC}"
-    if [ "$(locale | grep -w LANG | cut -d= -f2)" = "zh_CN.UTF-8" ]; then
-        echo -e "${GREEN}[成功] 中文语言环境已正确设置${NC}"
-        return 0
-    else
-        echo -e "${YELLOW}[警告] 当前未设置中文语言环境${NC}"
-        return 1
-    fi
-    sleep 0.5
-}
-
-# 安装中文语言包（含备用方案）
-install_lang_pkg() {
-    echo -e "${CYAN}[信息] 正在尝试安装中文语言包...${NC}"
-    case $PKG_MANAGER in
-        apt)
-            sudo apt update >/dev/null 2>&1
-            for pkg in "${SUPPORT_PKGS[@]}"; do
-                echo -e "${BLUE}[操作] 尝试安装包: $pkg${NC}"
-                if sudo apt install -y "$pkg" >/dev/null 2>&1; then
-                    echo -e "${GREEN}[成功] 安装 $pkg 成功${NC}"
-                    return 0
-                fi
-            done
+# 检测并设置包管理器
+set_pkg_manager() {
+    case $CURRENT_DISTRO in
+        debian|ubuntu)
+            PKG_MANAGER="apt-get"
+            CHINESE_PKGS=("locales" "fonts-wqy-microhei")
             ;;
-        yum|dnf)
-            sudo $PKG_MANAGER install -y "$LANG_PACKAGE" >/dev/null 2>&1
+        centos|fedora)
+            PKG_MANAGER="yum"
+            [ "$CURRENT_DISTRO" == "fedora" ] && PKG_MANAGER="dnf"
+            CHINESE_PKGS=("glibc-langpack-zh" "wqy-microhei-fonts")
             ;;
-        pacman)
-            sudo pacman -Sy --noconfirm "$LANG_PACKAGE" >/dev/null 2>&1
+        arch)
+            PKG_MANAGER="pacman"
+            CHINESE_PKGS=("glibc" "wqy-microhei")
             ;;
-        zypper)
-            sudo zypper in -y "$LANG_PACKAGE" >/dev/null 2>&1
+        opensuse)
+            PKG_MANAGER="zypper"
+            CHINESE_PKGS=("glibc-locale" "wqy-microhei-fonts")
             ;;
     esac
 
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}[成功] 中文语言包安装完成${NC}"
-    else
-        echo -e "${RED}[错误] 无法安装中文语言包，请手动安装${NC}"
-        exit 1
+    # 验证包管理器是否可用
+    if ! command -v $PKG_MANAGER &> /dev/null; then
+        error_exit "找不到包管理器: $PKG_MANAGER"
     fi
-    sleep 0.5
+}
+
+# 权限检测与提权处理
+check_privilege() {
+    if [ "$EUID" -ne 0 ]; then
+        log "WARNING" "需要root权限"
+        if command -v sudo &> /dev/null; then
+            log "INFO" "尝试使用sudo提权"
+            exec sudo "$0" "$@"
+        else
+            error_exit "需要root权限且未找到sudo命令"
+        fi
+    fi
+}
+
+# 检查中文locale是否已生成
+check_locale_available() {
+    if locale -a | grep -q "$LANG_SETTING"; then
+        log "INFO" "中文locale已存在"
+        return 0
+    else
+        log "WARNING" "中文locale未生成"
+        return 1
+    fi
+}
+
+# 检查是否已配置中文环境
+check_current_lang() {
+    if [ -f $CONFIG_FILE ] && grep -q "^LANG=.*zh_CN" $CONFIG_FILE; then
+        log "INFO" "系统已配置中文环境"
+        return 0
+    elif [ "$LANG" = "$LANG_SETTING" ]; then
+        log "INFO" "当前会话已使用中文环境"
+        return 0
+    else
+        log "WARNING" "中文环境未配置"
+        return 1
+    fi
+}
+
+# 安装语言包
+install_packages() {
+    log "INFO" "开始安装中文支持包"
+    local install_cmd
+
+    case $CURRENT_DISTRO in
+        debian|ubuntu)
+            $PKG_MANAGER update >/dev/null || error_exit "包索引更新失败"
+            $PKG_MANAGER install -y "${CHINESE_PKGS[@]}" >/dev/null
+            dpkg-reconfigure --frontend=noninteractive locales >/dev/null
+            ;;
+        centos|fedora)
+            $PKG_MANAGER install -y langpacks-zh glibc-langpack-zh >/dev/null
+            localedef -v -c -i zh_CN -f UTF-8 zh_CN.UTF-8 >/dev/null
+            ;;
+        arch)
+            $PKG_MANAGER -Sy --noconfirm "${CHINESE_PKGS[@]}" >/dev/null
+            sed -i 's/#zh_CN.UTF-8 UTF-8/zh_CN.UTF-8 UTF-8/' /etc/locale.gen
+            locale-gen >/dev/null
+            ;;
+        opensuse)
+            $PKG_MANAGER -n install -l -y "${CHINESE_PKGS[@]}" >/dev/null
+            localectl set-locale LANG=$LANG_SETTING
+            ;;
+    esac || error_exit "包安装失败"
+
+    DEPENDENCY_INSTALLED=true
+    log "SUCCESS" "中文包安装完成"
 }
 
 # 配置系统语言环境
 configure_locale() {
-    echo -e "${CYAN}[信息] 正在配置系统语言环境...${NC}"
-    case $OS_ID in
-        ubuntu|debian)
-            echo -e "${BLUE}[操作] 更新locale配置${NC}"
-            sudo update-locale LANG=zh_CN.UTF-8 >/dev/null 2>&1
-            sudo locale-gen zh_CN.UTF-8 >/dev/null 2>&1
+    log "INFO" "开始配置系统语言环境"
+    
+    # 多发行版兼容配置
+    case $CURRENT_DISTRO in
+        debian|ubuntu)
+            update-locale LANG=$LANG_SETTING LC_ALL=$LANG_SETTING
             ;;
-        centos|rhel|fedora|rocky)
-            echo -e "${BLUE}[操作] 设置系统级locale${NC}"
-            echo 'LANG="zh_CN.UTF-8"' | sudo tee /etc/locale.conf >/dev/null
-            sudo localectl set-locale LANG=zh_CN.UTF-8 >/dev/null 2>&1
+        centos|fedora|opensuse)
+            localectl set-locale LANG=$LANG_SETTING
             ;;
-        arch|manjaro)
-            echo -e "${BLUE}[操作] 生成locale配置${NC}"
-            sudo sed -i 's/#zh_CN.UTF-8 UTF-8/zh_CN.UTF-8 UTF-8/' /etc/locale.gen
-            sudo locale-gen >/dev/null 2>&1
-            echo 'LANG=zh_CN.UTF-8' | sudo tee /etc/locale.conf >/dev/null
-            ;;
-        opensuse*|sles)
-            echo -e "${BLUE}[操作] 设置系统locale${NC}"
-            sudo localectl set-locale LANG=zh_CN.UTF-8 >/dev/null 2>&1
+        arch)
+            echo "LANG=$LANG_SETTING" > $CONFIG_FILE
             ;;
     esac
 
-    # 应用环境变量
-    export LANG=zh_CN.UTF-8
-    echo -e "${GREEN}[成功] 中文语言环境配置完成${NC}"
-    sleep 0.5
+    # 环境变量立即生效
+    export LANG=$LANG_SETTING
+    export LC_ALL=$LANG_SETTING
+    source /etc/profile.d/locale.sh >/dev/null 2>&1 || true
 }
 
-# 验证环境配置
-verify_config() {
-    echo -e "${CYAN}[信息] 正在验证最终配置...${NC}"
-    if check_locale; then
-        echo -e "${GREEN}[验证通过] 系统已成功配置中文语言环境${NC}"
+# 验证配置结果
+verify_configuration() {
+    if check_current_lang; then
+        log "SUCCESS" "中文环境配置验证成功"
+        return 0
     else
-        echo -e "${RED}[错误] 语言环境配置失败，请手动检查${NC}"
-        exit 1
+        log "ERROR" "环境配置验证失败"
+        return 1
     fi
-    sleep 0.5
 }
 
 # 主执行流程
 main() {
-    detect_os
-    if check_locale; then
-        echo -e "${GREEN}[信息] 无需额外配置，直接退出${NC}"
+    log "INFO" "开始中文环境配置流程"
+    detect_distro
+    log "INFO" "检测到系统发行版: $CURRENT_DISTRO"
+    set_pkg_manager
+    check_privilege "$@"
+
+    if check_current_lang; then
+        log "SUCCESS" "系统已正确配置中文环境，无需操作"
         exit 0
     fi
-    
-    echo -e "${YELLOW}[操作] 需要安装中文语言支持${NC}"
-    install_lang_pkg
+
+    if check_locale_available; then
+        log "INFO" "尝试使用现有locale配置"
+        configure_locale
+        if verify_configuration; then
+            log "SUCCESS" "成功使用现有包配置中文环境"
+            exit 0
+        fi
+    fi
+
+    install_packages
     configure_locale
-    verify_config
-    
-    echo -e "\n${CYAN}[提示] 部分变更可能需要重新登录或重启后生效${NC}"
-    sleep 0.5
+
+    if ! verify_configuration; then
+        error_exit "最终配置验证失败，请手动检查"
+    fi
+
+    log "SUCCESS" "中文环境配置完成，当前LANG: $LANG"
 }
 
+# 异常处理陷阱
+trap 'log "ERROR" "脚本在行号 $LINENO 被中断，退出状态 $?"' ERR
+trap 'log "WARNING" "用户中断操作"; exit 1' INT TERM
+
 # 执行主函数
-main
+main "$@"
