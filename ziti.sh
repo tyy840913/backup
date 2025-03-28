@@ -252,6 +252,7 @@ main() {
         echo -e "${GREEN}正在准备重启系统...${NC}"
         reboot
         ;;
-esac
+    esac
+}
 
 main "$@"
