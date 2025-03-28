@@ -241,17 +241,17 @@ main() {
         exit 1
     fi
     
-     echo -e "\n${YELLOW}中文环境配置完成！某些更改需要重启才能完全生效。${NC}"
-     echo -e "${YELLOW}按 Enter 回车键 立即重启，或输入 n 取消:${NC} "
-     read -p "[默认: 立即重启] " choice
-     case "$choice" in
-          n|N ) 
-         echo -e "${YELLOW}已取消重启，请稍后手动执行 'reboot' 命令。${NC}"
-         ;;
+    echo -e "\n${YELLOW}中文环境配置完成！某些更改需要重启才能完全生效。${NC}"
+    echo -e "${YELLOW}按 Enter 回车键 立即重启，或输入 n 取消:${NC} "
+    read -p "[默认: 立即重启] " choice
+    case "$choice" in
+        n|N ) 
+            echo -e "${YELLOW}已取消重启，请稍后手动执行 'reboot' 命令。${NC}"
+            ;;
         * ) 
-        echo -e "${GREEN}正在准备重启系统...${NC}"
-        reboot
-        ;;
+            echo -e "${GREEN}正在准备重启系统...${NC}"
+            reboot
+            ;;
     esac
 }
 
