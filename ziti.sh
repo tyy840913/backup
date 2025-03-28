@@ -48,20 +48,28 @@ detect_distro() {
 
 # 检查当前locale设置
 check_current_locale() {
-    current_locale=$(locale | grep -E "LANG=|LC_ALL=" | grep -i "zh_CN")
-    if [ -n "$current_locale" ]; then
-        echo -e "${GREEN}当前已配置中文环境:${NC}"
-        locale | grep -E "LANG|LC_CTYPE|LC_NUMERIC|LC_TIME|LC_COLLATE|LC_MONETARY|LC_MESSAGES|LC_ALL"
-        
-        # 检查是否有locale设置错误
-        if locale | grep -q "Cannot set LC_"; then
-            return 1
+    if [ "$DISTRO" = "alpine" ]; then
+        # Alpine 特殊处理
+        if [ -n "$LANG" ] && [[ "$LANG" =~ "zh_CN" ]]; then
+            echo -e "${GREEN}当前已配置中文环境:${NC}"
+            env | grep -E 'LANG|LC_'
+            return 0
         fi
-        return 0
     else
-        echo -e "${YELLOW}当前未配置中文环境或配置不正确${NC}"
-        return 1
+        current_locale=$(locale 2>/dev/null | grep -E "LANG=|LC_ALL=" | grep -i "zh_CN")
+        if [ -n "$current_locale" ]; then
+            echo -e "${GREEN}当前已配置中文环境:${NC}"
+            locale 2>/dev/null | grep -E "LANG|LC_CTYPE|LC_NUMERIC|LC_TIME|LC_COLLATE|LC_MONETARY|LC_MESSAGES|LC_ALL"
+            # 检查是否有locale设置错误
+            if locale 2>&1 | grep -q "Cannot set LC_"; then
+                return 1
+            fi
+            return 0
+        fi
     fi
+    
+    echo -e "${YELLOW}当前未配置中文环境或配置不正确${NC}"
+    return 1
 }
 
 # 安装必要依赖
@@ -96,7 +104,7 @@ install_dependencies() {
             locale-gen
             ;;
         alpine)
-            if ! command -v setup-locale >/dev/null 2>&1; then
+            if ! command -v locale >/dev/null 2>&1; then
                 apk add --no-cache musl-locales musl-locales-lang
             fi
             ;;
@@ -129,9 +137,8 @@ generate_chinese_locale() {
             locale-gen
             ;;
         alpine)
-            # Alpine使用不同的方法
+            # Alpine使用环境变量方式配置
             echo "zh_CN.UTF-8 UTF-8" > /etc/locale.gen
-            setup-locale LANG=zh_CN.UTF-8
             ;;
     esac
 }
@@ -154,8 +161,11 @@ configure_chinese_locale() {
             echo "LC_ALL=zh_CN.UTF-8" >> /etc/locale.conf
             ;;
         alpine)
-            echo "export LANG=zh_CN.UTF-8" > /etc/profile.d/locale.sh
-            echo "export LC_ALL=zh_CN.UTF-8" >> /etc/profile.d/locale.sh
+            cat > /etc/profile.d/locale.sh <<EOF
+export LANG=zh_CN.UTF-8
+export LC_ALL=zh_CN.UTF-8
+export LC_CTYPE=zh_CN.UTF-8
+EOF
             chmod +x /etc/profile.d/locale.sh
             ;;
     esac
@@ -164,25 +174,38 @@ configure_chinese_locale() {
     export LANG=zh_CN.UTF-8
     export LANGUAGE=zh_CN:zh
     export LC_ALL=zh_CN.UTF-8
+    if [ "$DISTRO" = "alpine" ]; then
+        export LC_CTYPE=zh_CN.UTF-8
+    fi
 }
 
 # 验证配置
 verify_configuration() {
     echo -e "${GREEN}验证配置...${NC}"
     
-    # 检查locale命令是否有错误输出
-    if locale 2>&1 | grep -q "Cannot set LC_"; then
-        echo -e "${RED}错误: locale配置存在问题${NC}"
-        locale 2>&1 | grep "Cannot set LC_"
-        return 1
-    fi
-    
-    # 检查是否所有locale组件都设置为中文
-    incomplete_config=$(locale | grep -v "zh_CN" | grep -vE "LC_ALL=|LANG=|LANGUAGE=|^$")
-    if [ -n "$incomplete_config" ]; then
-        echo -e "${YELLOW}警告: 部分locale组件未设置为中文:${NC}"
-        echo "$incomplete_config"
-        return 1
+    if [ "$DISTRO" = "alpine" ]; then
+        # Alpine 特殊验证
+        if [ -z "$LANG" ] || [[ ! "$LANG" =~ "zh_CN" ]]; then
+            echo -e "${RED}错误: Alpine中文环境配置失败${NC}"
+            return 1
+        fi
+        echo -e "${GREEN}当前环境变量设置:${NC}"
+        env | grep -E 'LANG|LC_'
+    else
+        # 检查locale命令是否有错误输出
+        if locale 2>&1 | grep -q "Cannot set LC_"; then
+            echo -e "${RED}错误: locale配置存在问题${NC}"
+            locale 2>&1 | grep "Cannot set LC_"
+            return 1
+        fi
+        
+        # 检查是否所有locale组件都设置为中文
+        incomplete_config=$(locale 2>/dev/null | grep -v "zh_CN" | grep -vE "LC_ALL=|LANG=|LANGUAGE=|^$")
+        if [ -n "$incomplete_config" ]; then
+            echo -e "${YELLOW}警告: 部分locale组件未设置为中文:${NC}"
+            echo "$incomplete_config"
+            return 1
+        fi
     fi
     
     echo -e "${GREEN}中文环境配置成功!${NC}"
@@ -242,14 +265,14 @@ main() {
     fi
     
     echo -e "\n${YELLOW}中文环境配置完成！某些更改需要重启才能完全生效。${NC}"
-    echo -e "\n${YELLOW}按 Enter 回车键 立即重启，或输入 n 取消:${NC} "
+    echo -e "${GREEN}按 Enter 立即重启，或输入 n 取消${NC}"
     read -p "[默认: 立即重启] " choice
     case "$choice" in
-        n|N ) 
-            echo -e "\n${YELLOW}已取消重启，请稍后手动执行 'reboot' 命令。${NC}"
+        n|N )
+            echo -e "${YELLOW}已取消重启，请稍后手动执行 reboot 命令${NC}"
             ;;
-        * ) 
-            echo -e "\n${GREEN}正在准备重启系统...${NC}"
+        * )
+            echo -e "${GREEN}正在重启系统...${NC}"
             reboot
             ;;
     esac
