@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# 脚本名称: auto_chinese_locale_setup.sh
 # 功能: 自动检测和配置系统中文环境
 # 支持系统: Debian/Ubuntu, RHEL/CentOS, Fedora, openSUSE, Arch Linux, Alpine
 
