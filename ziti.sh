@@ -241,7 +241,12 @@ main() {
         exit 1
     fi
     
-    echo -e "\n${GREEN}中文环境配置完成! 建议重启系统使更改完全生效。${NC}"
+    echo -e "\n${YELLOW}中文环境配置完成! 某些更改需要重启才能完全生效。${NC}"
+    read -p "是否立即重启系统？[y/N] " choice
+    case "$choice" in
+           y|Y ) reboot;;
+             * ) echo "请稍后手动重启系统";;
+            esac
 }
 
 main "$@"
