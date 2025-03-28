@@ -196,9 +196,7 @@ verify_config() {
         echo -e "  /etc/profile.d/lang.sh${NC}" >&3
         exit 1
     fi
-    echo -e "${GREEN}[验证通过] 当前系统语言环境：" >&3
-    locale >&3
-    echo -e "${NC}" >&3
+    echo -e "${GREEN}[验证通过] 中文环境已正确配置${NC}" >&3  # 修改为简单提示
 }
 
 # 主流程
