@@ -11,23 +11,40 @@ NC='\033[0m'
 
 # 初始化变量
 declare -g PKG_MANAGER=""
-declare -g -a REQUIRED_PKGS=()
-declare -g -a OPTIONAL_PKGS=()
+declare -g -a SUPPORT_PKGS=()
 declare -g OS_ID=""
 declare -g OS_VERSION=""
 
-# 静默输出控制
-exec 3>&1
-exec >/dev/null 2>&1
+# 处理参数
+VERBOSE=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            echo "用法: $0 [选项]"
+            echo "配置系统的中文环境支持。"
+            echo "选项:"
+            echo "  -h, --help     显示帮助信息"
+            echo "  -v, --verbose  启用详细输出"
+            exit 0
+            ;;
+        -v|--verbose)
+            VERBOSE=true
+            shift
+            ;;
+        *)
+            echo -e "${RED}[错误] 未知参数: $1${NC}" >&3
+            exit 1
+            ;;
+    esac
+done
 
-# 检查sudo权限
-check_sudo() {
-    echo -e "${CYAN}[信息] 检查sudo权限...${NC}" >&3
-    if ! sudo -v; then
-        echo -e "${RED}[错误] 需要sudo权限或认证失败，请确保用户具有sudo权限${NC}" >&3
-        exit 1
-    fi
-}
+# 输出控制
+exec 3>&1
+if $VERBOSE; then
+    exec >&3 2>&3
+else
+    exec >/dev/null 2>&1
+fi
 
 # 检测系统发行版
 detect_os() {
@@ -39,35 +56,27 @@ detect_os() {
         case "${ID}" in
             ubuntu|debian)
                 PKG_MANAGER="apt"
-                REQUIRED_PKGS=("locales")
-                OPTIONAL_PKGS=("fonts-wqy-zenhei" "fonts-noto-cjk")
+                SUPPORT_PKGS=("locales" "fonts-wqy-zenhei" "fonts-noto-cjk")
                 ;;
             centos|rhel|rocky|almalinux)
                 PKG_MANAGER="yum"
-                REQUIRED_PKGS=("glibc-langpack-zh")
-                OPTIONAL_PKGS=("fonts-chinese")
-                # 检查并启用EPEL仓库
-                if ! rpm -q epel-release >/dev/null 2>&1; then
-                    echo -e "${CYAN}[信息] 启用EPEL仓库...${NC}" >&3
-                    sudo yum install -y epel-release || {
-                        echo -e "${RED}[错误] 无法启用EPEL仓库，可能影响后续安装${NC}" >&3
-                    }
+                if [[ "${OS_VERSION%%.*}" -ge 8 ]]; then
+                    SUPPORT_PKGS=("glibc-langpack-zh" "wqy-zenhei-fonts")
+                else
+                    SUPPORT_PKGS=("glibc-common" "fonts-chinese")
                 fi
                 ;;
             fedora)
                 PKG_MANAGER="dnf"
-                REQUIRED_PKGS=("glibc-langpack-zh")
-                OPTIONAL_PKGS=("google-noto-sans-cjk-ttc-fonts")
+                SUPPORT_PKGS=("glibc-langpack-zh" "google-noto-sans-cjk-ttc-fonts")
                 ;;
             arch|manjaro)
                 PKG_MANAGER="pacman"
-                REQUIRED_PKGS=("noto-fonts-cjk")
-                OPTIONAL_PKGS=("ttf-arphic-uming")
+                SUPPORT_PKGS=("noto-fonts-cjk" "ttf-arphic-uming")
                 ;;
             opensuse*|sles)
                 PKG_MANAGER="zypper"
-                REQUIRED_PKGS=("glibc-locale")
-                OPTIONAL_PKGS=("fonts-config")
+                SUPPORT_PKGS=("glibc-locale-zh" "fonts-config")
                 ;;
             *)
                 echo -e "${RED}[错误] 不支持的发行版: ${PRETTY_NAME:-$ID}${NC}" >&3
@@ -81,11 +90,21 @@ detect_os() {
     fi
 }
 
+# 检查sudo权限
+check_sudo() {
+    echo -e "${CYAN}[信息] 检查sudo权限...${NC}" >&3
+    if ! sudo -v >/dev/null 2>&1; then
+        echo -e "${RED}[错误] 需要sudo权限来运行此脚本。请以具有sudo权限的用户身份运行。${NC}" >&3
+        exit 1
+    fi
+    echo -e "${GREEN}[成功] 用户具有sudo权限。${NC}" >&3
+}
+
 # 检查中文环境
 check_locale() {
     echo -e "${CYAN}[信息] 检查语言环境...${NC}" >&3
     local current_lang
-    current_lang=$(locale | awk -F= '/LANG/{print $2}' | tr -d '"' | tr -d "'")
+    current_lang=$(locale 2>/dev/null | awk -F= '/LANG/{print $2}' | tr -d '"')
     if [[ "${current_lang}" == "zh_CN.UTF-8" ]]; then
         echo -e "${GREEN}[通过] 当前语言环境: zh_CN.UTF-8${NC}" >&3
         return 0
@@ -100,54 +119,32 @@ install_lang_pkg() {
     echo -e "${CYAN}[信息] 安装中文支持...${NC}" >&3
     case "${PKG_MANAGER}" in
         apt)
-            sudo apt update || {
-                echo -e "${RED}[错误] 软件源更新失败，请检查网络连接${NC}" >&3
-                exit 1
-            }
-            # 安装必须包
-            sudo apt install -y "${REQUIRED_PKGS[@]}" || {
-                echo -e "${RED}[错误] 必须的软件包安装失败: ${REQUIRED_PKGS[*]}${NC}" >&3
-                exit 1
-            }
-            # 安装可选包
-            if [[ ${#OPTIONAL_PKGS[@]} -gt 0 ]]; then
-                sudo apt install -y "${OPTIONAL_PKGS[@]}" || {
-                    echo -e "${YELLOW}[警告] 可选软件包安装失败: ${OPTIONAL_PKGS[*]}${NC}" >&3
-                }
-            fi
+            sudo apt update
+            for pkg in "${SUPPORT_PKGS[@]}"; do
+                if ! sudo apt install -y "$pkg"; then
+                    echo -e "${YELLOW}[警告] 包 $pkg 安装失败，可能影响后续配置。${NC}" >&3
+                fi
+            done
             ;;
         yum|dnf)
-            sudo "${PKG_MANAGER}" install -y "${REQUIRED_PKGS[@]}" || {
-                echo -e "${RED}[错误] 必须的软件包安装失败: ${REQUIRED_PKGS[*]}${NC}" >&3
-                exit 1
-            }
-            if [[ ${#OPTIONAL_PKGS[@]} -gt 0 ]]; then
-                sudo "${PKG_MANAGER}" install -y "${OPTIONAL_PKGS[@]}" --skip-broken || {
-                    echo -e "${YELLOW}[警告] 部分可选软件包安装失败${NC}" >&3
-                }
-            fi
+            for pkg in "${SUPPORT_PKGS[@]}"; do
+                if ! sudo "${PKG_MANAGER}" install -y "$pkg"; then
+                    echo -e "${YELLOW}[警告] 包 $pkg 安装失败，可能不存在或已安装。${NC}" >&3
+                fi
+            done
             ;;
         pacman)
-            sudo pacman -Sy --noconfirm "${REQUIRED_PKGS[@]}" || {
-                echo -e "${RED}[错误] 必须的软件包安装失败: ${REQUIRED_PKGS[*]}${NC}" >&3
+            sudo pacman -Sy --noconfirm "${SUPPORT_PKGS[@]}" || {
+                echo -e "${RED}[错误] 安装失败，请手动执行: sudo pacman -Sy ${SUPPORT_PKGS[*]}${NC}" >&3
                 exit 1
             }
-            if [[ ${#OPTIONAL_PKGS[@]} -gt 0 ]]; then
-                sudo pacman -Sy --noconfirm "${OPTIONAL_PKGS[@]}" || {
-                    echo -e "${YELLOW}[警告] 可选软件包安装失败: ${OPTIONAL_PKGS[*]}${NC}" >&3
-                }
-            fi
             ;;
         zypper)
-            sudo zypper -n in "${REQUIRED_PKGS[@]}" || {
-                echo -e "${RED}[错误] 必须的软件包安装失败: ${REQUIRED_PKGS[*]}${NC}" >&3
-                exit 1
-            }
-            if [[ ${#OPTIONAL_PKGS[@]} -gt 0 ]]; then
-                sudo zypper -n in "${OPTIONAL_PKGS[@]}" || {
-                    echo -e "${YELLOW}[警告] 可选软件包安装失败: ${OPTIONAL_PKGS[*]}${NC}" >&3
-                }
-            fi
+            for pkg in "${SUPPORT_PKGS[@]}"; do
+                if ! sudo zypper -n in "$pkg"; then
+                    echo -e "${YELLOW}[警告] 包 $pkg 安装失败，可能不存在或已安装。${NC}" >&3
+                fi
+            done
             ;;
     esac
     echo -e "${GREEN}[成功] 中文支持安装完成${NC}" >&3
@@ -158,49 +155,21 @@ configure_locale() {
     echo -e "${CYAN}[信息] 配置语言环境...${NC}" >&3
     case "${OS_ID}" in
         ubuntu|debian)
-            echo -e "${BLUE}[操作] 生成中文locale...${NC}" >&3
-            sudo sed -i '/zh_CN.UTF-8/s/^#//g' /etc/locale.gen || {
-                echo -e "${RED}[错误] 无法修改/etc/locale.gen${NC}" >&3
-                exit 1
-            }
-            sudo locale-gen zh_CN.UTF-8 || {
-                echo -e "${RED}[错误] 生成locale失败${NC}" >&3
-                exit 1
-            }
-            sudo update-locale LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 || {
-                echo -e "${RED}[错误] 更新locale设置失败${NC}" >&3
-                exit 1
-            }
+            sudo sed -i '/zh_CN.UTF-8/s/^#//g' /etc/locale.gen
+            sudo locale-gen zh_CN.UTF-8
+            sudo update-locale LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8
             ;;
         centos|rhel|rocky|almalinux|fedora)
-            echo 'LANG="zh_CN.UTF-8"' | sudo tee /etc/locale.conf >/dev/null || {
-                echo -e "${RED}[错误] 无法写入/etc/locale.conf${NC}" >&3
-                exit 1
-            }
-            sudo localectl set-locale LANG=zh_CN.UTF-8 || {
-                echo -e "${RED}[错误] 设置locale失败${NC}" >&3
-                exit 1
-            }
+            echo 'LANG="zh_CN.UTF-8"' | sudo tee /etc/locale.conf >/dev/null
+            sudo localectl set-locale LANG=zh_CN.UTF-8
             ;;
         arch|manjaro)
-            sudo sed -i '/zh_CN.UTF-8/s/^#//g' /etc/locale.gen || {
-                echo -e "${RED}[错误] 无法修改/etc/locale.gen${NC}" >&3
-                exit 1
-            }
-            sudo locale-gen || {
-                echo -e "${RED}[错误] 生成locale失败${NC}" >&3
-                exit 1
-            }
-            echo 'LANG=zh_CN.UTF-8' | sudo tee /etc/locale.conf >/dev/null || {
-                echo -e "${RED}[错误] 无法写入/etc/locale.conf${NC}" >&3
-                exit 1
-            }
+            sudo sed -i '/zh_CN.UTF-8/s/^#//g' /etc/locale.gen
+            sudo locale-gen
+            echo 'LANG=zh_CN.UTF-8' | sudo tee /etc/locale.conf >/dev/null
             ;;
         opensuse*|sles)
-            sudo localectl set-locale LANG=zh_CN.UTF-8 || {
-                echo -e "${RED}[错误] 设置locale失败${NC}" >&3
-                exit 1
-            }
+            sudo localectl set-locale LANG=zh_CN.UTF-8
             ;;
     esac
 
@@ -211,49 +180,31 @@ configure_locale() {
     echo -e "${GREEN}[成功] 语言环境配置完成${NC}" >&3
 }
 
-验证配置
+# 验证配置
 verify_config() {
     echo -e "${CYAN}[信息] 验证配置...${NC}" >&3
-    local config_ok=1
-    case "${OS_ID}" in
-        ubuntu|debian)
-            if grep -q "LANG=zh_CN.UTF-8" /etc/default/locale; then
-                config_ok=0
-            fi
-            ;;
-        centos|rhel|rocky|almalinux|fedora|arch|manjaro)
-            if grep -q "LANG=zh_CN.UTF-8" /etc/locale.conf; then
-                config_ok=0
-            fi
-            ;;
-        opensuse*|sles)
-            if localectl status | grep -q "zh_CN.UTF-8"; then
-                config_ok=0
-            fi
-            ;;
-    esac
-
-    if [[ $config_ok -eq 0 ]]; then
-        echo -e "${GREEN}[系统配置验证通过] 中文环境已正确设置${NC}" >&3
-    else
-        echo -e "${RED}[错误] 系统配置文件未正确设置${NC}" >&3
+    # 检查生成的locale是否存在
+    if ! locale -a | grep -qi "zh_cn.utf8"; then
+        echo -e "${RED}[错误] 中文locale未生成，请检查语言包安装。${NC}" >&3
         exit 1
     fi
-
-检查当前环境
-    if locale | grep -q "zh_CN.UTF-8"; then
-        echo -e "${GREEN}[当前环境验证通过] 语言环境已生效${NC}" >&3
-    else
-        echo -e "${YELLOW}[警告] 当前会话环境未生效，请检查以下文件：" >&3
-        echo -e "  /.bashrc, /.profile, ~/.bash_profile 等是否覆盖了LANG设置${NC}" >&3
-        echo -e "  可执行以下命令立即生效: ${GREEN}source /etc/profile.d/lang.sh${NC}" >&3
+    # 检查环境变量
+    if ! locale | grep -q "zh_CN.UTF-8"; then
+        echo -e "${RED}[错误] 配置失败，请检查以下文件：" >&3
+        echo -e "  /etc/default/locale (Debian/Ubuntu)" >&3
+        echo -e "  /etc/locale.conf (CentOS/Arch)" >&3
+        echo -e "  /etc/profile.d/lang.sh${NC}" >&3
+        exit 1
     fi
+    echo -e "${GREEN}[验证通过] 当前系统语言环境：" >&3
+    locale >&3
+    echo -e "${NC}" >&3
 }
 
-主流程
+# 主流程
 main() {
-    check_sudo
     detect_os
+    check_sudo
     if check_locale; then
         echo -e "${GREEN}[跳过] 中文环境已配置，无需操作${NC}" >&3
         exit 0
@@ -268,5 +219,5 @@ main() {
     echo -e "  或手动加载环境变量：${GREEN}source /etc/profile.d/lang.sh${NC}" >&3
 }
 
-执行入口
+# 执行入口
 main "$@"
