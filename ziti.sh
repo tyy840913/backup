@@ -246,10 +246,10 @@ main() {
     read -p "[默认: 立即重启] " choice
     case "$choice" in
         n|N ) 
-            echo -e "${YELLOW}已取消重启，请稍后手动执行 'reboot' 命令。${NC}"
+            echo -e "\n${YELLOW}已取消重启，请稍后手动执行 'reboot' 命令。${NC}"
             ;;
         * ) 
-            echo -e "${GREEN}正在准备重启系统...${NC}"
+            echo -e "\n${GREEN}正在准备重启系统...${NC}"
             reboot
             ;;
     esac
