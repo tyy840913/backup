@@ -93,8 +93,8 @@ fi
 
 # 定义要下载的文件（使用固定文件名）
 FILES=(
-    "$BASE_URL/hy2:hysteria2"  # hysteria2二进制文件
-    "$BASE_URL/monitor:monitor" # 监控进程二进制文件
+    "${BASE_URL}/hy2:hysteria2"  # hysteria2二进制文件
+    "${BASE_URL}/monitor:monitor" # 监控进程二进制文件
 )
 
 # 下载文件函数
@@ -105,6 +105,10 @@ download_files() {
         
         echo -e "\e[1;32m下载 $filename...\e[0m"
         $COMMAND "$DOWNLOAD_DIR/$filename" "$url"
+        if [ ! -f "$DOWNLOAD_DIR/$filename" ]; then
+            echo -e "\e[1;31m下载 $filename 失败，请检查URL是否正确: $url\e[0m"
+            exit 1
+        fi
         chmod +x "$DOWNLOAD_DIR/$filename"
     done
 }
@@ -251,13 +255,6 @@ cat << EOF
   skip-cert-verify: true
   fast-open: true
 EOF
-
-# 生成二维码
-echo ""
-QR_URL="https://00.ssss.nyc.mn/qrencode"
-$COMMAND "${WORKDIR}/qrencode" "$QR_URL" && chmod +x "${WORKDIR}/qrencode"
-"${WORKDIR}/qrencode" -m 2 -t UTF8 "https://${USERNAME}.${CURRENT_DOMAIN}/${UUID:0:8}_hy2.log"
-echo -e "\n\e[1;35m节点订阅链接: https://${USERNAME}.${CURRENT_DOMAIN}/${UUID:0:8}_hy2.log  适用于V2ranN/Nekobox/Karing/小火箭/sterisand/Loon 等\033[0m\n"
 
 # 清理临时文件
 rm -rf config.yaml monitor_config.json
