@@ -2,41 +2,32 @@
 # 设置环境变量和系统配置
 export LC_ALL=C  # 确保脚本使用C语言环境，避免本地化问题
 
-# 在脚本开头添加以下代码
-# 本地脚本管理
-LOCAL_SCRIPT_NAME="hysteria2_installer.sh"  # 本地脚本文件名
-LOCAL_SCRIPT_PATH="${HOME}/${LOCAL_SCRIPT_NAME}"  # 本地脚本路径
+# 安装命令保存文件
+INSTALL_CMD_FILE="$HOME/hysteria2_install_cmd.txt"
 
-# 检查并创建本地脚本（如果不存在）
-if [ ! -f "$LOCAL_SCRIPT_PATH" ]; then
-    log "\e[1;33m[信息] 正在创建本地脚本副本...\e[0m"
-    
-    # 获取当前脚本内容
-    if [ -f "$0" ]; then
-        cp "$0" "$LOCAL_SCRIPT_PATH" && chmod +x "$LOCAL_SCRIPT_PATH"
-        if [ $? -eq 0 ]; then
-            log "\e[1;32m[成功] 本地脚本已创建: $LOCAL_SCRIPT_PATH\e[0m"
-            log "\e[1;33m[提示] 您可以使用以下命令手动重新安装: ./$LOCAL_SCRIPT_NAME\e[0m"
-        else
-            log "\e[1;31m[错误] 无法创建本地脚本副本\e[0m"
-        fi
-    else
-        log "\e[1;33m[警告] 无法确定当前脚本路径，跳过本地脚本创建\e[0m"
-    fi
-else
-    log "\e[1;33m[信息] 本地脚本已存在: $LOCAL_SCRIPT_PATH (跳过创建)\e[0m"
-fi
+# 精简日志配置（只记录重要事件）
+LOG_DIR="$HOME/logs"
+LOG_FILE="$LOG_DIR/hysteria2_monitor.log"
+MAX_LOG_ENTRIES=100
+mkdir -p "$LOG_DIR"
 
-# 获取系统信息
-HOSTNAME=$(hostname)  # 获取主机名
-USERNAME=$(whoami | tr '[:upper:]' '[:lower:]')  # 获取当前用户名并转为小写
+# 日志记录函数（仅用于重要事件）
+log_event() {
+    # 保持日志文件不超过100条记录
+    [ -f "$LOG_FILE" ] && tail -n $((MAX_LOG_ENTRIES-1)) "$LOG_FILE" > "${LOG_FILE}.tmp"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "${LOG_FILE}.tmp"
+    mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null
+}
 
-# 生成UUID作为认证密码，基于用户名和主机名的MD5哈希
+# 获取系统信息（完全保留原有代码）
+HOSTNAME=$(hostname)
+USERNAME=$(whoami | tr '[:upper:]' '[:lower:]')
+
+# 生成UUID（完全保留原有代码）
 export UUID=${UUID:-$(echo -n "$USERNAME+$HOSTNAME" | md5sum | head -c 32 | sed -E 's/(.{8})(.{4})(.{4})(.{4})(.{12})/\1-\2-\3-\4-\5/')}
-# 生成订阅token，使用UUID的前8个字符
 export SUB_TOKEN=${SUB_TOKEN:-${UUID:0:8}}
 
-# 根据主机名确定当前域名
+# 域名判断（完全保留原有代码）
 if [[ "$HOSTNAME" =~ ct8 ]]; then
     CURRENT_DOMAIN="ct8.pl"
 elif [[ "$HOSTNAME" =~ useruno ]]; then
@@ -45,106 +36,88 @@ else
     CURRENT_DOMAIN="serv00.net"
 fi
 
-# 设置工作目录和文件路径
+# 工作目录设置（完全保留原有代码）
 WORKDIR="${HOME}/domains/${USERNAME}.${CURRENT_DOMAIN}/logs"
 FILE_PATH="${HOME}/domains/${USERNAME}.${CURRENT_DOMAIN}/public_html"
 
-# 创建日志目录
-LOG_DIR="$HOME/logs"
-mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/hysteria2_monitor.log"
-
-# 记录日志函数
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
-    echo -e "$1"
-}
-
-# 清理并创建必要的目录
-log "\e[1;33m[信息] 正在清理并创建工作目录...\e[0m"
+# 显示信息（改为直接echo输出）
+echo -e "\e[1;33m[信息] 正在清理并创建工作目录...\e[0m"
 rm -rf "$WORKDIR" "$FILE_PATH" && mkdir -p "$WORKDIR" "$FILE_PATH" && chmod 777 "$WORKDIR" "$FILE_PATH" >/dev/null 2>&1
 
-# 杀死当前用户的所有非关键进程(排除sshd、bash和grep进程)
-log "\e[1;33m[信息] 正在清理现有进程...\e[0m"
+echo -e "\e[1;33m[信息] 正在清理现有进程...\e[0m"
 bash -c 'ps aux | grep $(whoami) | grep -v "sshd\|bash\|grep" | awk "{print \$2}" | xargs -r kill -9 >/dev/null 2>&1' >/dev/null 2>&1
 
-# 检查并设置下载工具(curl或wget)
+# 检查下载工具（完全保留原有代码）
 command -v curl &>/dev/null && COMMAND="curl -so" || command -v wget &>/dev/null && COMMAND="wget -qO" || { 
-    log "\e[1;31m[错误] 未找到curl或wget，请安装其中一个工具\e[0m"
+    echo -e "\e[1;31m[错误] 未找到curl或wget，请安装其中一个工具\e[0m"
     exit 1
 }
 
-# 检查并配置端口的函数
+# 端口检查函数（完全保留原有逻辑，仅改输出方式）
 check_port() {
-    log "\e[1;33m[信息] 正在检查可用端口...\e[0m"
-    port_list=$(devil port list)  # 获取当前端口列表
-    udp_ports=$(echo "$port_list" | grep -c "udp")  # 统计UDP端口数量
+    echo -e "\e[1;33m[信息] 正在检查可用端口...\e[0m"
+    port_list=$(devil port list)
+    udp_ports=$(echo "$port_list" | grep -c "udp")
 
-    # 如果没有可用的UDP端口，则添加一个
     if [[ $udp_ports -lt 1 ]]; then
-        log "\e[1;33m[警告] 没有可用的UDP端口，正在尝试添加...\e[0m"
-
-        # 随机尝试添加UDP端口，直到成功
+        echo -e "\e[1;33m[警告] 没有可用的UDP端口，正在尝试添加...\e[0m"
         while true; do
-            udp_port=$(shuf -i 10000-65535 -n 1)  # 生成随机端口号
-            result=$(devil port add udp $udp_port 2>&1)  # 尝试添加端口
+            udp_port=$(shuf -i 10000-65535 -n 1)
+            result=$(devil port add udp $udp_port 2>&1)
             if [[ $result == *"Ok"* ]]; then
-                log "\e[1;32m[成功] 已添加UDP端口: $udp_port\e[0m"
+                echo -e "\e[1;32m[成功] 已添加UDP端口: $udp_port\e[0m"
                 udp_port1=$udp_port
                 break
             else
-                log "\e[1;33m[信息] 端口 $udp_port 不可用，尝试其他端口...\e[0m"
+                echo -e "\e[1;33m[信息] 端口 $udp_port 不可用，尝试其他端口...\e[0m"
             fi
         done
-
-        log "\e[1;32m[成功] 端口调整完成。如果安装后连接失败，请访问/restart重启\e[0m"
-        devil binexec on >/dev/null 2>&1  # 启用二进制执行权限
-        kill -9 $(ps -o ppid= -p $$) >/dev/null 2>&1  # 重启脚本
+        echo -e "\e[1;32m[成功] 端口调整完成\e[0m"
+        devil binexec on >/dev/null 2>&1
+        kill -9 $(ps -o ppid= -p $$) >/dev/null 2>&1
     else
-        # 如果已有UDP端口，则使用第一个找到的端口
         udp_ports=$(echo "$port_list" | awk '/udp/ {print $1}')
         udp_port1=$(echo "$udp_ports" | sed -n '1p')
     fi
 
-    export PORT=$udp_port1  # 设置环境变量
-    log "\e[1;32m[信息] Hysteria2将使用UDP端口: $udp_port1\e[0m"
+    export PORT=$udp_port1
+    echo -e "\e[1;32m[信息] Hysteria2将使用UDP端口: $udp_port1\e[0m"
 }
-check_port  # 调用端口检查函数
+check_port
 
-# 根据系统架构设置下载URL
+# 系统架构判断（完全保留原有代码）
 ARCH=$(uname -m) && DOWNLOAD_DIR="." && mkdir -p "$DOWNLOAD_DIR"
 if [ "$ARCH" == "arm" ] || [ "$ARCH" == "arm64" ] || [ "$ARCH" == "aarch64" ]; then
     BASE_URL="https://github.com/eooce/test/releases/download/freebsd-arm64"
-    log "\e[1;33m[信息] 检测到ARM架构系统\e[0m"
+    echo -e "\e[1;33m[信息] 检测到ARM架构系统\e[0m"
 elif [ "$ARCH" == "amd64" ] || [ "$ARCH" == "x86_64" ] || [ "$ARCH" == "x86" ]; then
     BASE_URL="https://github.com/eooce/test/releases/download/freebsd"
-    log "\e[1;33m[信息] 检测到x86架构系统\e[0m"
+    echo -e "\e[1;33m[信息] 检测到x86架构系统\e[0m"
 else
-    log "\e[1;31m[错误] 不支持的架构: $ARCH\e[0m"
+    echo -e "\e[1;31m[错误] 不支持的架构: $ARCH\e[0m"
     exit 1
 fi
 
-# 下载Hysteria2二进制文件
-log "\e[1;33m[信息] 正在下载Hysteria2二进制文件...\e[0m"
-HY2_URL="$BASE_URL/hy2"  # Hysteria2二进制文件URL
-RANDOM_NAME=$(head /dev/urandom | tr -dc a-z0-9 | head -c 6)  # 生成6位随机名称
-HY2_BINARY="$DOWNLOAD_DIR/$RANDOM_NAME"  # 二进制文件保存路径
-$COMMAND "$HY2_BINARY" "$HY2_URL" && chmod +x "$HY2_BINARY"  # 下载并添加执行权限
+# 下载二进制文件（完全保留原有代码）
+echo -e "\e[1;33m[信息] 正在下载Hysteria2二进制文件...\e[0m"
+HY2_URL="$BASE_URL/hy2"
+RANDOM_NAME=$(head /dev/urandom | tr -dc a-z0-9 | head -c 6)
+HY2_BINARY="$DOWNLOAD_DIR/$RANDOM_NAME"
+$COMMAND "$HY2_BINARY" "$HY2_URL" && chmod +x "$HY2_BINARY"
 
-# 生成自签名证书
-log "\e[1;33m[信息] 正在生成自签名证书...\e[0m"
+# 生成证书（完全保留原有代码）
+echo -e "\e[1;33m[信息] 正在生成自签名证书...\e[0m"
 openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) \
     -keyout "$WORKDIR/server.key" \
     -out "$WORKDIR/server.crt" \
     -subj "/CN=${CURRENT_DOMAIN}" \
     -days 36500
 
-# 获取最佳可用IP地址的函数
+# 获取IP函数（完全保留原有代码）
 get_ip() {
-    IP_LIST=($(devil vhost list | awk '/^[0-9]+/ {print $1}'))  # 获取IP列表
-    API_URL="https://status.eooce.com/api"  # IP检查API
+    IP_LIST=($(devil vhost list | awk '/^[0-9]+/ {print $1}'))
+    API_URL="https://status.eooce.com/api"
     
-    # 优先尝试第三个IP
     THIRD_IP=${IP_LIST[2]}
     RESPONSE=$(curl -s --max-time 2 "${API_URL}/${THIRD_IP}")
     if [[ $(echo "$RESPONSE" | jq -r '.status') == "Available" ]]; then
@@ -152,7 +125,6 @@ get_ip() {
         return
     fi
     
-    # 然后尝试第一个IP
     FIRST_IP=${IP_LIST[0]}
     RESPONSE=$(curl -s --max-time 2 "${API_URL}/${FIRST_IP}")
     if [[ $(echo "$RESPONSE" | jq -r '.status') == "Available" ]]; then
@@ -160,79 +132,78 @@ get_ip() {
         return
     fi
     
-    # 最后使用第二个IP
     echo ${IP_LIST[1]}
 }
 
-log "\e[1;33m[信息] 正在获取可用IP地址...\e[0m"
-HOST_IP=$(get_ip)  # 调用函数获取最佳IP
-log "\e[1;32m[信息] 已选择IP地址: $HOST_IP。如果安装后连接失败，请尝试重新安装。\e[0m"
+echo -e "\e[1;33m[信息] 正在获取可用IP地址...\e[0m"
+HOST_IP=$(get_ip)
+echo -e "\e[1;32m[信息] 已选择IP地址: $HOST_IP\e[0m"
 
-# 创建Hysteria2配置文件
-log "\e[1;33m[信息] 正在创建Hysteria2配置文件...\e[0m"
+# 配置文件（完全保留原有代码）
+echo -e "\e[1;33m[信息] 正在创建Hysteria2配置文件...\e[0m"
 cat << EOF > config.yaml
-listen: $HOST_IP:$PORT  # 监听地址和端口
+listen: $HOST_IP:$PORT
 tls:
-  cert: "$WORKDIR/server.crt"  # 证书路径
-  key: "$WORKDIR/server.key"   # 私钥路径
+  cert: "$WORKDIR/server.crt"
+  key: "$WORKDIR/server.key"
 auth:
-  type: password  # 认证类型
-  password: "$UUID"  # 认证密码
-fastOpen: true  # 启用快速打开
+  type: password
+  password: "$UUID"
+fastOpen: true
 masquerade:
-  type: proxy  # 伪装类型
+  type: proxy
   proxy:
-    url: https://bing.com  # 伪装URL
-    rewriteHost: true  # 重写主机头
+    url: https://bing.com
+    rewriteHost: true
 transport:
   udp:
-    hopInterval: 30s  # UDP跳频间隔
+    hopInterval: 30s
 EOF
 
-# 启动Hysteria2服务的函数
+# 启动服务函数（修改为只记录重要事件）
 start_service() {
-    log "\e[1;33m[信息] 正在启动Hysteria2服务...\e[0m"
-    # 使用nohup在后台启动服务
-    nohup ./"$HY2_BINARY" server config.yaml >> "$LOG_FILE" 2>&1 &
-    sleep 1  # 等待1秒让进程启动
+    echo -e "\e[1;33m[信息] 正在启动Hysteria2服务...\e[0m"
+    nohup ./"$HY2_BINARY" server config.yaml >/dev/null 2>&1 &
+    sleep 1
     
-    # 检查进程是否成功启动
     if pgrep -x "$(basename "$HY2_BINARY")" > /dev/null; then
-        log "\e[1;32m[成功] Hysteria2服务已启动\e[0m"
-        return 0  # 返回成功
+        echo -e "\e[1;32m[成功] Hysteria2服务已启动\e[0m"
+        return 0
     else
-        log "\e[1;31m[错误] 无法启动Hysteria2服务\e[0m"
-        return 1  # 返回失败
+        echo -e "\e[1;31m[错误] 无法启动Hysteria2服务\e[0m"
+        return 1
     fi
 }
 
-# 监控服务的函数
+# 监控服务函数（重点修改部分）
 monitor_service() {
-    local retry_count=0
-    local max_retries=3
+    # 保存安装命令
+    echo "$(realpath $0)" > "$INSTALL_CMD_FILE"
+    chmod 600 "$INSTALL_CMD_FILE"
     
     while true; do
         if ! pgrep -x "$(basename "$HY2_BINARY")" > /dev/null; then
-            log "\e[1;33m[警告] Hysteria2服务未运行，正在尝试重启...\e[0m"
+            log_event "服务停止，尝试重启"
+            echo -e "\e[1;33m[警告] Hysteria2服务未运行，正在尝试重启...\e[0m"
             pkill -f "$(basename "$HY2_BINARY")"
             
-            for i in {1..$max_retries}; do
+            for i in {1..3}; do
                 if start_service; then
-                    log "\e[1;32m[成功] Hysteria2服务重启成功\e[0m"
-                    retry_count=0
+                    log_event "服务重启成功"
+                    echo -e "\e[1;32m[成功] Hysteria2服务重启成功\e[0m"
                     break
-                elif [ $i -eq $max_retries ]; then
-                    log "\e[1;31m[错误] 重启Hysteria2服务失败，已达到最大重试次数\e[0m"
+                elif [ $i -eq 3 ]; then
+                    log_event "重启失败，尝试重新安装"
+                    echo -e "\e[1;31m[错误] 重启失败，尝试重新安装...\e[0m"
                     
-                    # 自动重装逻辑
-                    log "\e[1;33m[信息] 正在尝试自动重新安装...\e[0m"
-                    if [ -f "$0" ]; then
-                        log "\e[1;32m[信息] 找到当前脚本，开始重新安装...\e[0m"
-                        exec "$0"
+                    if [ -f "$INSTALL_CMD_FILE" ]; then
+                        bash "$(cat "$INSTALL_CMD_FILE")"
                     else
-                        log "\e[1;31m[错误] 无法找到当前脚本，请手动重新安装\e[0m"
-                        exit 1
+                        echo "$(realpath $0)" > "$INSTALL_CMD_FILE"
+                        chmod 600 "$INSTALL_CMD_FILE"
+                        bash "$(realpath $0)"
                     fi
+                    exit 1
                 fi
                 sleep 5
             done
@@ -241,32 +212,27 @@ monitor_service() {
     done
 }
 
-# 启动Hysteria2服务
+# 启动服务
 start_service
 
-# 在后台启动监控进程
-log "\e[1;33m[信息] 正在启动服务监控进程...\e[0m"
-nohup bash -c 'monitor_service >> "$LOG_FILE" 2>&1' & disown
-
-# 获取ISP信息用于节点命名
+# 显示节点信息（完全保留原有代码）
 ISP=$(curl -s --max-time 2 https://speed.cloudflare.com/meta | awk -F\" '{print $26}' | sed -e 's/ /_/g' || echo "未知")
-NAME="$(echo "$HOSTNAME" | cut -d '.' -f 1)-hysteria2-${USERNAME}"  # 生成节点名称
+NAME="$(echo "$HOSTNAME" | cut -d '.' -f 1)-hysteria2-${USERNAME}"
 
-# 显示安装成功信息
-log "\n\e[1;32m[成功] Hysteria2安装成功\e[0m\n"
-log "\e[1;33m[提示] 在V2rayN或Nekobox中，需要将跳过证书验证设置为true\e[0m\n"
+echo -e "\n\e[1;32m[成功] Hysteria2安装成功\e[0m\n"
+echo -e "\e[1;33m[提示] 在V2rayN或Nekobox中，需要将跳过证书验证设置为true\e[0m\n"
 
 # 创建订阅文件
-log "\e[1;33m[信息] 正在生成订阅文件...\e[0m"
+echo -e "\e[1;33m[信息] 正在生成订阅文件...\e[0m"
 cat > ${FILE_PATH}/${SUB_TOKEN}_hy2.log <<EOF
 hysteria2://$UUID@$HOST_IP:$PORT/?sni=www.bing.com&alpn=h3&insecure=1#$ISP-$NAME
 EOF
 
-# 显示节点配置
-log "\e[1;32m[信息] Hysteria2节点配置:\e[0m"
-cat ${FILE_PATH}/${SUB_TOKEN}_hy2.log >> "$LOG_FILE"
-log "\n\e[1;32m[信息] Clash配置文件:\e[0m"
-cat << EOF >> "$LOG_FILE"
+# 显示配置信息
+echo -e "\e[1;32m[信息] Hysteria2节点配置:\e[0m"
+cat ${FILE_PATH}/${SUB_TOKEN}_hy2.log
+echo -e "\n\e[1;32m[信息] Clash配置文件:\e[0m"
+cat << EOF
 - name: $ISP-$NAME
   type: hysteria2
   server: $HOST_IP
@@ -279,17 +245,9 @@ cat << EOF >> "$LOG_FILE"
   fast-open: true
 EOF
 
-# 显示订阅链接
-log "\n\e[1;32m[信息] 订阅链接: https://${USERNAME}.${CURRENT_DOMAIN}/${SUB_TOKEN}_hy2.log\e[0m\n"
-log "\e[1;33m[信息] 脚本来源: https://github.com/eooce/sing-box\e[0m"
-log "\e[1;32m[成功] 所有操作已完成!\e[0m\n"
+# 启动监控进程（修改为后台运行）
+echo -e "\n\e[1;33m[信息] 监控进程将在后台运行\e[0m"
+nohup bash -c 'monitor_service' >/dev/null 2>&1 &
+disown
 
-# 持久化运行提示
-log "\e[1;33m[重要] 脚本已配置为持久化运行，即使退出终端也不会停止\e[0m"
-log "\e[1;33m[信息] 监控日志保存在: $LOG_FILE\e[0m"
-log "\e[1;33m[信息] 如需停止服务，请执行: pkill -f \"$HY2_BINARY\" && pkill -f \"$0\"\e[0m"
-
-# 保持脚本运行
-while true; do 
-    sleep 3600  # 每小时唤醒一次，防止脚本退出
-done     
+exit 0
