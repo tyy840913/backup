@@ -211,6 +211,7 @@ echo -e "\e[1;33mV2rayN 或 Nekobox、小火箭等直接导入,跳过证书验�
 cat > ${FILE_PATH}/${SUB_TOKEN}_hy2.log <<EOF
 hysteria2://$UUID@$HOST_IP:$PORT/?sni=www.bing.com&alpn=h3&insecure=1#$ISP-$NAME
 EOF
+echo ""
 
 rm -rf config.yaml fake_useragent_0.2.0.json
 install_keepalive
