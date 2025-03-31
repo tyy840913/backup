@@ -13,6 +13,11 @@ curl -LsO https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/m
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker-compose.sh)"
 ```
 
+# 一键批量安装SERV00-HY2
+```bash
+bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/serv00-hy2.sh)"
+```
+
 
 ## 快速启动
 
