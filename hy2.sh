@@ -135,14 +135,13 @@ HY2_URL="$BASE_URL/hy2"
 HY2_BINARY="./hysteria2_binary"  # 固定文件名
 $COMMAND "$HY2_BINARY" "$HY2_URL" && chmod +x "$HY2_BINARY"  # 下载并添加执行权限
 
-### TLS证书生成 ###
+# 生成证书（完全保留原有代码）
 echo -e "\e[1;33m[信息] 正在生成自签名证书...\e[0m"
-# 使用prime256v1椭圆曲线算法生成证书
 openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) \
-    -keyout "$WORKDIR/server.key" \      # 私钥文件
-    -out "$WORKDIR/server.crt" \         # 证书文件
-    -subj "/CN=${CURRENT_DOMAIN}" \     # 证书主题
-    -days 36500                         # 有效期100年
+    -keyout "$WORKDIR/server.key" \
+    -out "$WORKDIR/server.crt" \
+    -subj "/CN=${CURRENT_DOMAIN}" \
+    -days 36500# 有效期100年
 
 ### IP地址选择逻辑 ###
 get_ip() {
