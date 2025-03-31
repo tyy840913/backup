@@ -1,28 +1,15 @@
 #!/bin/bash
 
-# ==============================================
-# Hysteria2 服务部署脚本
-# 功能: 自动部署Hysteria2服务并添加持久化监控进程
-# 修改说明:
-# 1. 移除nezha和二维码功能
-# 2. 固定下载的二进制文件名
-# 3. 添加守护进程监控
-# 4. 移除保活功能
-# ==============================================
-
 # 设置环境变量
 export LC_ALL=C
 export HOSTNAME=$(hostname)
-export USERNAME=$(whoami | tr '[:upper:]' '[:lower:]') # 统一小写用户名
+export USERNAME=$(whoami | tr '[:upper:]' '[:lower:]')
 
-# 生成UUID(如果未预设)
+# 生成UUID
 export UUID=${UUID:-$(echo -n "$USERNAME+$HOSTNAME" | md5sum | head -c 32 | sed -E 's/(.{8})(.{4})(.{4})(.{4})(.{12})/\1-\2-\3-\4-\5/')}
-export SUB_TOKEN=${SUB_TOKEN:-${UUID:0:8}} # 订阅令牌短码
+export SUB_TOKEN=${SUB_TOKEN:-${UUID:0:8}}
 
-# ==============================================
-# 域名识别逻辑
-# 根据主机名识别当前域名
-# ==============================================
+# 域名识别
 if [[ "$HOSTNAME" =~ ct8 ]]; then
     CURRENT_DOMAIN="ct8.pl"
 elif [[ "$HOSTNAME" =~ useruno ]]; then
@@ -31,93 +18,73 @@ else
     CURRENT_DOMAIN="serv00.net"
 fi
 
-# ==============================================
-# 目录初始化
-# 创建工作目录并清理旧文件
-# ==============================================
+# 创建工作目录
 WORKDIR="${HOME}/domains/${USERNAME}.${CURRENT_DOMAIN}"
 rm -rf "$WORKDIR" && mkdir -p "$WORKDIR"
-echo -e "\e[1;32m工作目录已创建: $WORKDIR\e[0m"
+echo -e "\e[1;32m工作目录: $WORKDIR\e[0m"
 
-# ==============================================
 # 清理旧进程
-# 终止所有hysteria相关进程
-# ==============================================
-echo -e "\e[1;33m清理旧进程...\e[0m"
-pkill -f "hysteria" # 终止所有hysteria相关进程
+pkill -f "hysteria"
 
-# ==============================================
-# 网络端口配置
-# 检查并配置UDP端口
-# ==============================================
+# 检查依赖
+check_deps() {
+    for cmd in openssl curl wget; do
+        if ! command -v $cmd &>/dev/null; then
+            echo -e "\e[1;31m缺少依赖: $cmd\e[0m"
+            exit 1
+        fi
+    done
+}
+check_deps
+
+# 配置端口
 check_port() {
-    echo -e "\e[1;36m正在配置网络端口...\e[0m"
-    
-    # 获取现有UDP端口
     local udp_port=$(devil port list | awk '/udp/ {print $1; exit}')
     
-    # 无可用端口时创建新端口
     if [[ -z "$udp_port" ]]; then
-        echo -e "\e[1;33m创建新UDP端口...\e[0m"
         while :; do
             local new_port=$(shuf -i 10000-65535 -n 1)
             if devil port add udp $new_port | grep -q "Ok"; then
                 udp_port=$new_port
-                devil binexec on >/dev/null # 启用二进制执行权限
-                echo -e "\e[1;32m新端口创建成功: $udp_port\e[0m"
+                devil binexec on >/dev/null
                 break
             fi
         done
     fi
     
     export PORT=$udp_port
+    echo -e "\e[1;32m使用端口: $PORT (UDP)\e[0m"
 }
 check_port
 
-# ==============================================
-# 架构检测与文件下载
-# 根据系统架构下载对应的二进制文件
-# ==============================================
+# 下载二进制
 ARCH=$(uname -m)
-echo -e "\e[1;36m检测系统架构: $ARCH\e[0m"
-
-# 根据架构选择下载源
 if [[ "$ARCH" =~ arm|aarch64 ]]; then
     BINARY_URL="https://github.com/eooce/test/releases/download/freebsd-arm64/hy2"
 else
     BINARY_URL="https://github.com/eooce/test/releases/download/freebsd/hy2"
 fi
 
-# 下载固定文件名二进制文件
-echo -e "\e[1;33m下载程序文件中...\e[0m"
-if command -v curl &>/dev/null; then
-    curl -sLo "$WORKDIR/hysteria" "$BINARY_URL"
-elif command -v wget &>/dev/null; then
-    wget -qO "$WORKDIR/hysteria" "$BINARY_URL"
-else
-    echo -e "\e[1;31m错误:需要curl或wget工具\e[0m"
+echo -e "\e[1;33m下载程序中...\e[0m"
+if ! curl -sLo "$WORKDIR/hysteria" "$BINARY_URL"; then
+    echo -e "\e[1;31m下载失败!\e[0m"
     exit 1
 fi
 
-# 文件权限设置
 chmod +x "$WORKDIR/hysteria"
-echo -e "\e[1;32m程序文件下载完成\e[0m"
 
-# ==============================================
-# TLS证书生成
-# 生成自签名TLS证书
-# ==============================================
-echo -e "\e[1;36m生成TLS证书...\e[0m"
+# 验证二进制
+if ! "$WORKDIR/hysteria" --version &>/dev/null; then
+    echo -e "\e[1;31m二进制文件验证失败!\e[0m"
+    exit 1
+fi
+
+# 生成证书
 openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) \
-    -keyout "$WORKDIR/server.key" \
-    -out "$WORKDIR/server.crt" \
-    -subj "/CN=${CURRENT_DOMAIN}" \
-    -days 36500
+    -keyout "$WORKDIR/server.key" -out "$WORKDIR/server.crt" \
+    -subj "/CN=${CURRENT_DOMAIN}" -days 36500
 
-# ==============================================
-# 服务配置生成
-# 创建Hysteria2配置文件
-# ==============================================
+# 生成配置
 cat > "$WORKDIR/config.yaml" <<EOF
 listen: 0.0.0.0:$PORT
 tls:
@@ -133,71 +100,47 @@ masquerade:
     rewriteHost: true
 EOF
 
-# ==============================================
-# 服务启动函数
-# 启动Hysteria2服务
-# ==============================================
+# 启动服务
 start_service() {
-    echo -e "\e[1;36m启动主服务进程...\e[0m"
-    nohup "$WORKDIR/hysteria" server "$WORKDIR/config.yaml" > /dev/null 2>&1 &
-    sleep 2 # 等待进程初始化
+    echo -e "\e[1;36m启动服务...\e[0m"
+    nohup "$WORKDIR/hysteria" server "$WORKDIR/config.yaml" > "$WORKDIR/hysteria.log" 2>&1 &
+    sleep 3
     
     if ! pgrep -f "hysteria" >/dev/null; then
-        echo -e "\e[1;31m服务启动失败!\e[0m"
+        echo -e "\e[1;31m启动失败! 日志:\e[0m"
+        cat "$WORKDIR/hysteria.log"
         return 1
     fi
     
+    echo -e "\e[1;32m启动成功! PID: $(pgrep -f "hysteria")\e[0m"
     return 0
 }
 
-# ==============================================
-# 监控进程实现
-# 每分钟检查一次进程状态，意外终止时重启
-# ==============================================
+# 监控进程
 start_monitor() {
-    # 持久化监控进程
     (
         while true; do
-            sleep 60 # 每分钟检查一次
-            
-            # 进程状态检测
+            sleep 60
             if ! pgrep -f "hysteria" >/dev/null; then
-                echo -e "\e[1;31m[监控] 检测到服务停止,尝试重启...\e[0m"
-                
-                # 第一次重启尝试
-                if start_service; then
-                    echo -e "\e[1;32m[监控] 重启成功\e[0m"
-                    continue
+                echo -e "\e[1;31m[监控] 服务停止,尝试重启...\e[0m"
+                if ! start_service; then
+                    echo -e "\e[1;31m[监控] 重启失败,重新安装...\e[0m"
+                    exec bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/hy.sh)"
                 fi
-                
-                # 重启失败时重新安装
-                echo -e "\e[1;31m[监控] 重启失败,触发重新安装...\e[0m"
-                UUID="$UUID" bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/hy.sh)"
-                break # 安装脚本会启动新实例
             fi
         done
     ) &
 }
 
-# ==============================================
-# 主程序流程
-# 启动服务并监控
-# ==============================================
+# 主流程
 if start_service; then
-    echo -e "\e[1;32m服务启动成功!\e[0m"
-    start_monitor # 启动监控后台进程
+    start_monitor
+    echo -e "\n\e[1;35m=== 配置信息 ===\e[0m"
+    echo -e "协议: \e[1;33mHysteria2\e[0m"
+    echo -e "端口: \e[1;33m$PORT (UDP)\e[0m"
+    echo -e "密码: \e[1;33m$UUID\e[0m"
+    echo -e "订阅: \e[1;36mhttps://${USERNAME}.${CURRENT_DOMAIN}/$SUB_TOKEN\e[0m"
 else
-    echo -e "\e[1;31m服务初始化失败,请检查配置\e[0m"
+    echo -e "\e[1;31m初始化失败!\e[0m"
     exit 1
 fi
-
-# ==============================================
-# 输出配置信息
-# 显示节点配置信息
-# ==============================================
-echo -e "\n\e[1;35m=节点配置信息=\e[0m"
-echo -e "协议类型: \e[1;33mHysteria2\e[0m"
-echo -e "服务端口: \e[1;33m$PORT (UDP)\e[0m"
-echo -e "连接密码: \e[1;33m$UUID\e[0m"
-echo -e "订阅链接: \e[1;36mhttps://${USERNAME}.${CURRENT_DOMAIN}/$SUB_TOKEN\e[0m"
-echo -e "\e[1;32m提示:服务监控进程已后台运行\e[0m"
