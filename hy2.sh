@@ -2,6 +2,31 @@
 # 设置环境变量和系统配置
 export LC_ALL=C  # 确保脚本使用C语言环境，避免本地化问题
 
+# 在脚本开头添加以下代码
+# 本地脚本管理
+LOCAL_SCRIPT_NAME="hysteria2_installer.sh"  # 本地脚本文件名
+LOCAL_SCRIPT_PATH="${HOME}/${LOCAL_SCRIPT_NAME}"  # 本地脚本路径
+
+# 检查并创建本地脚本（如果不存在）
+if [ ! -f "$LOCAL_SCRIPT_PATH" ]; then
+    log "\e[1;33m[信息] 正在创建本地脚本副本...\e[0m"
+    
+    # 获取当前脚本内容
+    if [ -f "$0" ]; then
+        cp "$0" "$LOCAL_SCRIPT_PATH" && chmod +x "$LOCAL_SCRIPT_PATH"
+        if [ $? -eq 0 ]; then
+            log "\e[1;32m[成功] 本地脚本已创建: $LOCAL_SCRIPT_PATH\e[0m"
+            log "\e[1;33m[提示] 您可以使用以下命令手动重新安装: ./$LOCAL_SCRIPT_NAME\e[0m"
+        else
+            log "\e[1;31m[错误] 无法创建本地脚本副本\e[0m"
+        fi
+    else
+        log "\e[1;33m[警告] 无法确定当前脚本路径，跳过本地脚本创建\e[0m"
+    fi
+else
+    log "\e[1;33m[信息] 本地脚本已存在: $LOCAL_SCRIPT_PATH (跳过创建)\e[0m"
+fi
+
 # 获取系统信息
 HOSTNAME=$(hostname)  # 获取主机名
 USERNAME=$(whoami | tr '[:upper:]' '[:lower:]')  # 获取当前用户名并转为小写
@@ -183,26 +208,36 @@ start_service() {
 
 # 监控服务的函数
 monitor_service() {
+    local retry_count=0
+    local max_retries=3
+    
     while true; do
-        # 检查进程是否在运行
         if ! pgrep -x "$(basename "$HY2_BINARY")" > /dev/null; then
             log "\e[1;33m[警告] Hysteria2服务未运行，正在尝试重启...\e[0m"
-            pkill -f "$(basename "$HY2_BINARY")"  # 确保杀死所有相关进程
+            pkill -f "$(basename "$HY2_BINARY")"
             
-            # 尝试重启3次
-            for i in {1..3}; do
+            for i in {1..$max_retries}; do
                 if start_service; then
                     log "\e[1;32m[成功] Hysteria2服务重启成功\e[0m"
-                    break  # 如果启动成功，跳出循环
-                elif [ $i -eq 3 ]; then
-                    # 如果3次都失败，退出脚本
+                    retry_count=0
+                    break
+                elif [ $i -eq $max_retries ]; then
                     log "\e[1;31m[错误] 重启Hysteria2服务失败，已达到最大重试次数\e[0m"
-                    exit 1
+                    
+                    # 自动重装逻辑
+                    log "\e[1;33m[信息] 正在尝试自动重新安装...\e[0m"
+                    if [ -f "$0" ]; then
+                        log "\e[1;32m[信息] 找到当前脚本，开始重新安装...\e[0m"
+                        exec "$0"
+                    else
+                        log "\e[1;31m[错误] 无法找到当前脚本，请手动重新安装\e[0m"
+                        exit 1
+                    fi
                 fi
-                sleep 5  # 等待5秒再重试
+                sleep 5
             done
         fi
-        sleep 60  # 每分钟检查一次
+        sleep 60
     done
 }
 
@@ -257,4 +292,4 @@ log "\e[1;33m[信息] 如需停止服务，请执行: pkill -f \"$HY2_BINARY\" &
 # 保持脚本运行
 while true; do 
     sleep 3600  # 每小时唤醒一次，防止脚本退出
-done
+done     
