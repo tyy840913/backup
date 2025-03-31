@@ -3,7 +3,7 @@
 export LC_ALL=C  # 确保脚本使用C语言环境，避免本地化问题
 
 # 安装命令保存文件
-INSTALL_CMD_FILE="$HOME/hysteria2_install_cmd.txt"
+INSTALL_CMD_FILE="./hysteria2_install_cmd.txt"
 
 # 精简日志配置（只记录重要事件）
 LOG_DIR="$HOME/logs"
