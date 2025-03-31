@@ -226,7 +226,6 @@ cat << EOF
   fast-open: true
 EOF
 echo ""
-
 rm -rf config.yaml fake_useragent_0.2.0.json
 install_keepalive
 echo -e "\e[1;35m老王serv00|CT8单协议hysteria2无交互一键安装脚本\e[0m"
