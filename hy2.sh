@@ -137,11 +137,7 @@ $COMMAND "$HY2_BINARY" "$HY2_URL" && chmod +x "$HY2_BINARY"  # 下载并添加�
 
 # 生成证书（完全保留原有代码）
 echo -e "\e[1;33m[信息] 正在生成自签名证书...\e[0m"
-openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) \
-    -keyout "$WORKDIR/server.key" \
-    -out "$WORKDIR/server.crt" \
-    -subj "/CN=${CURRENT_DOMAIN}" \
-    -days 36500# 有效期100年
+openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) -keyout "$WORKDIR/server.key" -out "$WORKDIR/server.crt" -subj "/CN=${CURRENT_DOMAIN}" -days 36500
 
 ### IP地址选择逻辑 ###
 get_ip() {
