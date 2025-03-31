@@ -135,9 +135,46 @@ HY2_URL="$BASE_URL/hy2"
 HY2_BINARY="./hysteria2_binary"  # 固定文件名
 $COMMAND "$HY2_BINARY" "$HY2_URL" && chmod +x "$HY2_BINARY"  # 下载并添加执行权限
 
-# 生成证书（完全保留原有代码）
-echo -e "\e[1;33m[信息] 正在生成自签名证书...\e[0m"
-openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) -keyout "$WORKDIR/server.key" -out "$WORKDIR/server.crt" -subj "/CN=${CURRENT_DOMAIN}" -days 36500
+# 生成自签名证书的函数
+generate_certificate() {
+    log "\e[1;33m[信息] 正在生成自签名证书...\e[0m"
+    
+    # 检查openssl是否可用
+    if ! command -v openssl &>/dev/null; then
+        log "\e[1;31m[错误] 未找到openssl，请先安装openssl\e[0m"
+        exit 1
+    fi
+    
+    # 生成EC参数
+    openssl ecparam -name prime256v1 -out "$WORKDIR/ecparam.pem" 2>> "$LOG_FILE"
+    if [ $? -ne 0 ]; then
+        log "\e[1;31m[错误] 生成EC参数失败\e[0m"
+        exit 1
+    fi
+    
+    # 生成证书和密钥
+    openssl req -x509 -nodes -newkey ec:"$WORKDIR/ecparam.pem" \
+        -keyout "$WORKDIR/server.key" \
+        -out "$WORKDIR/server.crt" \
+        -subj "/CN=${CURRENT_DOMAIN}" \
+        -days 36500 2>> "$LOG_FILE"
+    
+    if [ $? -ne 0 ]; then
+        log "\e[1;31m[错误] 生成证书失败\e[0m"
+        exit 1
+    fi
+    
+    # 设置适当权限
+    chmod 600 "$WORKDIR/server.key" "$WORKDIR/server.crt"
+    
+    # 清理临时文件
+    rm -f "$WORKDIR/ecparam.pem"
+    
+    log "\e[1;32m[成功] 证书和密钥已生成\e[0m"
+}
+
+# 调用证书生成函数
+generate_certificate
 
 ### IP地址选择逻辑 ###
 get_ip() {
