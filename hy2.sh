@@ -2,14 +2,22 @@
 # 设置环境变量和系统配置
 export LC_ALL=C  # 确保脚本使用C语言环境，避免本地化问题
 
-# 安装命令保存文件
+# 文件路径定义（当前目录）
 INSTALL_CMD_FILE="./hysteria2_install_cmd.txt"
-
-# 精简日志配置（只记录重要事件）
-LOG_DIR="$HOME/logs"
+LOG_DIR="./logs"
 LOG_FILE="$LOG_DIR/hysteria2_monitor.log"
 MAX_LOG_ENTRIES=100
 mkdir -p "$LOG_DIR"
+
+# 工作目录设置（当前目录）
+WORKDIR="./workdir"
+FILE_PATH="./public"
+mkdir -p "$WORKDIR" "$FILE_PATH"
+chmod 777 "$WORKDIR" "$FILE_PATH"
+
+# 二进制文件路径（固定名称）
+DOWNLOAD_DIR="."
+HY2_BINARY="$DOWNLOAD_DIR/hy2"
 
 # 日志记录函数（仅用于重要事件）
 log_event() {
@@ -19,15 +27,15 @@ log_event() {
     mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null
 }
 
-# 获取系统信息（完全保留原有代码）
+# 获取系统信息
 HOSTNAME=$(hostname)
 USERNAME=$(whoami | tr '[:upper:]' '[:lower:]')
 
-# 生成UUID（完全保留原有代码）
+# 生成UUID
 export UUID=${UUID:-$(echo -n "$USERNAME+$HOSTNAME" | md5sum | head -c 32 | sed -E 's/(.{8})(.{4})(.{4})(.{4})(.{12})/\1-\2-\3-\4-\5/')}
 export SUB_TOKEN=${SUB_TOKEN:-${UUID:0:8}}
 
-# 域名判断（完全保留原有代码）
+# 域名判断
 if [[ "$HOSTNAME" =~ ct8 ]]; then
     CURRENT_DOMAIN="ct8.pl"
 elif [[ "$HOSTNAME" =~ useruno ]]; then
@@ -36,24 +44,20 @@ else
     CURRENT_DOMAIN="serv00.net"
 fi
 
-# 工作目录设置（完全保留原有代码）
-WORKDIR="${HOME}/domains/${USERNAME}.${CURRENT_DOMAIN}/logs"
-FILE_PATH="${HOME}/domains/${USERNAME}.${CURRENT_DOMAIN}/public_html"
-
-# 显示信息（改为直接echo输出）
+# 清理并创建工作目录
 echo -e "\e[1;33m[信息] 正在清理并创建工作目录...\e[0m"
 rm -rf "$WORKDIR" "$FILE_PATH" && mkdir -p "$WORKDIR" "$FILE_PATH" && chmod 777 "$WORKDIR" "$FILE_PATH" >/dev/null 2>&1
 
 echo -e "\e[1;33m[信息] 正在清理现有进程...\e[0m"
 bash -c 'ps aux | grep $(whoami) | grep -v "sshd\|bash\|grep" | awk "{print \$2}" | xargs -r kill -9 >/dev/null 2>&1' >/dev/null 2>&1
 
-# 检查下载工具（完全保留原有代码）
+# 检查下载工具
 command -v curl &>/dev/null && COMMAND="curl -so" || command -v wget &>/dev/null && COMMAND="wget -qO" || { 
     echo -e "\e[1;31m[错误] 未找到curl或wget，请安装其中一个工具\e[0m"
     exit 1
 }
 
-# 端口检查函数（完全保留原有逻辑，仅改输出方式）
+# 端口检查函数
 check_port() {
     echo -e "\e[1;33m[信息] 正在检查可用端口...\e[0m"
     port_list=$(devil port list)
@@ -85,8 +89,8 @@ check_port() {
 }
 check_port
 
-# 系统架构判断（完全保留原有代码）
-ARCH=$(uname -m) && DOWNLOAD_DIR="." && mkdir -p "$DOWNLOAD_DIR"
+# 系统架构判断
+ARCH=$(uname -m) && mkdir -p "$DOWNLOAD_DIR"
 if [ "$ARCH" == "arm" ] || [ "$ARCH" == "arm64" ] || [ "$ARCH" == "aarch64" ]; then
     BASE_URL="https://github.com/eooce/test/releases/download/freebsd-arm64"
     echo -e "\e[1;33m[信息] 检测到ARM架构系统\e[0m"
@@ -98,14 +102,12 @@ else
     exit 1
 fi
 
-# 下载二进制文件（完全保留原有代码）
+# 下载二进制文件（固定文件名hy2）
 echo -e "\e[1;33m[信息] 正在下载Hysteria2二进制文件...\e[0m"
 HY2_URL="$BASE_URL/hy2"
-RANDOM_NAME=$(head /dev/urandom | tr -dc a-z0-9 | head -c 6)
-HY2_BINARY="$DOWNLOAD_DIR/$RANDOM_NAME"
 $COMMAND "$HY2_BINARY" "$HY2_URL" && chmod +x "$HY2_BINARY"
 
-# 生成证书（完全保留原有代码）
+# 生成证书
 echo -e "\e[1;33m[信息] 正在生成自签名证书...\e[0m"
 openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) \
     -keyout "$WORKDIR/server.key" \
@@ -113,7 +115,7 @@ openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) \
     -subj "/CN=${CURRENT_DOMAIN}" \
     -days 36500
 
-# 获取IP函数（完全保留原有代码）
+# 获取IP函数
 get_ip() {
     IP_LIST=($(devil vhost list | awk '/^[0-9]+/ {print $1}'))
     API_URL="https://status.eooce.com/api"
@@ -139,7 +141,7 @@ echo -e "\e[1;33m[信息] 正在获取可用IP地址...\e[0m"
 HOST_IP=$(get_ip)
 echo -e "\e[1;32m[信息] 已选择IP地址: $HOST_IP\e[0m"
 
-# 配置文件（完全保留原有代码）
+# 配置文件
 echo -e "\e[1;33m[信息] 正在创建Hysteria2配置文件...\e[0m"
 cat << EOF > config.yaml
 listen: $HOST_IP:$PORT
@@ -160,7 +162,7 @@ transport:
     hopInterval: 30s
 EOF
 
-# 启动服务函数（修改为只记录重要事件）
+# 启动服务函数
 start_service() {
     echo -e "\e[1;33m[信息] 正在启动Hysteria2服务...\e[0m"
     nohup ./"$HY2_BINARY" server config.yaml >/dev/null 2>&1 &
@@ -175,7 +177,7 @@ start_service() {
     fi
 }
 
-# 监控服务函数（重点修改部分）
+# 监控服务函数
 monitor_service() {
     # 保存安装命令
     echo "$(realpath $0)" > "$INSTALL_CMD_FILE"
@@ -215,7 +217,7 @@ monitor_service() {
 # 启动服务
 start_service
 
-# 显示节点信息（完全保留原有代码）
+# 显示节点信息
 ISP=$(curl -s --max-time 2 https://speed.cloudflare.com/meta | awk -F\" '{print $26}' | sed -e 's/ /_/g' || echo "未知")
 NAME="$(echo "$HOSTNAME" | cut -d '.' -f 1)-hysteria2-${USERNAME}"
 
@@ -227,6 +229,7 @@ echo -e "\e[1;33m[信息] 正在生成订阅文件...\e[0m"
 cat > ${FILE_PATH}/${SUB_TOKEN}_hy2.log <<EOF
 hysteria2://$UUID@$HOST_IP:$PORT/?sni=www.bing.com&alpn=h3&insecure=1#$ISP-$NAME
 EOF
+
 
 # 显示配置信息
 echo -e "\e[1;32m[信息] Hysteria2节点配置:\e[0m"
@@ -245,7 +248,7 @@ cat << EOF
   fast-open: true
 EOF
 
-# 启动监控进程（修改为后台运行）
+# 启动监控进程（后台运行）
 echo -e "\n\e[1;33m[信息] 监控进程将在后台运行\e[0m"
 nohup bash -c 'monitor_service' >/dev/null 2>&1 &
 disown
