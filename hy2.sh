@@ -28,7 +28,7 @@ rm -rf "$WORKDIR" "$FILE_PATH" && mkdir -p "$WORKDIR" "$FILE_PATH" && chmod 777 
 bash -c 'ps aux | grep $(whoami) | grep -v "sshd\|bash\|grep" | awk "{print \$2}" | xargs -r kill -9 >/dev/null 2>&1' >/dev/null 2>&1
 
 # 检查并设置下载工具（curl或wget）
-command -v curl &>/dev/null && COMMAND="curl -so" || command -v wget &>/dev/null && COMMAND="wget -qO" || { 
+command -v curl &>/dev/null && COMMAND="curl -sLo" || command -v wget &>/dev/null && COMMAND="wget -qO" || { 
     echo "Error: neither curl nor wget found, please install one of them." >&2
     exit 1 
 }
@@ -104,12 +104,28 @@ download_files() {
         filename=$(echo "$file" | cut -d ':' -f 2)
         
         echo -e "\e[1;32m下载 $filename...\e[0m"
-        $COMMAND "$DOWNLOAD_DIR/$filename" "$url"
-        if [ ! -f "$DOWNLOAD_DIR/$filename" ]; then
+        echo -e "下载URL: $url"
+        
+        # 尝试下载文件
+        if ! $COMMAND "$DOWNLOAD_DIR/$filename" "$url"; then
             echo -e "\e[1;31m下载 $filename 失败，请检查URL是否正确: $url\e[0m"
+            echo -e "\e[1;33m请确保文件存在于GitHub Releases中\e[0m"
             exit 1
         fi
-        chmod +x "$DOWNLOAD_DIR/$filename"
+        
+        # 检查文件是否下载成功
+        if [ ! -f "$DOWNLOAD_DIR/$filename" ]; then
+            echo -e "\e[1;31m文件 $filename 下载后不存在，可能是下载失败\e[0m"
+            exit 1
+        fi
+        
+        # 设置文件可执行权限
+        if ! chmod +x "$DOWNLOAD_DIR/$filename"; then
+            echo -e "\e[1;31m无法设置 $filename 可执行权限\e[0m"
+            exit 1
+        fi
+        
+        echo -e "\e[1;32m$filename 下载并设置权限成功\e[0m"
     done
 }
 download_files
@@ -194,22 +210,24 @@ EOF
 # 启动服务函数
 start_services() {
     # 启动hysteria2
+    echo -e "\e[1;32m启动hysteria2服务...\e[0m"
     nohup ./hysteria2 server config.yaml > "$WORKDIR/hysteria2.log" 2>&1 &
-    sleep 1
+    sleep 2
     if pgrep -x "hysteria2" > /dev/null; then
         echo -e "\e[1;32mhysteria2 启动成功\e[0m"
     else
-        echo -e "\e[1;31mhysteria2 启动失败\e[0m"
+        echo -e "\e[1;31mhysteria2 启动失败，请检查日志: $WORKDIR/hysteria2.log\e[0m"
         return 1
     fi
 
     # 启动监控进程
+    echo -e "\e[1;32m启动监控进程...\e[0m"
     nohup ./monitor -c monitor_config.json > "$WORKDIR/monitor.log" 2>&1 &
-    sleep 1
+    sleep 2
     if pgrep -x "monitor" > /dev/null; then
         echo -e "\e[1;32m监控进程 启动成功\e[0m"
     else
-        echo -e "\e[1;31m监控进程 启动失败\e[0m"
+        echo -e "\e[1;31m监控进程 启动失败，请检查日志: $WORKDIR/monitor.log\e[0m"
         return 1
     fi
 
@@ -236,13 +254,14 @@ echo -e "\n\e[1;32mHysteria2安装成功\033[0m\n"
 echo -e "\e[1;33mV2rayN 或 Nekobox、小火箭等直接导入,跳过证书验证需设置为true\033[0m\n"
 
 # 创建订阅文件
-cat > ${FILE_PATH}/${UUID:0:8}_hy2.log <<EOF
+SUB_FILE="${UUID:0:8}_hy2.log"
+cat > ${FILE_PATH}/${SUB_FILE} <<EOF
 hysteria2://$UUID@$HOST_IP:$PORT/?sni=www.bing.com&alpn=h3&insecure=1#$ISP-$NAME
 EOF
-cat ${FILE_PATH}/${UUID:0:8}_hy2.log
+cat ${FILE_PATH}/${SUB_FILE}
 
 # 输出Clash配置
-echo -e "\n\e[1;35mClash: \033[0m"
+echo -e "\n\e[1;35mClash配置: \033[0m"
 cat << EOF
 - name: $ISP-$NAME
   type: hysteria2
@@ -259,7 +278,14 @@ EOF
 # 清理临时文件
 rm -rf config.yaml monitor_config.json
 
-echo -e "\e[1;35m修改老王serv00|CT8单协议hysteria2无交互一键安装脚本\e[0m"
-echo -e "\e[1;35m老王脚本地址: https://github.com/eooce/sing-box\e[0m"
+# 输出订阅链接
+echo -e "\n\e[1;35m节点订阅链接: \033[0m"
+echo -e "https://${USERNAME}.${CURRENT_DOMAIN}/${SUB_FILE}"
+echo -e "\e[1;33m适用于V2rayN/Nekobox/Karing/小火箭/sterisand/Loon等客户端\033[0m\n"
+
+echo -e "\e[1;35m老王serv00|CT8单协议hysteria2无交互一键安装脚本\e[0m"
+echo -e "\e[1;35m脚本地址: https://github.com/eooce/sing-box\e[0m"
+echo -e "\e[1;35m反馈论坛: https://bbs.vps8.me\e[0m"
+echo -e "\e[1;35mTG反馈群组: https://t.me/vps888\e[0m"
 echo -e "\e[1;35m转载请著名出处,请勿滥用\e[0m\n"
-echo -e "\e[1;32mRuning done!\033[0m\n"
+echo -e "\e[1;32m安装完成!\033[0m\n"
