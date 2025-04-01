@@ -107,7 +107,7 @@ for server in "${servers[@]}"; do
     # 解析服务器信息
     read -r subdomain username <<< "$server"
     
-    echo -e "\n${BLUE}*********************************************************${RESET}"
+    echo -e "\n${YELLOW}*********************************************************${RESET}"
     echo -e "\n${BLUE}正在处理服务器: ${YELLOW}$username@$subdomain.serv00.com${RESET}"
 
     # 检查进程状态
