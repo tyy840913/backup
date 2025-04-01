@@ -64,20 +64,30 @@ keepalive() {
     local backup_url="http://keep.${normalized_username}.serv00.net/run"
     
     echo -e "\n${YELLOW}尝试保活服务器...${RESET}"
-    local response=$(curl -s "$primary_url")
     
+    # 检查主URL返回的JSON
+    local response=$(curl -s "$primary_url")
     if [[ -z "$response" ]]; then
         response=$(curl -s "$backup_url")
     fi
     
-    sleep 3  # 等待3秒让进程启动
+    # 解析JSON响应
+    local status=$(echo "$response" | jq -r '.status' 2>/dev/null)
+    local message=$(echo "$response" | jq -r '.message' 2>/dev/null)
     
-    # 再次检查进程状态
-    if check_process "$username" "$subdomain"; then
-        echo -e "${GREEN}保活成功${RESET}"
-        return 0
+    # 检查JSON格式是否匹配
+    if [[ "$status" == "running" && "$message" == "所有服务都正在运行" ]]; then
+        echo -e "${GREEN}保活响应验证成功${RESET}"
+        sleep 3
+        if check_process "$username" "$subdomain"; then
+            echo -e "${GREEN}保活成功${RESET}"
+            return 0
+        else
+            echo -e "${RED}进程检查失败${RESET}"
+            return 1
+        fi
     else
-        echo -e "${RED}保活失败${RESET}"
+        echo -e "${RED}保活响应不匹配: status=$status, message=$message${RESET}"
         return 1
     fi
 }
@@ -108,6 +118,7 @@ for server in "${servers[@]}"; do
     read -r subdomain username <<< "$server"
     
     echo -e "\n${YELLOW}*********************************************************${RESET}"
+    
     echo -e "\n${BLUE}正在处理服务器: ${YELLOW}$username@$subdomain.serv00.com${RESET}"
 
     # 检查进程状态
