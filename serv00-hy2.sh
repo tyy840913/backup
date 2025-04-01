@@ -117,7 +117,7 @@ for server in "${servers[@]}"; do
     # 解析服务器信息
     read -r subdomain username <<< "$server"
     
-    echo -e "\n${YELLOW}**********************************${RESET}"
+    echo -e "\n${YELLOW}***************************************${RESET}"
     
     echo -e "\n${BLUE}正在处理服务器: ${YELLOW}$username@$subdomain.serv00.com${RESET}"
 
@@ -164,4 +164,4 @@ for server in "${servers[@]}"; do
 done
 
 echo -e "\n${BLUE}所有服务器处理完成${RESET}"
-echo -e "\n${YELLOW}**********************************${RESET}"
+echo -e "\n${YELLOW}***************************************${RESET}"
