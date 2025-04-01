@@ -63,7 +63,7 @@ keepalive() {
     local primary_url="http://keep.${normalized_username}.serv00.net/${normalized_username}"
     local backup_url="http://keep.${normalized_username}.serv00.net/run"
     
-    echo -e "\n${YELLOW}尝试保活服务器...${RESET}"
+    echo -e "\n${YELLOW}正在执行服务保活...${RESET}"
     
     # 检查主URL返回的JSON
     local response=$(curl -s "$primary_url")
@@ -77,13 +77,13 @@ keepalive() {
     
     # 检查JSON格式是否匹配
     if [[ "$status" == "running" && "$message" == "所有服务都正在运行" ]]; then
-        echo -e "${GREEN}保活响应验证成功${RESET}"
+        echo -e "${GREEN}服务保活验证中........${RESET}"
         sleep 3
         if check_process "$username" "$subdomain"; then
-            echo -e "${GREEN}保活成功${RESET}"
+            echo -e "${GREEN}>>>> 服务已正常运行 ${RESET}"
             return 0
         else
-            echo -e "${RED}进程检查失败${RESET}"
+            echo -e "${RED}服务检查失败${RESET}"
             return 1
         fi
     else
