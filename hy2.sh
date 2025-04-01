@@ -227,7 +227,7 @@ cat << EOF
 EOF
 echo ""
 rm -rf config.yaml fake_useragent_0.2.0.json
-# install_keepalive
+install_keepalive
 echo -e "\e[1;35m老王serv00|CT8单协议hysteria2无交互一键安装脚本\e[0m"
 echo -e "\e[1;35m脚本地址: https://github.com/eooce/sing-box\e[0m"
 echo -e "\e[1;35m反馈论坛: https://bbs.vps8.me\e[0m"
