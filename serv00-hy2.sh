@@ -80,7 +80,7 @@ keepalive() {
         echo -e "${GREEN}服务保活验证中........${RESET}"
         sleep 3
         if check_process "$username" "$subdomain"; then
-            echo -e "${GREEN}>>>> 服务已正常运行 ${RESET}"
+            echo -e "${GREEN}>>>> 服务已正常运行 ${RESET}"
             return 0
         else
             echo -e "${RED}服务检查失败${RESET}"
@@ -112,31 +112,31 @@ check_connectivity() {
     echo "$valid_host"
 }
 
-# 处理单个服务器的函数
-process_server() {
-    local server=$1
+# 处理每个服务器
+for server in "${servers[@]}"; do
     # 解析服务器信息
     read -r subdomain username <<< "$server"
     
     echo -e "\n${YELLOW}*********************************************************${RESET}"
+    
     echo -e "\n${BLUE}正在处理服务器: ${YELLOW}$username@$subdomain.serv00.com${RESET}"
 
     # 检查进程状态
     if check_process "$username" "$subdomain"; then
         echo -e "\n${GREEN}服务器 $subdomain 上已运行 hysteria2，跳过安装...${RESET}"
-        return 0
+        continue
     fi
     
     # 尝试保活
     if keepalive "$username" "$subdomain"; then
-        return 0
+        continue
     fi
     
     # 检查网络连通性
     valid_host=$(check_connectivity "$subdomain" "$username")
     if [[ -z "$valid_host" ]]; then
         echo -e "${RED}服务器 $subdomain 无法连通${RESET}"
-        return 1
+        continue
     else
         echo -e "${GREEN}使用主机: $valid_host${RESET}"
     fi
@@ -145,34 +145,22 @@ process_server() {
     ssh-keyscan -p $ssh_port $valid_host >> ~/.ssh/known_hosts 2>/dev/null
 
     # 安装hysteria2
-    echo -e "${YELLOW}正在下载安装脚本，请稍候...${RESET}"
-    sshpass -p "$password" ssh -p "$ssh_port" -o ConnectTimeout=10 -o ServerAliveInterval=60 -o StrictHostKeyChecking=no "$username@$valid_host" "$install_cmd" | \
-    while IFS= read -r line; do
-        if [[ "$line" == *"hysteria2://"* ]]; then
-            echo -e "${GREEN}>>> 成功获取连接配置: \n\n$line${RESET}"
-        fi
+        echo -e "${YELLOW}正在下载安装脚本，请稍候...${RESET}"
+        sshpass -p "$password" ssh -p "$ssh_port" -o ConnectTimeout=10 -o ServerAliveInterval=60 -o StrictHostKeyChecking=no "$username@$valid_host" "$install_cmd" | \
+        while IFS= read -r line; do
+            if [[ "$line" == *"hysteria2://"* ]]; then
+                echo -e "${GREEN}>>> 成功获取连接配置: \n\n$line${RESET}"
+            fi
     done
 
     # 验证安装结果
-    sleep 3
+    sleep 3  # 等待3秒让进程启动
+    
     if check_process "$username" "$subdomain"; then
         echo -e "\n${GREEN}服务器 $valid_host 上的 hysteria2 安装成功${RESET}"
     else
         echo -e "\n${RED}服务器 $valid_host 上的 hysteria2 安装可能失败，请检查${RESET}"
     fi
-}
-
-# 主处理逻辑（并发执行）
-max_concurrent=7  # 最大并发数
-count=0
-for server in "${servers[@]}"; do
-    process_server "$server" &
-    ((count++))
-    if ((count >= max_concurrent)); then
-        wait -n
-        ((count--))
-    fi
 done
-wait
 
 echo -e "\n${BLUE}所有服务器处理完成${RESET}"
