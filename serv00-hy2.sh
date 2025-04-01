@@ -87,7 +87,7 @@ keepalive() {
             return 1
         fi
     else
-        echo -e "${RED}保活响应不匹配: status=$status, message=$message${RESET}"
+        echo -e "${RED}服务保活响应不匹配${RESET}"
         return 1
     fi
 }
