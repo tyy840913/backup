@@ -163,5 +163,4 @@ for server in "${servers[@]}"; do
     fi
 done
 
-echo -e "\n${BLUE}所有服务器处理完成${RESET}"
-echo -e "${YELLOW}*********************************************${RESET}"
+echo -e "\n${BLUE}所有服务器处理完成${RESET}\n"
