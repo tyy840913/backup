@@ -123,7 +123,7 @@ for server in "${servers[@]}"; do
 
     # 检查进程状态
     if check_process "$username" "$subdomain"; then
-        echo -e "\n${GREEN}服务器 $subdomain 上已运行 hysteria2，跳过安装...${RESET}"
+        echo -e "${GREEN}服务器 $subdomain 上已运行 hysteria2，跳过安装...${RESET}"
         continue
     fi
     
