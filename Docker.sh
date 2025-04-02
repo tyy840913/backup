@@ -294,6 +294,20 @@ main() {
     # 服务状态检查（双重验证）
     echo -e "\n${CYAN}=== 服务状态 ===${NC}"
     if [ "$OS" = "alpine" ]; then
+    if rc-update show | grep -q docker; then
+        echo -e "开机自启: ${GREEN}已启用${NC}"
+    else
+        echo -e "开机自启: ${RED}未启用${NC}"
+    fi
+else
+    if systemctl is-enabled docker | grep -q enabled; then
+        echo -e "开机自启: ${GREEN}已启用${NC}"
+    else
+        echo -e "开机自启: ${RED}未启用${NC}"
+    fi
+fi
+
+    if [ "$OS" = "alpine" ]; then
         if rc-service docker status | grep -q started; then
             echo -e "服务检测: ${GREEN}运行中${NC}"
         else
