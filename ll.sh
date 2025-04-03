@@ -224,7 +224,7 @@ configure_locale() {
 
 # ==================== 主流程 ====================
 main() {
-    check_root "$@"
+    # check_root "$@"
     detect_distro
     configure_mirror
     configure_ssh
