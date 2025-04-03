@@ -274,7 +274,7 @@ main() {
                 echo -e "${BLUE}跳过Docker Compose安装${NC}" ;;
         esac
     else
-        read -p "}是否要安装Docker Compose？(Y/n): " compose_choice
+        read -p "是否要安装Docker Compose？(Y/n): " compose_choice
         case "$compose_choice" in
             n|N)
                 echo -e "${RED}跳过Docker Compose安装${NC}" ;;
