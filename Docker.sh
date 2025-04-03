@@ -245,7 +245,7 @@ main() {
 
     # Docker安装流程
     if check_docker; then
-        read -p "${YELLOW}检测到已安装Docker，是否要重新安装？(y/N): ${NC}" choice
+        read -p "$(echo -e "${YELLOW}检测到已安装Docker，是否要重新安装？(y/N): ${NC}" choice
         case "$choice" in
             y|Y)
                 uninstall_docker
@@ -254,7 +254,7 @@ main() {
                 echo -e "${BLUE}跳过Docker安装${NC}" ;;
         esac
     else
-        read -p "是否要安装Docker？(Y/n): " choice
+        read -p "$(echo -e "${YELLOW}是否要安装Docker？(Y/n): " choice
         case "$choice" in
             n|N)
                 echo -e "${RED}安装已取消${NC}"
@@ -266,7 +266,7 @@ main() {
 
     # Docker Compose安装流程
     if check_compose; then
-        read -p "${YELLOW}检测到已安装Docker Compose，是否要重新安装？(y/N): ${NC}" compose_choice
+        read -p "$(echo -e "${YELLOW}检测到已安装Docker Compose，是否要重新安装？(y/N): ${NC}" compose_choice
         case "$compose_choice" in
             y|Y)
                 install_compose ;;
@@ -274,7 +274,7 @@ main() {
                 echo -e "${BLUE}跳过Docker Compose安装${NC}" ;;
         esac
     else
-        read -p "${YELLOW}是否要安装Docker Compose？(Y/n): ${NC}" compose_choice
+        read -p "$(echo -e "${YELLOW}是否要安装Docker Compose？(Y/n): ${NC}" compose_choice
         case "$compose_choice" in
             n|N)
                 echo -e "${RED}跳过Docker Compose安装${NC}" ;;
