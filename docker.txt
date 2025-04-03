@@ -75,15 +75,3 @@ services:
     environment:
       - TZ=Asia/Shanghai
     command: --schedule "0 30 5 * * *" --cleanup --remove-volumes
-
- # 8. xiaoya - xiaoya-Alist影视
- xiaoya
-    image: xiaoyaliu/alist
-    container_name: xiaoya
-    restart: always
-    network_mode: bridge
-    volumes:
-      - /etc/xiaoya:/data
-      - /etc/xiaoya/data:/www/data
-    environment:
-      - TZ=Asia/Shanghai
