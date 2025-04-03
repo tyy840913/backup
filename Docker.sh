@@ -245,7 +245,7 @@ main() {
 
     # Docker安装流程
     if check_docker; then
-        read -p "检测到已安装Docker，是否要重新安装？(y/N): ${NC}" choice
+        read -p "检测到已安装Docker，是否要重新安装？(y/N): " choice
         case "$choice" in
             y|Y)
                 uninstall_docker
