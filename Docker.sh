@@ -292,8 +292,8 @@ main() {
     echo -e "${GREEN}Docker Compose版本: $(docker-compose --version 2>/dev/null || echo '未安装')${NC}"
 
     # 服务状态检查（双重验证）
-    echo -e "\n${CYAN}=== 服务状态 ===${NC}"
-    if [ "$OS" = "alpine" ]; then
+   echo -e "\n${CYAN}=== 服务状态 ===${NC}"
+if [ "$OS" = "alpine" ]; then
     if rc-update show | grep -q docker; then
         echo -e "开机自启: ${GREEN}已启用${NC}"
     else
@@ -305,7 +305,7 @@ else
     else
         echo -e "开机自启: ${RED}未启用${NC}"
     fi
-fi
+fi  # 添加缺失的fi闭合标记
 
     if [ "$OS" = "alpine" ]; then
         if rc-service docker status | grep -q started; then
