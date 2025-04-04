@@ -176,14 +176,18 @@ echo -e "\n========== 更新软件源 =========="
 case $PKG_CMD in
     apk)
         apk update 
+        apk upgrade -y
         ;;
     apt)
         apt update -y 2>&1 | grep -v '^N: '
+        apt upgrade -y
+        apt autoremove -y
         ;;
     yum|dnf)
         $PKG_CMD clean all
         $PKG_CMD makecache
+        $PKG_CMD update -y
         ;;
 esac
 
-echo -e "\n[完成] 镜像源已成功更换为 $opt"
+echo -e "\n[完成] 镜像源已成功更换为 $opt，软件已更新"
