@@ -122,10 +122,10 @@ debian)
 
     backup_file "$REPO_FILE"
     cat > "$REPO_FILE" <<EOF
-deb ${MIRROR_URLS[$MIRROR]} $CODENAME main contrib non-free
-deb ${MIRROR_URLS[$MIRROR]} $CODENAME-updates main contrib non-free
-deb ${MIRROR_URLS[$MIRROR]} $CODENAME-backports main contrib non-free
-deb ${SECURITY_URLS[$MIRROR]} $CODENAME-security main contrib non-free
+deb ${MIRROR_URLS[$MIRROR]} $CODENAME main contrib non-free non-free-firmware
+deb ${MIRROR_URLS[$MIRROR]} $CODENAME-updates main contrib non-free non-free-firmware
+deb ${MIRROR_URLS[$MIRROR]} $CODENAME-backports main contrib non-free non-free-firmware
+deb ${SECURITY_URLS[$MIRROR]} $CODENAME-security main contrib non-free non-free-firmware
 EOF
     ;;
 
@@ -178,7 +178,7 @@ case $PKG_CMD in
         apk update 
         ;;
     apt)
-        apt update -y
+        apt update -y 2>&1 | grep -v '^N: '
         ;;
     yum|dnf)
         $PKG_CMD clean all
