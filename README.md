@@ -13,6 +13,11 @@ curl -LsO https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/m
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker-compose.sh)"
 ```
 
+# ping获取本地局域网设备ip及MAC信息
+```bash
+bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/ping_ip.sh)"
+```
+
 ## 快速启动
 
 # 📋 点击右侧复制按钮直接复制
