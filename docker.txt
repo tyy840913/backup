@@ -81,7 +81,7 @@ services:
     image: ghcr.nju.edu.cn/beck-8/subs-check:latest
     container_name: subs-check
     volumes:
-      - /data/subs/config:/app/config
+      - /data/subs:/app/config
     ports:
       - "8199:8199"
       - "8299:8299"
