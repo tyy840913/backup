@@ -75,3 +75,20 @@ services:
     environment:
       - TZ=Asia/Shanghai
     command: --schedule "0 30 5 * * *" --cleanup --remove-volumes
+
+  # 8. subs-check 代理池（订阅合并）
+  subs-check:
+    image: ghcr.nju.edu.cn/beck-8/subs-check:latest
+    container_name: subs-check
+    volumes:
+      - /data/subs/config:/app/config
+    ports:
+      - "8199:8199"
+      - "8299:8299"
+    environment:
+      - TZ=Asia/Shanghai
+      # 设置 api-key
+      - API_KEY=421121
+    restart: always
+    tty: true
+    network_mode: bridge
