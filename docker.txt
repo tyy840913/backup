@@ -92,3 +92,16 @@ services:
     restart: always
     tty: true
     network_mode: bridge
+
+  # 9. AdGuardHome DNS广告拦截
+  adguard-home:
+    image: adguard/adguardhome:latest
+    container_name: adguardhome
+    restart: always  # 始终重启
+    network_mode: host  # 直接使用主机网络（无需 ports 映射）
+    volumes:
+      - /data/adguardhome:/opt/adguardhome/work   # 持久化工作数据
+      - /data/adguardhome:/opt/adguardhome/conf   # 持久化配置文件
+    environment:
+      - TZ=Asia/Shanghai  # 时区设置（按需修改）
+
