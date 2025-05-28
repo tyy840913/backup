@@ -99,9 +99,9 @@ services:
     container_name: zfile
     restart: always
     ports:
-      - "8000:8080"  # 左侧可改为宿主机自定义端口
+      - "8000:8080"
     volumes:
-      - ./data:/data  # 数据持久化目录
-      - /data/zfile:/zfile/WEB-INF/classes/application.properties  # 取消注释以挂载自定义配置
+      - ./data:/data
+      - /data/zfile:/zfile/WEB-INF/classes/application.properties
     environment:
-      - TZ=Asia/Shanghai  # 时区设置（可选）
+      - TZ=Asia/Shanghai
