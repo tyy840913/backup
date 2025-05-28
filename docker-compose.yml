@@ -49,7 +49,7 @@ services:
     environment:
       - TZ=Asia/Shanghai
 
-  # 6. Vaultwarden - 密码管理服务
+  # 5. Vaultwarden - 密码管理服务
   vaultwarden:
     image: vaultwarden/server:latest
     container_name: vaultwarden
@@ -64,7 +64,7 @@ services:
       - WEB_VAULT_ENABLED=true
       - SIGNUPS_ALLOWED=true
 
-  # 7. Watchtower - 自动更新容器
+  # 6. Watchtower - 自动更新容器
   watchtower:
     image: containrrr/watchtower:latest
     container_name: watchtower
@@ -76,7 +76,7 @@ services:
       - TZ=Asia/Shanghai
     command: --schedule "0 30 5 * * *" --cleanup --remove-volumes
 
-  # 8. subs-check 代理池（订阅合并）
+  # 7. subs-check 代理池（订阅合并）
   subs-check:
     image: ghcr.nju.edu.cn/beck-8/subs-check:latest
     container_name: subs-check
@@ -93,7 +93,7 @@ services:
     tty: true
     network_mode: bridge
 
-  # 9. zfile - 私有网盘（已启用自定义配置挂载）
+  # 8. zfile - 私有网盘（已启用自定义配置挂载）
   zfile:
     image: zhaojun1998/zfile:latest
     container_name: zfile
