@@ -1,4 +1,3 @@
-version: '3'
 services:
 
   # 1. Portainer - Docker 可视化管理
