@@ -93,7 +93,7 @@ services:
     tty: true
     network_mode: bridge
 
- # 9 zfile 私有网盘
+ # 9. zfile - 私有网盘
  zfile:
     image: zhaojun1998/zfile
     container_name: zfile
