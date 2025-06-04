@@ -1,139 +1,132 @@
 #!/bin/sh
 
-# 全局配置参数 ================================================================
-# 定义依赖的工具列表，用于后续安装检查
-TOOLS="curl tar bash grep sed"
-# 要下载的自动化脚本地址和保存名称
-SCRIPT_URL="https://alist.woskee.nyc.mn:88/dav/aliyun/backup/auto.sh"
-SCRIPT_NAME="auto.sh"
+# 配置
+LOCAL_DIR="/data"  # 本地指定目录
+NUTSTORE_DIR="https://dav.jianguoyun.com/dav/backup/docker_data"  # 坚果云指定目录
+NUTSTORE_USER="1036026846@qq.com"  # 坚果云用户名
+NUTSTORE_PASS="azpfzhzdtbgzitw2"  # 坚果云密码
+TEMP_DIR="/dev/shm"  # 使用内存中的临时目录
 
-# 包管理器检测函数 ============================================================
-detect_pkg_manager() {
-  # 检测系统使用的包管理器
-  if command -v apk >/dev/null 2>&1; then       # Alpine Linux
-    PKG_MANAGER="apk"
-    UPDATE_CMD="apk update --no-cache"          # 无缓存更新命令
-    INSTALL_CMD="apk add --no-cache"            # 无缓存安装命令
-  elif command -v apt-get >/dev/null 2>&1; then # Debian/Ubuntu
-    PKG_MANAGER="apt-get"
-    UPDATE_CMD="apt-get update -qq"             # 静默模式更新
-    INSTALL_CMD="apt-get install -y -qq"        # 自动确认+静默安装
-  elif command -v yum >/dev/null 2>&1; then     # CentOS/RHEL
-    PKG_MANAGER="yum"
-    UPDATE_CMD="yum check-update -q || true"    # 忽略错误码
-    INSTALL_CMD="yum install -y -q"             # 自动确认+静默安装
-  else
-    echo "不支持的包管理器!"
-    exit 1
-  fi
+# 检查目录是否存在，不存在则创建
+ensure_dir_exists() {
+    if [ ! -d "$1" ]; then
+        mkdir -p "$1"
+        echo "目录 $1 不存在，已创建。"
+    fi
 }
 
-# 工具安装函数 ================================================================
-install_tools() {
-  detect_pkg_manager  # 首先检测包管理器
-
-  echo "更新软件仓库..."
-  # 执行仓库更新命令，失败则退出
-  if ! eval "$UPDATE_CMD"; then
-    echo "仓库更新失败!"
-    exit 1
-  fi
-
-  # 遍历所有需要的工具
-  for tool in $TOOLS; do
-    # 检查工具是否已安装
-    if ! command -v "$tool" >/dev/null 2>&1; then
-      echo "正在安装 $tool..."
-      # 使用静默模式安装，失败则退出
-      if ! eval "$INSTALL_CMD $tool" >/dev/null 2>&1; then
-        echo "$tool 安装失败!"
+# 压缩目录到内存中的临时文件
+compress_dir() {
+    local src_dir="$1"
+    local dest_file="$2"
+    tar -czf "$dest_file" -C "$src_dir" .
+    if [ $? -eq 0 ]; then
+        echo "压缩成功: $dest_file"
+    else
+        echo "压缩失败，请检查目录内容或权限。"
         exit 1
-      fi
     fi
-  done
 }
 
-# 脚本下载函数 ================================================================
-download_script() {
-  echo "下载自动化脚本..."
-  # 使用curl通过WebDAV下载脚本，使用基础认证
-  if ! curl -sL --user "$JIANGUO_USER:$JIANGUO_PASS" -O "$SCRIPT_URL" >/dev/null 2>&1; then
-    echo "脚本下载失败!"
-    exit 1
-  fi
-  
-  # 验证文件是否下载成功
-  [ -f "$SCRIPT_NAME" ] || { echo "文件验证失败!"; exit 1; }
-  # 添加可执行权限
-  chmod +x "$SCRIPT_NAME"
-}
-
-# 定时任务配置函数 ============================================================
-add_cron_job() {
-  # 定义定时任务（每天凌晨2:30执行）
-  local cron_job="30 2 * * * $(pwd)/$SCRIPT_NAME >/dev/null 2>&1"
-  
-  # 如果cron不存在则安装
-  if ! command -v crontab >/dev/null 2>&1; then
-    echo "安装cron服务..."
-    case $PKG_MANAGER in
-      "apk") eval "$INSTALL_CMD cronie" ;;  # Alpine特殊包名
-      *) eval "$INSTALL_CMD cron" ;;        # 其他系统
-    esac || { echo "Cron安装失败!"; exit 1; }
-
-    # 启动cron服务并设置开机自启
-    if [ -f "/etc/alpine-release" ]; then   # Alpine系统
-      rc-service crond start >/dev/null 2>&1
-      rc-update add crond >/dev/null 2>&1
-    else                                    # 其他系统
-      systemctl enable cron --now >/dev/null 2>&1
+# 上传文件
+upload_file() {
+    local file="$1"
+    curl -u "$NUTSTORE_USER:$NUTSTORE_PASS" -T "$file" "$NUTSTORE_DIR/"
+    if [ $? -eq 0 ]; then
+        echo "上传成功: $NUTSTORE_DIR/$(basename "$file")"
+    else
+        echo "上传失败，请检查网络或坚果云配置。"
+        exit 1
     fi
-  fi
-
-  # 检查是否已存在相同的定时任务
-  if crontab -l 2>/dev/null | grep -Fq "$cron_job"; then
-    echo "定时任务已存在，无需重复添加。"
-  else
-    # 添加新定时任务（保留原有任务）
-    (crontab -l 2>/dev/null; echo "$cron_job") | crontab -
-    echo "已添加定时任务: $cron_job"
-  fi
 }
 
-# 主执行流程 ==================================================================
-main() {
-  # 交互式输入账号密码
-  printf "请输入账号："
-  read -r JIANGUO_USER
-  printf "请输入密码："
-  read -rs JIANGUO_PASS
-  echo  # 处理密码输入后的换行
-  
-  # 验证输入非空
-  if [ -z "$JIANGUO_USER" ] || [ -z "$JIANGUO_PASS" ]; then
-    echo "错误：账号和密码不能为空！"
-    exit 1
-  fi
-
-  # 检测并安装缺失工具
-  for tool in $TOOLS; do
-    if ! command -v "$tool" >/dev/null 2>&1; then
-      echo "检测到缺少工具: $tool，开始安装..."
-      install_tools
-      break
+# 下载文件到内存中的临时文件
+download_file() {
+    local file="$1"
+    local dest="$2"
+    curl -u "$NUTSTORE_USER:$NUTSTORE_PASS" -o "$dest" "$NUTSTORE_DIR/$file"
+    if [ $? -eq 0 ]; then
+        echo "下载成功: $dest"
+    else
+        echo "下载失败，请检查网络或坚果云配置。"
+        exit 1
     fi
-  done
-
-  # 下载自动化脚本
-  download_script
-
-  # 配置定时任务
-  add_cron_job
-
-  # 首次执行自动化脚本
-  echo "正在执行自动化脚本..."
-  ./"$SCRIPT_NAME" || { echo "脚本执行失败!"; exit 1; }
 }
 
-# 执行主函数
-main
+# 解压内存中的临时文件
+extract_file() {
+    local file="$1"
+    local dest_dir="$2"
+    tar -xzf "$file" -C "$dest_dir"
+    if [ $? -eq 0 ]; then
+        echo "解压成功: $dest_dir"
+    else
+        echo "解压失败，请检查压缩包是否损坏。"
+        exit 1
+    fi
+}
+
+# 获取坚果云最新文件
+get_latest_file() {
+    local file_list
+    file_list=$(curl -u "$NUTSTORE_USER:$NUTSTORE_PASS" -X PROPFIND "$NUTSTORE_DIR/" -s | grep -o '<d:href>[^<]*\.tar\.gz</d:href>' | sed 's/<d:href>//g; s/<\/d:href>//g')
+    if [ -z "$file_list" ]; then
+        echo "坚果云目录中没有找到压缩文件。"
+        exit 1
+    fi
+    # 将日期格式统一为补零的格式（例如 2025-01-13）
+    file_list=$(echo "$file_list" | sed 's/-\([0-9]\)-/-0\1-/g; s/-\([0-9]\)-/-0\1-/g')
+    # 按日期排序并获取最新文件
+    echo "$file_list" | sort -r | head -n 1
+}
+
+# 清理坚果云网盘，保留最近日期的七个文件
+cleanup_nutstore() {
+    # 获取文件列表并按日期排序
+    FILE_LIST=$(curl -u "$NUTSTORE_USER:$NUTSTORE_PASS" -X PROPFIND "$NUTSTORE_DIR" -s | grep -o '<d:href>[^<]*\.tar\.gz</d:href>' | sed 's/<d:href>//g; s/<\/d:href>//g' | sort -r)
+
+    # 保留最近日期的七个文件，删除其余文件
+    COUNT=0
+    for FILE in $FILE_LIST; do
+        COUNT=$((COUNT + 1))
+        if [ $COUNT -gt 7 ]; then
+            FILE_NAME=$(basename "$FILE")
+            curl -u "$NUTSTORE_USER:$NUTSTORE_PASS" -X DELETE "$NUTSTORE_DIR/$FILE_NAME" -s
+            echo "清理: $FILE_NAME"
+        fi
+    done
+}
+
+# 主逻辑
+ensure_dir_exists "$TEMP_DIR"
+
+if [ -d "$LOCAL_DIR" ]; then
+    # 本地目录存在，压缩并上传
+    TIMESTAMP=$(date +"%Y-%m-%d")
+    ARCHIVE_NAME="docker_$TIMESTAMP.tar.gz"
+    ARCHIVE_PATH="$TEMP_DIR/$ARCHIVE_NAME"
+
+    compress_dir "$LOCAL_DIR" "$ARCHIVE_PATH"
+    upload_file "$ARCHIVE_PATH"
+    rm "$ARCHIVE_PATH"
+    echo "已删除内存中的压缩包: $ARCHIVE_PATH"
+
+    # 备份完成后，执行清理操作
+    cleanup_nutstore
+else
+    # 本地目录不存在，下载并解压最新文件
+    ensure_dir_exists "$LOCAL_DIR"
+
+    LATEST_FILE=$(get_latest_file)
+    if [ -z "$LATEST_FILE" ]; then
+        exit 1
+    fi
+
+    echo "最新文件: $LATEST_FILE"
+    DOWNLOAD_PATH="$TEMP_DIR/$(basename "$LATEST_FILE")"
+
+    download_file "$(basename "$LATEST_FILE")" "$DOWNLOAD_PATH"
+    extract_file "$DOWNLOAD_PATH" "$LOCAL_DIR"
+    rm "$DOWNLOAD_PATH"
+    echo "已删除内存中的压缩包: $DOWNLOAD_PATH"
+fi
