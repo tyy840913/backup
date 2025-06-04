@@ -91,3 +91,13 @@ services:
     restart: always
     tty: true
     network_mode: bridge
+  # 8. Cloudreve（私有云盘）
+  cloudreve:
+    image: cloudreve/cloudreve:latest
+    container_name: cloudreve
+    restart: always
+    ports:
+      - "5212:5212"
+    volumes:
+      - /data/Cloudreve/config:/cloudreve/config
+      - /data/Cloudreve/uploads:/cloudreve/uploads
