@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 配置坚果云WebDAV参数
-NUTSTORE_URL="https://dav.jianguoyun.com/dav/backup/docker_data/auto.sh"
+NUTSTORE_URL="https://dav.jianguoyun.com/dav/backup/auto.sh"
 NUTSTORE_USER="1036026846@qq.com"
 NUTSTORE_PASS="azpfzhzdtbgzitw2"
 LOCAL_SCRIPT_PATH="/root/auto.sh"
