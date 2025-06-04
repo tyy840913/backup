@@ -4,7 +4,7 @@
 # 定义依赖的工具列表，用于后续安装检查
 TOOLS="curl tar bash grep sed"
 # 要下载的自动化脚本地址和保存名称
-SCRIPT_URL="https://dav.jianguoyun.com/dav/backup/auto.sh"
+SCRIPT_URL="https://dav.woskee.nyc.mn:88/jianguoyun/backup/auto.sh"
 SCRIPT_NAME="auto.sh"
 
 # 包管理器检测函数 ============================================================
