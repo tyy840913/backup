@@ -1,38 +1,38 @@
 #!/bin/bash
 
-# 检查root权限
-if [ "$(id -u)" -ne 0 ]; then
-  echo "请使用root用户运行此脚本" >&2
-  exit 1
-fi
+# 检查根权限
+ifif [ "$(id -u)" -ne 0 ]; then"$(id -u)" -ne 0 ]; then
+  echo "请使用root用户运行此脚本" >&2"请使用root用户运行此脚本" >&2
+  退出 1退出1
+输入：fi
 
 # 下载配置
-URL="https://alist.woskee.nyc.mn:88/dav/Telecom/backup/auto.sh"
-TARGET="/root/auto.sh"
+URLURL="https://gi.woskee.nyc.mn/github.com/tyy840913/Cloud/blob/main/backup/auto.sh"
+TARGET目标="/root/auto.sh""/root/auto.sh"
 
 # 交互式凭据输入
-function get_credentials() {
-  read -p "请输入账号: " username
-  read -sp "请输入密码: " password
-  echo
-}
+函数函数 get_credentials() {
+  读取 -p "请输入账号: " username-p "请输入账号: " username
+  读取 -sp "请输入密码: " 密码-sp "请输入密码: " password
+  回显
+输入：}
 
 # 下载验证函数
-function download_with_auth() {
-  echo "正在尝试下载..."
-  if curl -# -u "$1:$2" -o "$TARGET" "$URL"; then
-    if [ -s "$TARGET" ]; then
-      echo -e "\n下载成功！"
-      return 0
-    else
-      echo -e "\n错误：下载文件为空" >&2
-      return 1
-    fi
-  else
+函数函数 download_with_auth() {
+  echo "正在尝试下载...""正在尝试下载..."
+  如果 curl -# -u \"$1:$2\" -o \"$TARGET\" \"$URL\"; 那么if curl -# -u "$1:$2" -o "$TARGET" "$URL"; 那么
+    如果 [ -s "$TARGET" ]; 那么if [ -s "$TARGET" ]; 那么
+      echo -e "\n下载成功！"-e "\n下载成功！"
+      返回 00
+    否则else
+      echo -e "\n错误：下载文件为空" >&2-e "\n错误：下载文件为空" >&2
+      返回 11
+    输入：    fi
+  否则
     echo -e "\n错误：下载失败" >&2
-    return 1
-  fi
-}
+    返回 1
+  输入：fi
+输入：}
 
 # 主下载逻辑
 attempt=1
