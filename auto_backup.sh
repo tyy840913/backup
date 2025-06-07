@@ -20,10 +20,16 @@ function get_credentials() {
 # 下载验证函数
 function download_with_auth() {
   echo "正在尝试下载..."
-  if curl -# -u "$1:$2" -o "$TARGET" "$URL"; then
+  if curl -L -# -u "$1:$2" -o "$TARGET" "$URL"; then
     if [ -s "$TARGET" ]; then
-      echo -e "\n下载成功！"
-      return 0
+      # 检查文件是否为HTML（简单通过文件头判断）
+      if grep -q "<html" "$TARGET"; then
+        echo -e "\n错误：下载到的是HTML页面，请检查URL或认证信息" >&2
+        return 1
+      else
+        echo -e "\n下载成功！"
+        return 0
+      fi
     else
       echo -e "\n错误：下载文件为空" >&2
       return 1
