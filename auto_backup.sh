@@ -7,7 +7,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # 下载配置
-URL="https://git.woskee.nyc.mn/github.com/tyy840913/Cloud/blob/main/backup/auto.sh"
+URL="https://alist.woskee.nyc.mn:88/AliCloud/backup/auto.sh"
 TARGET="/root/auto.sh"
 
 # 交互式凭据输入
