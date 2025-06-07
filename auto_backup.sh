@@ -7,7 +7,7 @@ ifif [ "$(id -u)" -ne 0 ]; then"$(id -u)" -ne 0 ]; then
 输入：fi
 
 # 下载配置
-URLURL="https://gi.woskee.nyc.mn/github.com/tyy840913/Cloud/blob/main/backup/auto.sh"
+URLURL="https://git.woskee.nyc.mn/github.com/tyy840913/Cloud/blob/main/backup/auto.sh"
 TARGET目标="/root/auto.sh""/root/auto.sh"
 
 # 交互式凭据输入
@@ -30,51 +30,51 @@ TARGET目标="/root/auto.sh""/root/auto.sh"
     输入：    fi
   否则
     echo -e "\n错误：下载失败" >&2
-    返回 1
+    返回1
   输入：fi
 输入：}
 
 # 主下载逻辑
-attempt=1
-MAX_ATTEMPTS=3
-while [ $attempt -le $MAX_ATTEMPTS ]; do
-  get_credentials
+尝试=1
+最大尝试次数=3
+当 [ 尝试次数 小于等于 最大尝试次数 ] ; 执行
+  获取凭证
   
-  if [ -z "$username" ] || [ -z "$password" ]; then
+  如果 [ -z "$用户名" ] 或者 [ -z "$密码" ]; 那么
     echo -e "\n错误：账号和密码不能为空" >&2
-  else
-    if download_with_auth "$username" "$password"; then
-      break
-    fi
-  fi
+  否则
+    如果 下载_带_认证 "$用户名"户名" "密码"码"; 那么
+      中断
+    输入：fi
+  输入：fi
   
-  ((attempt++))
-  if [ $attempt -le $MAX_ATTEMPTS ]; then
+  ((尝试次数++))
+  如果 [ $attempt -le $MAX_ATTEMPTS ]; 那么
     echo "还有$((MAX_ATTEMPTS - attempt + 1))次尝试机会"
-  fi
-done
+  输入：fi
+完成
 
-if [ $attempt -gt $MAX_ATTEMPTS ]; then
+如果 [ $attempt -gt $MAX_ATTEMPTS ]; 那么
   echo -e "\n错误：超过最大尝试次数" >&2
-  exit 1
-fi
+  退出 1
+输入：fi
 
 # 文件后处理
 echo -e "\n正在检查文件格式..."
-if grep -q $'\r' "$TARGET"; then
+如果 grep -q $'\r' "$TARGET"; 那么
   echo "检测到Windows换行符，正在转换..."
   sed -i 's/\r$//' "$TARGET"
-fi
+输入：fi
 
 chmod +x "$TARGET"
 echo -e "\n文件已保存至 $TARGET"
 
 # 新增：自动执行下载的脚本
 echo -e "\n正在执行下载的脚本..."
-if ! bash "$TARGET"; then
+如果 不是 "$TARGET"; 那么
   echo -e "\n错误：脚本执行失败" >&2
-  exit 1
-fi
+  退出 1
+输入：fi
 
-echo -e "\n脚本执行完成！"
+echo -e "\n脚本执行完成！"-e "\n脚本执行完成！"
 
