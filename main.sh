@@ -103,15 +103,33 @@ run_script() {
     if curl -s "$script_url" -o "$tmp_script"; then
         chmod +x "$tmp_script"
         
+        # 定义一个函数用于处理换行符，避免代码重复
+        convert_newlines() {
+            local script_path=$1
+            if grep -q $'\r' "$script_path"; then
+                echo -e "${COLOR_TITLE}检测到Windows风格换行符，正在转换为Unix风格...${COLOR_RESET}"
+                # 使用sed原地替换，删除所有回车符
+                sed -i 's/\r//g' "$script_path"
+                if [ $? -eq 0 ]; then
+                    echo -e "${COLOR_TITLE}换行符转换成功。${COLOR_RESET}"
+                else
+                    echo -e "${COLOR_ERROR}换行符转换失败，尝试继续执行，但可能存在兼容性问题。${COLOR_RESET}"
+                fi
+            # 移除了这里的 else 分支，因此如果未检测到Windows换行符，将不输出任何信息。
+            fi
+        }
+
         # 根据后缀选择执行方式
         case "${filenames[index]##*.}" in
             sh) 
+                convert_newlines "$tmp_script" # 调用换行符转换函数
                 bash "$tmp_script" 
                 ;;
             py) 
+                convert_newlines "$tmp_script" # 调用换行符转换函数
                 # 检查Python3是否安装
                 if ! command -v python3 &> /dev/null; then
-                    echo -e "${COLOR_ERROR}未检测到Python3，无法执行该脚本。${COLOR_RESET}"
+                    echo -e "${COLOR_ERROR}脚本需要Python3运行，但未检测到Python3。${COLOR_RESET}"
                     echo -en "${COLOR_INPUT}是否自动安装Python3？[Y/n]: ${COLOR_RESET}"
                     read -r answer
                     case "$answer" in
@@ -121,35 +139,54 @@ run_script() {
                             ;;
                         *)
                             echo "正在尝试安装Python3..."
+                            local install_cmd_prefix="" # 用于存放安装命令前缀（sudo 或空）
+
+                            # 检查当前用户是否为root
+                            if [ "$(id -u)" -ne 0 ]; then
+                                # 如果不是root，检查sudo是否存在
+                                if command -v sudo &> /dev/null; then
+                                    install_cmd_prefix="sudo "
+                                    echo -e "${COLOR_TITLE}检测到非root用户，将尝试使用 sudo 进行安装。${COLOR_RESET}"
+                                else
+                                    echo -e "${COLOR_ERROR}警告：当前用户不是root，且未检测到 'sudo' 命令。${COLOR_RESET}"
+                                    echo -e "${COLOR_ERROR}无法自动安装Python3，请手动安装后重试。${COLOR_RESET}"
+                                    return 1 # 无法自动安装，返回
+                                fi
+                            else
+                                echo -e "${COLOR_TITLE}检测到root用户，将直接进行安装。${COLOR_RESET}"
+                            fi
+
                             # 根据不同的包管理器安装
                             if command -v apt &> /dev/null; then
-                                sudo apt update && sudo apt install -y python3 || {
+                                ${install_cmd_prefix}apt update && ${install_cmd_prefix}apt install -y python3 || {
                                     echo -e "${COLOR_ERROR}安装失败，请检查网络或权限。${COLOR_RESET}"
                                     return 1
                                 }
                             elif command -v yum &> /dev/null; then
-                                sudo yum install -y python3 || {
+                                ${install_cmd_prefix}yum install -y python3 || {
                                     echo -e "${COLOR_ERROR}安装失败，请检查网络或权限。${COLOR_RESET}"
                                     return 1
                                 }
                             elif command -v dnf &> /dev/null; then
-                                sudo dnf install -y python3 || {
+                                ${install_cmd_prefix}dnf install -y python3 || {
                                     echo -e "${COLOR_ERROR}安装失败，请检查网络或权限。${COLOR_RESET}"
                                     return 1
                                 }
                             elif command -v zypper &> /dev/null; then
-                                sudo zypper install -y python3 || {
+                                ${install_cmd_prefix}zypper install -y python3 || {
                                     echo -e "${COLOR_ERROR}安装失败，请检查网络或权限。${COLOR_RESET}"
                                     return 1
                                 }
                             else
-                                echo -e "${COLOR_ERROR}无法检测到支持的包管理器，请手动安装Python3。${COLOR_RESET}"
+                                echo -e "${COLOR_ERROR}无法检测到支持的包管理器 (apt, yum, dnf, zypper)，请手动安装Python3。${COLOR_RESET}"
                                 return 1
                             fi
                             # 安装成功后再次检查
                             if ! command -v python3 &> /dev/null; then
                                 echo -e "${COLOR_ERROR}Python3安装失败，请手动安装。${COLOR_RESET}"
                                 return 1
+                            else
+                                echo -e "${COLOR_TITLE}Python3安装成功！${COLOR_RESET}"
                             fi
                             ;;
                     esac
