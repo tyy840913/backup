@@ -14,7 +14,7 @@ services:
   # 2. Alist - 文件列表服务
   alist:
     image: ghcr.nju.edu.cn/openlistteam/openlist-git:beta-aio
-    container_name: alist
+    container_name: openlist
     restart: always
     network_mode: bridge
     volumes:
