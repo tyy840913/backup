@@ -11,7 +11,7 @@ services:
     ports:
       - "9000:9000"
 
-  # 2. Alist - 文件列表服务
+  # 2. openlist - 文件列表服务
   alist:
     image: ghcr.nju.edu.cn/openlistteam/openlist-git:beta-aio
     container_name: openlist
