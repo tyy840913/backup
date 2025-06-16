@@ -18,7 +18,7 @@ services:
     restart: always
     network_mode: bridge
     volumes:
-      - /data/alist:/opt/alist/data
+      - /data/openlist:/opt/openlist/data
     ports:
       - "5244:5244"
     environment:
