@@ -167,6 +167,7 @@ install_compose() {
 configure_mirror() {
     local DAEMON_JSON="/etc/docker/daemon.json"
     declare -a MIRRORS=(
+        "https://registry.lfree.org"
         "https://docker.1ms.run"
         "https://docker.tbedu.top"
         "https://docker.aeko.cn"
