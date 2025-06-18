@@ -1,362 +1,328 @@
-// =================================================================================================
-// Cloudflare Worker 网页代理 (v7 - 最终完整修复版)
-//修改自github.com/1234567Yang/cf-proxy-ex
-// 架构:
-// - HTML流式处理 (HTMLRewriter)
-// - 专业视频清单处理 (M3U8/MPD)
-// - 二进制数据直通 (Range-aware)
-// - 完整的客户端JS注入
-//
-// 变更日志:
-// - v7: 恢复了被错误精简掉的、完整的客户端注入脚本，确保动态内容的兼容性。
-//       这是整合了所有修复方案的最终完整版本。
-// - v6: 重构为流式处理架构，从根本上解决了视频播放和页面布局的冲突。
-// =================================================================================================
+// 定义你的域名，或者留空自动检测
+const MY_DOMAIN = ''; // 例如 'my-worker.username.workers.dev'
 
-addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-  thisProxyServerUrlHttps = `${url.protocol}//${url.hostname}/`;
-  thisProxyServerUrl_hostOnly = url.host;
-  event.respondWith(handleRequest(event.request));
-});
+// 定义上游协议，默认是 https
+const UPSTREAM_PROTOCOL = 'https';
 
-// --- 全局配置 ---
-const pathSeparator = "/";
-const lastVisitedSiteCookie = "__代理访问站点__";
-const passwordCookieName = "__代理密码__";
-const password = ""; // 在这里设置你的密码，留空则不启用密码保护
-const showPasswordPage = true;
-const replacedLocationObject = "__代理位置对象__";
+// 不需要代理的域名列表，可根据需要添加
+const BLACKLISTED_HOSTS = ['google-analytics.com', 'googletagmanager.com', 'google.com'];
 
-// --- 全局变量 ---
-var thisProxyServerUrlHttps;
-var thisProxyServerUrl_hostOnly;
+// --- 主逻辑 ---
 
-// --- 客户端注入脚本 (恢复到最完整的版本) ---
-var clientSideInjection = `
-(function () { // 匿名立即执行函数，避免污染全局作用域
+export default {
+  async fetch(request, env, ctx) {
+    try {
+      const url = new URL(request.url);
+      const myDomain = MY_DOMAIN || url.hostname;
 
-//---***========================================***---信息定义---***========================================***---
-var 当前URL = new URL(window.location.href);
-var 代理主机 = 当前URL.host;
-var 代理协议 = 当前URL.protocol;
-var 代理前缀 = 代理协议 + "//" + 代理主机 + "/";
-var 原始URL字符串 = window.location.href.substring(代理前缀.length);
-var 原始URL;
-try {
-    原始URL = new URL(原始URL字符串.startsWith('http') ? 原始URL字符串 : 'https://' + 原始URL字符串);
-} catch (e) {
-    console.error("代理脚本: 无法解析原始URL: " + 原始URL字符串, e);
-    return;
-}
-var 原始主机 = 原始URL.host;
-var 原始站点根 = 原始URL.origin;
-
-//---***========================================***---通用函数---***========================================***---
-function 转换URL(相对路径){
-  if(相对路径 == null || typeof 相对路径 !== 'string') return null;
-  if(/^(data:|mailto:|javascript:|chrome:|edge:|blob:)/i.test(相对路径)) return 相对路径;
-  if(相对路径.startsWith(代理前缀)) return 相对路径;
-  try {
-    return 代理前缀 + new URL(相对路径, 原始URL.href).href;
-  } catch (e) {
-    return 相对路径;
-  }
-}
-
-//---***========================================***---注入网络请求---***========================================***---
-function 注入网络请求(){
-  var 原始Open = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function() { arguments[1] = 转换URL(arguments[1]); return 原始Open.apply(this, arguments); };
-  var 原始Fetch = window.fetch;
-  window.fetch = function(输入, 配置) {
-    let URL = (typeof 输入 === 'string') ? 输入 : 输入.url;
-    let newUrl = 转换URL(URL);
-    if (typeof 输入 === 'string') { return 原始Fetch(newUrl, 配置); }
-    const 新请求 = new Request(newUrl, 输入);
-    return 原始Fetch(新请求, 配置);
-  };
-}
-
-//---***========================================***---注入window.open---***========================================***---
-function 注入窗口打开(){
-  const 原始Open = window.open;
-  window.open = function (URL, 名称, 规格) { return 原始Open.call(window, 转换URL(URL), 名称, 规格); };
-}
-
-//---***========================================***---注入元素属性---***========================================***---
-function 注入元素属性(){
-  const 原始SetAttribute = HTMLElement.prototype.setAttribute;
-  HTMLElement.prototype.setAttribute = function (名称, 值) {
-      const attrs = ["src", "href", "action", "ping", "poster", "data-src"];
-      if (attrs.includes(名称.toLowerCase())) { arguments[1] = 转换URL(值); }
-      原始SetAttribute.apply(this, arguments);
-  };
-}
-
-//---***========================================***---注入location对象---***========================================***---
-class 代理位置对象 {
-  constructor(原始位置) { this.原始位置 = 原始位置; }
-  get href() { return window.location.href.substring(代理前缀.length); }
-  set href(URL) { this.原始位置.href = 转换URL(URL); }
-  assign(URL) { this.原始位置.assign(转换URL(URL)); }
-  replace(URL) { this.原始位置.replace(转换URL(URL)); }
-  reload(force) { this.原始位置.reload(force); }
-  get origin() { return 原始URL.origin; }
-  get protocol() { return 原始URL.protocol; }
-  get host() { return 原始URL.host; }
-  get hostname() { return 原始URL.hostname; }
-  get port() { return 原始URL.port; }
-  get pathname() { return 原始URL.pathname; }
-  get search() { return 原始URL.search; }
-  get hash() { return 原始URL.hash; }
-  toString() { return this.href; }
-}
-function 注入位置(){
-  Object.defineProperty(document, 'URL', { get: () => 原始URL字符串, configurable: true });
-  Object.defineProperty(document, '${replacedLocationObject}', { get: () => new 代理位置对象(window.location), configurable: true });
-  Object.defineProperty(window, '${replacedLocationObject}', { get: () => new 代理位置对象(window.location), configurable: true });
-}
-
-//---***========================================***---注入历史记录API---***========================================***---
-function 注入历史记录(){
-  const 原始PushState = History.prototype.pushState;
-  History.prototype.pushState = function (s, t, u) { return 原始PushState.apply(this, [s, t, u ? 转换URL(u) : u]); };
-  const 原始ReplaceState = History.prototype.replaceState;
-  History.prototype.replaceState = function (s, t, u) { return 原始ReplaceState.apply(this, [s, t, u ? 转换URL(u) : u]); };
-}
-
-//---***========================================***---Hook观察界面动态元素---***========================================***---
-function 观察页面元素() {
-  const attrs = ['href', 'src', 'action', 'ping', 'poster', 'data-src'];
-  const observer = new MutationObserver(mutations => {
-    mutations.forEach(mutation => {
-      mutation.addedNodes.forEach(node => {
-        if (node.nodeType === 1) { // ELEMENT_NODE
-          移除完整性并转换路径(node);
-          node.querySelectorAll(attrs.map(a => \`[\${a}]\`).join(',')).forEach(移除完整性并转换路径);
-        }
-      });
-      if (mutation.type === 'attributes' && attrs.includes(mutation.attributeName)) { 移除完整性并转换路径(mutation.target); }
-    });
-  });
-  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: attrs });
-  function 移除完整性并转换路径(element) {
-    if (element.hasAttribute('integrity')) element.removeAttribute('integrity');
-    attrs.forEach(attr => {
-      if (element.hasAttribute(attr)) {
-        let originalUrl = element.getAttribute(attr);
-        if (originalUrl && !originalUrl.startsWith(代理前缀) && !/^(data|blob|javascript):/i.test(originalUrl)) {
-          element.setAttribute(attr, 转换URL(originalUrl));
-        }
+      // 1. 根路径请求，显示主页时钟
+      if (url.pathname === '/') {
+        return handleHomepage();
       }
-    });
-  }
-}
-//---***========================================***---主要操作---***========================================***---
-注入网络请求(); 注入窗口打开(); 注入元素属性(); 注入位置(); 注入历史记录();
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll(['href', 'src', 'action', 'ping', 'poster', 'data-src'].map(a => \`[\${a}]\`).join(',')).forEach(el => {
-        if (el.hasAttribute('integrity')) el.removeAttribute('integrity');
-        const attrs = ['href', 'src', 'action', 'ping', 'poster', 'data-src'];
-        attrs.forEach(attr => {
-            if (el.hasAttribute(attr)) {
-                el.setAttribute(attr, 转换URL(el.getAttribute(attr)));
-            }
-        });
-    });
-    观察页面元素();
-});
-console.log("代理脚本已注入并执行。");
-})();
-`;
 
-// --- HTML 模板 (与之前版本相同) ---
-const mainPage = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>网页代理服务器</title><style>body{font-family:sans-serif;background:rgb(20,20,40);color:rgb(240,240,240);display:flex;flex-direction:column;align-items:center;padding:20px}a{color:rgb(150,200,255);text-decoration:none}a:hover{text-decoration:underline}.container{max-width:600px;width:100%;background:rgb(30,30,60);padding:30px;border-radius:8px;box-shadow:0 4px 15px rgba(0,0,0,.5);text-align:center}h1{color:rgb(200,200,255);margin-bottom:25px}form{display:flex;flex-direction:column;gap:15px;margin-bottom:30px}input[type="text"]{padding:12px 15px;border:1px solid rgb(50,50,90);border-radius:5px;background:rgb(40,40,70);color:rgb(240,240,240);font-size:16px;width:calc(100% - 30px);margin:0 auto}input[type="text"]::placeholder{color:rgb(150,150,180)}button{padding:12px 25px;background-color:rgb(80,150,255);color:#fff;border:none;border-radius:5px;font-size:18px;cursor:pointer;transition:background-color .3s ease;margin:0 auto}button:hover{background-color:rgb(60,130,230)}ul{list-style-type:disc;padding-left:20px;text-align:left;font-size:1.1em;line-height:1.6}li{margin-bottom:10px}.important{color:rgb(255,200,100);font-weight:700}.warning{color:rgb(255,100,100);font-weight:700}.code{background:rgba(0,0,0,0.2);padding:2px 5px;border-radius:3px;font-family:monospace;}</style></head><body><div class="container"><h1>欢迎使用网页代理服务器</h1><p>通过本代理服务器访问被限制的网站。请在下方输入您希望访问的网址。</p><form id="urlForm" onsubmit="redirectToProxy(event)"><input type="text" id="targetUrl" placeholder="例如: https://www.google.com 或 www.baidu.com"><button type="submit" id="jumpButton">开始代理</button></form><h2>使用说明</h2><ul><li><span class="important">如何使用:</span> 在上方输入框中输入您想访问的网站地址，然后点击“开始代理”。<br>例如: <span class="code">github.com</span> 或者 <span class="code">https://github.com</span></li><li><span class="warning">重要提示:</span><br>尽管我们尽力确保代理的稳定性，但您<span class="important">绝不应通过在线代理登录任何账户</span>。</li><li><span class="important">遇到问题:</span><br>如果您的浏览器显示“400 Bad Request”错误，请尝试清除浏览器Cookie。</li></ul></div><script>function redirectToProxy(event){event.preventDefault();const e=document.getElementById("targetUrl").value.trim();e?window.location.href=window.location.origin+"/"+e:alert("请输入一个有效的网址！")}</script></body></html>`;
-const pwdPage = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>需要密码</title><style>body{font-family:sans-serif;background:rgb(20,20,40);color:rgb(240,240,240);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0}.container{background:rgb(30,30,60);padding:40px;border-radius:8px;box-shadow:0 4px 15px rgba(0,0,0,.5);text-align:center}h2{color:rgb(200,200,255);margin-bottom:25px}input[type="password"]{padding:12px 15px;border:1px solid rgb(50,50,90);border-radius:5px;background:rgb(40,40,70);color:rgb(240,240,240);font-size:16px;margin-right:10px;width:200px}input[type="password"]::placeholder{color:rgb(150,150,180)}button{padding:12px 25px;background-color:rgb(80,150,255);color:#fff;border:none;border-radius:5px;font-size:18px;cursor:pointer;transition:background-color .3s ease}button:hover{background-color:rgb(60,130,230)}</style><script>function setPassword(){try{var e=window.location.hostname,t=document.getElementById("password").value,o=new Date;o.setTime(o.getTime()+6048e5),document.cookie="${passwordCookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain="+e,document.cookie="${passwordCookieName}="+encodeURIComponent(t)+"; expires="+o.toUTCString()+"; path=/; domain="+e+"; secure; samesite=Lax"}catch(e){alert("设置密码时出错: "+e.message)}location.reload()}</script></head><body><div class="container"><h2>请输入密码访问</h2><div><input id="password" type="password" placeholder="密码" onkeydown="if(event.keyCode===13) setPassword()"><button onclick="setPassword()">提交</button></div></div></body></html>`;
-const redirectError = `<html><head><meta charset="UTF-8"></head><body><h2>重定向时出错: 目标网站可能包含了错误的重定向信息，我们无法解析。</h2><p>请检查您输入的网址是否正确，或尝试访问其他网站。</p></body></html>`;
+      // 2. 代理请求
+      return await handleProxy(request, myDomain);
+
+    } catch (err) {
+      // 全局捕获，防止任何未处理的异常导致CF错误页面
+      console.error('Global Error:', err.stack);
+      return new Response('一个内部错误发生了。' + err.message, {
+        status: 500,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    }
+  },
+};
+
+// --- 模块功能 ---
 
 /**
- * 主要请求处理函数
- * @param {Request} request 传入的请求对象
- * @returns {Response} 响应对象
+ * 处理根路径请求，返回显示时间的HTML页面
  */
-async function handleRequest(request) {
-  const siteCookie = request.headers.get('Cookie');
+function handleHomepage() {
+  const html = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>当前时间</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      background-color: #121212;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+    .time-container {
+      text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    }
+    .date-line {
+      font-size: 2.5em; /* 较小的字体 */
+      font-weight: 300;
+      margin-bottom: 20px;
+    }
+    .time-line {
+      font-size: 7em;  /* 较大的字体 */
+      font-weight: 600;
+      letter-spacing: 2px;
+    }
+    /* 移动端适配 */
+    @media (max-width: 768px) {
+      .date-line {
+        font-size: 1.5em;
+      }
+      .time-line {
+        font-size: 4em;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="time-container">
+    <div id="date" class="date-line"></div>
+    <div id="time" class="time-line"></div>
+  </div>
+  <script>
+    function updateTime() {
+      const now = new Date();
+      const optionsDate = {
+        timeZone: 'Asia/Shanghai', // 东八区
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        weekday: 'long',
+      };
+      const optionsTime = {
+        timeZone: 'Asia/Shanghai', // 东八区
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      };
+      
+      const dateFormatter = new Intl.DateTimeFormat('zh-CN', optionsDate);
+      const timeFormatter = new Intl.DateTimeFormat('zh-CN', optionsTime);
 
-  if (password !== "" && getCookie(passwordCookieName, siteCookie) !== password) {
-    return handleWrongPassword();
-  }
+      document.getElementById('date').textContent = dateFormatter.format(now);
+      document.getElementById('time').textContent = timeFormatter.format(now).replace(/:/g, ' : ');
+    }
+    
+    // 立即执行一次，然后每秒更新
+    updateTime();
+    setInterval(updateTime, 1000);
+  </script>
+</body>
+</html>
+  `;
+  return new Response(html, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+}
 
+/**
+ * 处理代理请求
+ * @param {Request} request 原始请求
+ * @param {string} myDomain 当前worker的域名
+ */
+async function handleProxy(request, myDomain) {
   const url = new URL(request.url);
-  let actualUrlStr = url.pathname.substring(pathSeparator.length) + url.search + url.hash;
 
-  if (actualUrlStr === "" || actualUrlStr === "/") {
-    return getHtmlResponse(mainPage);
-  }
-
-  let targetUrlForValidation = actualUrlStr;
-  if (!/^(https?:\/\/)/i.test(targetUrlForValidation)) {
-    targetUrlForValidation = "https://" + targetUrlForValidation;
-  }
+  // 1. 解析目标URL
+  let targetUrlStr = url.pathname.substring(1) + url.search;
   
-  let actualUrl;
-  try {
-    actualUrl = new URL(targetUrlForValidation);
-  } catch (e) {
-    return getHtmlResponse(`<h1>网址错误</h1><p>无法解析您请求的网址: <code>${actualUrlStr}</code></p>`, 400);
+  // 兼容两种格式: /https://github.com 和 /github.com
+  if (!targetUrlStr.startsWith('http://') && !targetUrlStr.startsWith('https://')) {
+    // 尝试添加协议头，如果URL构造失败，则可能是路径中不包含点号的简单域名
+    try {
+      new URL(UPSTREAM_PROTOCOL + '://' + targetUrlStr);
+      targetUrlStr = UPSTREAM_PROTOCOL + '://' + targetUrlStr;
+    } catch (e) {
+      // 失败，可能是个错误的路径，或者目标网站路径不含域名
+      // 这种情况我们无法处理，返回错误
+      return new Response('无效的目标URL格式。请使用 /domain.com/path 或 /https://domain.com/path 的格式。', { status: 400 });
+    }
   }
-  
-  const clientHeaders = new Headers(request.headers);
-  clientHeaders.set('Host', actualUrl.host);
-  clientHeaders.set('Referer', actualUrl.origin + '/');
 
-  const modifiedRequest = new Request(actualUrl.href, {
-    headers: clientHeaders,
+  const targetUrl = new URL(targetUrlStr);
+
+  // 黑名单检查
+  if (BLACKLISTED_HOSTS.includes(targetUrl.hostname)) {
+    return new Response('此主机已被管理员禁用。', { status: 403 });
+  }
+
+  // 2. 构造发往目标服务器的请求
+  const upstreamRequest = new Request(targetUrl.toString(), {
     method: request.method,
+    headers: request.headers,
     body: request.body,
-    redirect: "manual"
+    redirect: 'manual', // 我们自己处理重定向
   });
 
-  const response = await fetch(modifiedRequest);
-
-  if (response.status.toString().startsWith("3") && response.headers.has("Location")) {
-    try {
-      const redirectedUrl = new URL(response.headers.get("Location"), actualUrl.href).href;
-      return Response.redirect(`${thisProxyServerUrlHttps}${redirectedUrl}`, response.status);
-    } catch (e) {
-      return getHtmlResponse(`${redirectError}<br>原始重定向URL: ${response.headers.get("Location")}<br>您当前访问的URL: ${actualUrl.href}`);
+  // 修改/设置请求头
+  const reqHeaders = upstreamRequest.headers;
+  reqHeaders.set('Host', targetUrl.hostname);
+  reqHeaders.set('Referer', `https://${myDomain}/`); // 设置一个通用的Referer
+  reqHeaders.delete('x-forwarded-for');
+  reqHeaders.delete('x-real-ip');
+  
+  // 移除Cloudflare添加的头
+  for (const [key, value] of reqHeaders.entries()) {
+    if (key.toLowerCase().startsWith('cf-')) {
+      reqHeaders.delete(key);
     }
   }
 
-  let modifiedHeaders = new Headers(response.headers);
-  const contentType = modifiedHeaders.get("Content-Type") || "";
-
-  const headersToRemove = [
-    "Content-Security-Policy", "Content-Security-Policy-Report-Only", "Permissions-Policy",
-    "Cross-Origin-Embedder-Policy", "Cross-Origin-Resource-Policy", "X-Frame-Options",
-    "X-XSS-Protection", "X-Content-Type-Options", "Access-Control-Allow-Origin"
-  ];
-  headersToRemove.forEach(header => modifiedHeaders.delete(header));
-  modifiedHeaders.set('Access-Control-Allow-Origin', '*');
-
-  if (modifiedHeaders.has('set-cookie')) {
-    const originalCookies = modifiedHeaders.get('set-cookie');
-    modifiedHeaders.delete('set-cookie');
-    originalCookies.split(/,(?=[^;]*=)/).forEach(cookieStr => {
-      let modifiedCookie = cookieStr
-        .replace(/domain=[^;]+;/ig, `domain=${thisProxyServerUrl_hostOnly};`)
-        .replace(/path=[^;]+;/ig, `path=${pathSeparator};`);
-      modifiedHeaders.append('set-cookie', modifiedCookie);
+  // 3. 发送请求并获取响应
+  let upstreamResponse;
+  try {
+    upstreamResponse = await fetch(upstreamRequest);
+  } catch (err) {
+    // fetch失败，通常是DNS或网络问题
+    console.error('Upstream fetch error:', err.stack);
+    return new Response(`无法连接到目标主机: ${targetUrl.hostname}。` + err.message, {
+      status: 502, // Bad Gateway
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     });
   }
-  
-  // =========================================================================================
-  // ******** v7: 最终的流式处理与专业视频修复 ********
-  // =========================================================================================
 
-  if (contentType.includes("text/html")) {
-    modifiedHeaders.set('Content-Type', 'text/html; charset=utf-8');
+  // 4. 创建返回给客户端的响应
+  const clientResponse = new Response(upstreamResponse.body, {
+    status: upstreamResponse.status,
+    statusText: upstreamResponse.statusText,
+    headers: upstreamResponse.headers,
+  });
+
+  // 5. 修改响应头
+  const resHeaders = clientResponse.headers;
+  
+  // 删除可能导致问题的安全头
+  resHeaders.delete('Content-Security-Policy');
+  resHeaders.delete('Content-Security-Policy-Report-Only');
+  resHeaders.delete('X-Frame-Options');
+  resHeaders.delete('X-Content-Type-Options');
+  
+  // 重写重定向 (Location)
+  if (resHeaders.has('Location')) {
+    const location = resHeaders.get('Location');
+    const rewrittenLocation = rewriteUrl(location, targetUrl.origin, myDomain);
+    resHeaders.set('Location', rewrittenLocation);
+  }
+
+  // 重写Cookie (Set-Cookie)
+  const cookies = resHeaders.get('Set-Cookie');
+  if (cookies) {
+      // Set-Cookie可以有多个，需要特殊处理
+      resHeaders.delete('Set-Cookie');
+      const cookieArray = Array.isArray(cookies) ? cookies : cookies.split(', ');
+      cookieArray.forEach(cookie => {
+          const rewrittenCookie = cookie
+              .replace(/domain=([^;]+);?/gi, `domain=${myDomain};`)
+              .replace(/path=\//gi, `path=/;`); // 确保path在根路径
+          resHeaders.append('Set-Cookie', rewrittenCookie);
+      });
+  }
+  
+  // 6. 如果是HTML，使用HTMLRewriter进行内容重写
+  const contentType = resHeaders.get('Content-Type') || '';
+  if (contentType.includes('text/html')) {
     const rewriter = new HTMLRewriter()
-      .on('a, link, iframe, script, img, video, source, embed, object, form', {
-        attribute(element) {
-          const attrsToRewrite = ['href', 'src', 'action', 'poster', 'data-src'];
-          for(const attr of attrsToRewrite){
-            const originalUrl = element.getAttribute(attr);
-            if (originalUrl) {
-              element.setAttribute(attr, proxifyUrl(originalUrl, actualUrl.href));
+      .on('*[href]', new AttributeRewriter('href', targetUrl.origin, myDomain))
+      .on('*[src]', new AttributeRewriter('src', targetUrl.origin, myDomain))
+      .on('*[action]', new AttributeRewriter('action', targetUrl.origin, myDomain))
+      .on('*[srcset]', new AttributeRewriter('srcset', targetUrl.origin, myDomain, true)) // srcset需要特殊处理
+      .on('meta[http-equiv="refresh"]', new MetaRefreshRewriter(targetUrl.origin, myDomain));
+
+    return rewriter.transform(clientResponse);
+  }
+  
+  // 对于非HTML内容（如CSS, JS, 图片, 视频），直接返回，因为它们的URL请求也会被worker捕获和代理
+  return clientResponse;
+}
+
+/**
+ * URL重写辅助函数
+ * @param {string} urlStr 待重写的URL
+ * @param {string} targetOrigin 目标网站的源 (e.g., https://github.com)
+ * @param {string} myDomain worker域名
+ * @returns {string} 重写后的URL
+ */
+function rewriteUrl(urlStr, targetOrigin, myDomain) {
+    if (!urlStr) return '';
+  
+    // 如果是完整的URL
+    if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
+        return `https://${myDomain}/${urlStr}`;
+    }
+    // 如果是协议相对URL (//example.com/path)
+    if (urlStr.startsWith('//')) {
+        return `https://${myDomain}/https:${urlStr}`;
+    }
+    // 如果是绝对路径 (/path/to/resource)
+    if (urlStr.startsWith('/')) {
+        return `https://${myDomain}/${targetOrigin}${urlStr}`;
+    }
+    // 相对路径 (path/to/resource)，这种情况比较少见，但也要处理
+    // 这需要知道当前页面的路径，但为了简化，我们假设它相对于根
+    return `https://${myDomain}/${targetOrigin}/${urlStr}`;
+}
+
+/**
+
+ * HTMLRewriter的元素属性重写器
+ */
+class AttributeRewriter {
+    constructor(attributeName, targetOrigin, myDomain, isSrcset = false) {
+        this.attributeName = attributeName;
+        this.targetOrigin = targetOrigin;
+        this.myDomain = myDomain;
+        this.isSrcset = isSrcset;
+    }
+
+    element(element) {
+        const attribute = element.getAttribute(this.attributeName);
+        if (attribute) {
+            if (this.isSrcset) {
+                // srcset格式: "image-1x.png 1x, image-2x.png 2x"
+                const rewrittenSrcset = attribute
+                    .split(',')
+                    .map(part => {
+                        const [url, descriptor] = part.trim().split(/\s+/);
+                        return `${rewriteUrl(url, this.targetOrigin, this.myDomain)} ${descriptor || ''}`;
+                    })
+                    .join(', ');
+                element.setAttribute(this.attributeName, rewrittenSrcset);
+            } else {
+                element.setAttribute(this.attributeName, rewriteUrl(attribute, this.targetOrigin, this.myDomain));
             }
-          }
-        },
-      })
-      .on('head', {
-        element(element) {
-          element.prepend(`<script>${clientSideInjection.replace(/\${replacedLocationObject}/g, replacedLocationObject)}</script>`, { html: true });
         }
-      })
-      .on('*', {
-          element(element){
-            if(element.hasAttribute('integrity')){
-                element.removeAttribute('integrity');
+    }
+}
+
+/**
+ * HTMLRewriter的meta refresh重写器
+ */
+class MetaRefreshRewriter {
+    constructor(targetOrigin, myDomain) {
+        this.targetOrigin = targetOrigin;
+        this.myDomain = myDomain;
+    }
+    
+    element(element) {
+        const content = element.getAttribute('content');
+        if (content) {
+            const parts = content.split(';');
+            if (parts.length > 1 && parts[1].toLowerCase().includes('url=')) {
+                const urlPart = parts[1].split('=')[1];
+                const rewrittenUrl = rewriteUrl(urlPart.trim(), this.targetOrigin, this.myDomain);
+                element.setAttribute('content', `${parts[0]}; url=${rewrittenUrl}`);
             }
-          }
-      });
-      
-      // 在流式响应中添加Cookie
-      const transformedResponse = rewriter.transform(response);
-      let newResponse = new Response(transformedResponse.body, transformedResponse);
-      let cookieValue = `${lastVisitedSiteCookie}=${actualUrl.origin}; Path=/; Domain=${thisProxyServerUrl_hostOnly}; Max-Age=3600; Secure; SameSite=Lax`;
-      newResponse.headers.append("Set-Cookie", cookieValue);
-      
-      return newResponse;
-
-  } else if (contentType.includes("application/vnd.apple.mpegurl")) { // HLS .m3u8
-      const body = await response.text();
-      const rewrittenBody = body.split('\n').map(line => {
-          line = line.trim();
-          if (line.length > 0 && !line.startsWith('#')) {
-              return proxifyUrl(line, actualUrl.href);
-          }
-          if (line.startsWith('#EXT-X-KEY')) {
-              const uriMatch = line.match(/URI="([^"]+)"/);
-              if (uriMatch && uriMatch[1]) {
-                  return line.replace(uriMatch[1], proxifyUrl(uriMatch[1], actualUrl.href));
-              }
-          }
-          return line;
-      }).join('\n');
-      return new Response(rewrittenBody, { status: response.status, statusText: response.statusText, headers: modifiedHeaders });
-
-  } else if (contentType.includes("application/dash+xml")) { // DASH .mpd
-      let body = await response.text();
-      // 更健壮的XML URL替换
-      body = body.replace(/<BaseURL>([^<]+)<\/BaseURL>/g, (match, url) => `<BaseURL>${proxifyUrl(url, actualUrl.href)}</BaseURL>`);
-      body = body.replace(/<SegmentURL media="([^"]+)"/g, (match, url) => `<SegmentURL media="${proxifyUrl(url, actualUrl.href)}"`);
-      return new Response(body, { status: response.status, statusText: response.statusText, headers: modifiedHeaders });
-  
-  } else if (contentType.includes("text/css")) {
-      const body = await response.text();
-      const rewrittenBody = body.replace(/url\(([^)]+)\)/g, (match, url) => {
-        let trimmedUrl = url.trim().replace(/['"]/g, '');
-        return `url(${proxifyUrl(trimmedUrl, actualUrl.href)})`;
-      });
-      return new Response(rewrittenBody, { status: response.status, statusText: response.statusText, headers: modifiedHeaders });
-  
-  } else {
-    // 对于JS, JSON以及所有二进制文件（图片, 视频/音频片段等），直接直通
-    // 这是最稳定可靠的方式，确保Range请求和数据完整性
-    return new Response(response.body, { status: response.status, statusText: response.statusText, headers: modifiedHeaders });
-  }
-}
-
-// --- 辅助函数 ---
-
-function getCookie(cookieName, cookieString) {
-  if (!cookieString) return null;
-  const ca = cookieString.split(';');
-  for (let c of ca) {
-    c = c.trim();
-    if (c.startsWith(cookieName + "=")) return decodeURIComponent(c.substring(cookieName.length + 1));
-  }
-  return null;
-}
-
-function proxifyUrl(originalUrl, baseHref) {
-    if (!originalUrl || typeof originalUrl !== 'string' || /^(data:|blob:|javascript:|mailto:)/i.test(originalUrl)) {
-        return originalUrl;
+        }
     }
-    try {
-        const absoluteUrl = new URL(originalUrl, baseHref).href;
-        return `${thisProxyServerUrlHttps}${absoluteUrl}`;
-    } catch (e) {
-        return originalUrl;
-    }
-}
-
-function handleWrongPassword() {
-  return showPasswordPage ? getHtmlResponse(pwdPage, 403) : new Response("<h1>403 Forbidden</h1>", { status: 403, headers: { "Content-Type": "text/html; charset=utf-8" } });
-}
-
-function getHtmlResponse(html, status = 200) {
-  return new Response(html, { status, headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
