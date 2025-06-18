@@ -100,11 +100,11 @@ install_docker() {
             apt-get install -y ca-certificates curl gnupg
 
             install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https://add.woskee.nyc.mn/download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            curl -fsSL https://add.woskee.dpdns.org/download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
             chmod a+r /etc/apt/keyrings/docker.gpg
 
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://add.woskee.nyc.mn/download.docker.com/linux/$OS $CODENAME stable" | \
+https://add.luxxk.dpdns.org/download.docker.com/linux/$OS $CODENAME stable" | \
 tee /etc/apt/sources.list.d/docker.list > /dev/null
 
             apt-get update
@@ -137,7 +137,7 @@ install_compose() {
             apk add --no-cache docker-compose ;;
         *)
             COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
-            BINARY_URL="https://add.woskee.nyc.mn/github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
+            BINARY_URL="https://add.wosken.dpdns.org/github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
             
             # 使用临时目录和install命令
             TEMP_DIR=$(mktemp -d)
@@ -185,7 +185,7 @@ configure_mirror() {
         "https://dockerpull.pw"
         "https://docker.1panel.top"
         "https://hub.fast360.xyz"
-        "https://docker.woskee.nyc.mn"
+        "https://docker.woskee.dpdns.org"
         "https://docker.woskee.dns.army"
         "https://docker.woskee.dynv6.net"
     )
