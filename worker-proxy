@@ -5,7 +5,7 @@ const MY_DOMAIN = ''; // 例如 'my-worker.username.workers.dev'
 const UPSTREAM_PROTOCOL = 'https';
 
 // 不需要代理的域名列表，可根据需要添加
-const BLACKLISTED_HOSTS = ['google-analytics.com', 'googletagmanager.com', 'google.com'];
+const BLACKLISTED_HOSTS = ['',''];
 
 // --- 主逻辑 ---
 
