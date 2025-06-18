@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 配置参数
-DOWNLOAD_URL="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker-compose.yml"
+DOWNLOAD_URL="https://add.woskee.dpdns.org/raw.githubusercontent.com/tyy840913/backup/main/docker-compose.yml"
 TARGET_DIR="/data/docker"
 TARGET_FILE="$TARGET_DIR/docker-compose.yml"
 
