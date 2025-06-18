@@ -4,7 +4,7 @@ const MY_DOMAIN = ''; // 例如 'my-worker.username.workers.dev'
 // 定义上游协议，默认是 https
 const UPSTREAM_PROTOCOL = 'https';
 
-// 不需要代理的域名列表，可根据需要添加
+// 不需要代理的域名列表，可根据需要添加。
 const BLACKLISTED_HOSTS = ['',''];
 
 // --- 主逻辑 ---
