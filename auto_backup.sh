@@ -7,7 +7,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # 下载配置
-URL="https://alist.woskee.nyc.mn:88/dav/AliCloud/backup/auto.sh"
+URL="https://openlist.woskee.dpdns.org:88/dav/alicloud/backup/auto.sh"
 TARGET="/root/auto.sh"
 
 # 交互式凭据输入
