@@ -176,23 +176,50 @@ show_mirror_menu() {
 }
 
 
-# --- 新增功能：禁用订阅提示 ---
+# --- 新增功能：禁用订阅提示 (优化版) ---
 disable_subscription_nag() {
     clear
     echo -e "${BLUE}--- 禁用 PVE 网页订阅提示 ---${NC}"
     local js_file="/usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js"
 
     if [ ! -f "$js_file" ]; then
-        echo -e "${RED}错误: 未找到目标文件 ${js_file}。${NC}"
+        echo -e "${RED}错误: 未找到目标文件 ${js_file}。可能是 proxmox-widget-toolkit 包未安装或路径已更改。${NC}"
         sleep 2
         return
     fi
 
     echo "此操作将修改系统文件以禁用“无有效订阅”的弹窗。"
     echo -e "${YELLOW}注意: 此修改在 'proxmox-widget-toolkit' 包更新后可能会被覆盖，届时需重新运行此脚本。${NC}"
+
+    # 优化后的幂等性检查：检查原始代码是否存在，如果不存在，则说明已经被修改
+    local already_patched=true
+    if [[ $PVE_VER -eq 8 ]]; then
+        # PVE 8 检查关键代码 `Ext.Msg.show` 是否还存在
+        if grep -q "Ext.Msg.show" "$js_file"; then
+            already_patched=false
+        fi
+    elif [[ $PVE_VER -eq 7 ]]; then
+        # PVE 7 检查关键代码 `data.status !== 'Active'` 是否还存在
+        if grep -q "data.status !== 'Active'" "$js_file"; then
+            already_patched=false
+        fi
+    fi
     
-    # 检查是否已经修改过
-    if grep -q "void({ // PVE-No-Subscription-Hax" "$js_file"; then
+    # 在PVE 8.1+，弹窗逻辑被移到了 pvemanagerlib.js
+    local pvemanager_js="/usr/share/pve-manager/js/pvemanagerlib.js"
+    if [[ -f "$pvemanager_js" ]] && grep -q "PVE.UI.Debian.activateSubscription" "$pvemanager_js"; then
+        echo -e "\n${YELLOW}检测到 PVE 8.1+ 环境，将对 pvemanagerlib.js 应用补丁。${NC}"
+        js_file=$pvemanager_js
+        # 检查新文件是否已打补丁
+        if ! grep -q "PVE.UI.Debian.SubscriptionEnabled" "$pvemanager_js"; then
+            already_patched=false
+        else
+            already_patched=true
+        fi
+    fi
+
+
+    if $already_patched; then
         echo -e "\n${GREEN}检测到订阅提示已经被禁用，无需重复操作。${NC}"
         read -n 1 -s -r -p "按任意键返回主菜单..."
         return
@@ -208,18 +235,24 @@ disable_subscription_nag() {
     echo "正在应用补丁..."
     backup_file "$js_file"
 
-    # 根据PVE版本应用不同的补丁
     local success=false
-    if [[ $PVE_VER -eq 8 ]]; then
-        # PVE 8+ uses a different check
-        if sed -i "s/Ext.Msg.show({/void({ \/\/ PVE-No-Subscription-Hax/g" "$js_file"; then
+    # 针对不同文件的补丁逻辑
+    if [[ "$js_file" == "$pvemanager_js" ]]; then
+        # PVE 8.1+ 的补丁
+        if sed -i "s/PVE.UI.Debian.activateSubscription()/PVE.UI.Debian.SubscriptionEnabled = true;/" "$js_file"; then
+            success=true
+        fi
+    elif [[ $PVE_VER -eq 8 ]]; then
+        # PVE 8.0 的补丁 (使用更健壮的正则表达式)
+        if sed -i -E "s/(Ext.Msg.show\s*\(\s*\{)/\1\n\t        title: gettext('No valid subscription'),\n\t\t/g" "$js_file"; then
+            # 上面的sed命令在某些情况下可能不起作用, 采用更通用的方法
+            if sed -i "s/void({ // PVE-No-Subscription-Hax/Ext.Msg.show({/g" "$js_file" >/dev/null 2>&1; # revert no-sub
+            sed -i "s/Ext.Msg.show({/void({ \/\/ PVE-No-Subscription-Hax/g" "$js_file" >/dev/null 2>&1; # apply no-sub
             success=true
         fi
     elif [[ $PVE_VER -eq 7 ]]; then
-        # PVE 7 and older
+        # PVE 7 的补丁
         if sed -i "s/data.status !== 'Active'/false/g" "$js_file"; then
-             # Let's make it compatible with the PVE 8 check for simplicity
-            sed -i "s/if (false)/if (false) { \/\/ PVE-No-Subscription-Hax/g" "$js_file"
             success=true
         fi
     fi
@@ -232,11 +265,11 @@ disable_subscription_nag() {
         echo "(通常是按 Ctrl + Shift + R 或 Cmd + Shift + R)"
     else
         echo -e "${RED}应用补丁失败。文件可能已被修改或版本不兼容。${NC}"
+        echo "如果您之前使用了其他工具，请先从备份中恢复原始文件再试。"
     fi
     
     read -n 1 -s -r -p "按任意键返回主菜单..."
 }
-
 
 # 恢复菜单 (代码未变)
 show_restore_menu() {
