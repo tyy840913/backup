@@ -166,7 +166,7 @@ show_mirror_menu() {
     elif [[ "$mirror_name" == "龙芯(LoongArch)" ]]; then
         note=" (${YELLOW}仅限LoongArch架构${NC})"
     fi
-    echo " $((i+1))) ${mirror_name}${note}"
+    echo -e " $((i+1))) ${mirror_name}${note}"
   done
   echo " 0) 返回主菜单"
   echo "----------------------------------------"
