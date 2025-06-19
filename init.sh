@@ -1,20 +1,41 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
 # 系统配置自动化检查与修复脚本
-# 支持：Debian/Ubuntu, CentOS/RHEL, Alpine Linux
+# 版本: 2.0 (稳定版)
+#
+# 变更日志:
+# - 增加全局Root权限检查，确保脚本在正确的权限下运行。
+# - 优化SSH配置检查的正则表达式，使其能兼容不同的空格格式。
+# - 调整manage_service函数参数顺序，提高代码可读性。
+# - 移除函数内冗余的权限检查。
+#
+# 支持系统：Debian/Ubuntu, CentOS/RHEL, Alpine Linux
 
-RED='\033[31m'    # 错误
-GREEN='\033[32m'  # 成功
-YELLOW='\033[33m' # 警告
-BLUE='\033[34m'   # 信息
+# --- 颜色定义 ---
+RED='\033[0;31m'    # 错误
+GREEN='\033[0;32m'  # 成功
+YELLOW='\033[0;33m' # 警告
+BLUE='\033[0;34m'   # 信息
 NC='\033[0m'      # 颜色重置
 
-# 精准检测系统发行版
+# --- 核心函数 ---
+
+# 1. 检查Root权限 (全局)
+check_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo -e "${RED}错误: 此脚本必须以root权限运行。${NC}"
+        echo -e "${YELLOW}请尝试使用 'sudo $0' 命令来运行此脚本。${NC}"
+        exit 1
+    fi
+}
+
+# 2. 精准检测系统发行版
 detect_os() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
         case $ID in
             debian|ubuntu) echo "debian" ;;
-            centos|rhel)   echo "centos" ;;
+            centos|rhel|fedora) echo "centos" ;; # 将Fedora归入此类
             alpine)        echo "alpine" ;;
             *)             echo "unknown" ;;
         esac
@@ -23,22 +44,31 @@ detect_os() {
     fi
 }
 
-# 服务管理抽象层
+# 3. 服务管理抽象层 (优化后)
+# 用法: manage_service <action> <service_name>
+# 例如: manage_service "restart" "sshd"
 manage_service() {
+    local action=$1
+    local service=$2
     case $OS in
         debian|centos)
-            systemctl $2 $1
+            systemctl "$action" "$service"
             ;;
         alpine)
-            rc-service $1 $2
+            # Alpine的rc-service命令参数顺序是 service action
+            rc-service "$service" "$action"
             ;;
     esac
 }
 
-# SSH服务检查与配置（增强版）
+# --- 功能模块 ---
+
+# 模块一: SSH服务检查与配置（增强版）
 check_ssh() {
-    echo -e "\n${BLUE}=== SSH服务检查 ===${NC}"
+    echo -e "\n${BLUE}=== SSH 服务检查与配置 ===${NC}"
     
+    local PKG=""
+    local SERVICE=""
     case $OS in
         debian)
             PKG="openssh-server"
@@ -58,171 +88,147 @@ check_ssh() {
     if ! command -v sshd &>/dev/null; then
         echo -e "${YELLOW}[SSH] 服务未安装，正在安装...${NC}"
         case $OS in
-            debian) apt update && apt install -y $PKG ;;
+            debian) apt-get update && apt-get install -y $PKG ;;
             centos) yum install -y $PKG ;;
-            alpine) apk add $PKG ;;
+            alpine) apk add --no-cache $PKG ;;
         esac || {
-            echo -e "${RED}SSH安装失败，请检查网络连接${NC}"
-            exit 1
+            echo -e "${RED}[SSH] 安装失败，请检查网络或软件源。${NC}"
+            return 1 # 使用return代替exit，增加灵活性
         }
     fi
 
     # 自启动配置
-case $OS in
-    debian|centos)
-        if ! systemctl is-enabled $SERVICE &>/dev/null; then
-            systemctl enable $SERVICE
-            echo "已成功启用 $SERVICE 开机自启动"
-        else
-            echo "服务 $SERVICE 已启用自启动，无需重复操作"
-        fi
-        ;;
-    alpine)
-        if ! rc-update show | grep -q $SERVICE; then
-            rc-update add $SERVICE
-            echo "已成功将 $SERVICE 添加至运行级别"
-        else
-            echo "服务 $SERVICE 已在运行级别中，无需重复添加"
-        fi
-        ;;
-esac
+    case $OS in
+        debian|centos)
+            if ! systemctl is-enabled "$SERVICE" &>/dev/null; then
+                manage_service "enable" "$SERVICE"
+                echo -e "${GREEN}[SSH] 已成功启用 $SERVICE 开机自启动。${NC}"
+            else
+                echo -e "[SSH] 服务 $SERVICE 已启用自启动，无需操作。"
+            fi
+            ;;
+        alpine)
+            if ! rc-update show | grep -q "$SERVICE"; then
+                rc-update add "$SERVICE" default # 添加到默认运行级别
+                echo -e "${GREEN}[SSH] 已成功将 $SERVICE 添加至默认运行级别。${NC}"
+            else
+                echo -e "[SSH] 服务 $SERVICE 已在运行级别中，无需操作。"
+            fi
+            ;;
+    esac
 
-    # 配置文件优化（增加状态检测）
-    SSH_CONFIG="/etc/ssh/sshd_config"
-    CONFIG_CHANGED=0
+    # 配置文件优化（使用更精确的grep和状态检测）
+    local SSH_CONFIG="/etc/ssh/sshd_config"
+    local CONFIG_CHANGED=0
 
-    # 检查Root登录配置
-    if ! grep -E "^PermitRootLogin yes" $SSH_CONFIG &>/dev/null; then
-        sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' $SSH_CONFIG
-        echo "已更新允许Root登录配置"
+    # 检查Root登录配置 (^\s*... 匹配带前导空格的行)
+    if ! grep -qE "^\s*PermitRootLogin\s+yes\s*$" "$SSH_CONFIG"; then
+        sed -i 's/^\s*#*\s*PermitRootLogin.*/PermitRootLogin yes/' "$SSH_CONFIG"
+        echo -e "[SSH] 配置更新：已启用 Root 登录。"
         CONFIG_CHANGED=1
     else
-        echo "Root登录配置已启用，无需修改"
+        echo -e "[SSH] 配置检查：Root 登录已启用，无需修改。"
     fi
 
     # 检查密码认证配置
-    if ! grep -E "^PasswordAuthentication yes" $SSH_CONFIG &>/dev/null; then
-        sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' $SSH_CONFIG
-        echo "已启用密码认证配置"
+    if ! grep -qE "^\s*PasswordAuthentication\s+yes\s*$" "$SSH_CONFIG"; then
+        sed -i 's/^\s*#*\s*PasswordAuthentication.*/PasswordAuthentication yes/' "$SSH_CONFIG"
+        echo -e "[SSH] 配置更新：已启用密码认证。"
         CONFIG_CHANGED=1
     else
-        echo "密码认证配置已启用，无需修改"
+        echo -e "[SSH] 配置检查：密码认证已启用，无需修改。"
     fi
 
     # 仅在配置变更时重启服务
     if [ $CONFIG_CHANGED -eq 1 ]; then
-        if ! manage_service $SERVICE restart; then
-            echo -e "${RED}SSH服务重启失败${NC}"
-            exit 1
+        echo -e "${YELLOW}[SSH] 配置已变更，正在重启服务以生效...${NC}"
+        if ! manage_service "restart" "$SERVICE"; then
+            echo -e "${RED}[SSH] 服务重启失败，请手动执行 'systemctl restart $SERVICE' 或 'rc-service $SERVICE restart'。${NC}"
+            return 1
         fi
-        echo -e "${GREEN}[SSH] 服务配置已更新并生效${NC}"
+        echo -e "${GREEN}[SSH] 服务配置已更新并成功重启。${NC}"
     else
-        echo -e "${GREEN}[SSH] 配置无变动，跳过服务重启${NC}"
+        echo -e "${GREEN}[SSH] 配置无变动，无需重启服务。${NC}"
     fi
 }
 
-# 时区配置检查（增强版）
+# 模块二: 时区配置检查（增强版）
 check_timezone() {
     echo -e "\n${BLUE}=== 时区检查与配置 ===${NC}"
     local TARGET_ZONE="Asia/Shanghai"
     local ZONE_FILE="/usr/share/zoneinfo/${TARGET_ZONE}"
 
-    # 强制root权限检查
-    if [ "$(id -u)" -ne 0 ]; then
-        echo -e "${RED}错误：此操作需要root权限！${NC}"
-        return 1
-    fi
-
-    # 显示当前时间信息
+    # 内部函数：显示当前时间信息
     show_time_info() {
+        echo -n "当前系统时间: "
         date "+%Y-%m-%d %H:%M:%S %Z (UTC%z)"
     }
 
-    # 判断是否已经是东八区
+    # 判断是否已经是目标时区
     if date +%z | grep -qE '(\+0800|CST)'; then
-        echo -e "${GREEN}时区已正确设置为东八区${NC}"
+        echo -e "${GREEN}时区已正确设置为 ${TARGET_ZONE}。${NC}"
         show_time_info
         return 0
     fi
 
-    # 安装时区数据包（仅在缺失时）
+    echo -e "${YELLOW}当前时区不正确，开始自动配置为 ${TARGET_ZONE}...${NC}"
+
+    # 确保时区数据包已安装（仅在缺失时）
     if [ ! -f "$ZONE_FILE" ]; then
-        echo -e "${YELLOW}时区文件缺失，正在安装tzdata..."
+        echo -e "${YELLOW}时区数据文件缺失，正在安装...${NC}"
         case $OS in
-            debian) apt update && apt install -y tzdata ;;
+            debian) apt-get update && apt-get install -y tzdata ;;
             centos) yum install -y tzdata ;;
             alpine) apk add --no-cache tzdata ;;
         esac || {
-            echo -e "${RED}时区数据安装失败！请检查网络或软件源配置${NC}"
+            echo -e "${RED}时区数据包安装失败！请检查网络或软件源配置。${NC}"
             return 1
         }
     fi
 
-    # 配置时区：符号链接 → 文件复制 → 系统工具（优先级递增）
-    echo -e "${YELLOW}尝试配置时区..."
+    # 核心配置逻辑
+    case $OS in
+        debian|centos)
+            if command -v timedatectl >/dev/null; then
+                timedatectl set-timezone "$TARGET_ZONE"
+            else
+                ln -sf "$ZONE_FILE" /etc/localtime
+            fi
+            ;;
+        alpine)
+            # Alpine需要同时更新/etc/timezone文件
+            ln -sf "$ZONE_FILE" /etc/localtime && echo "$TARGET_ZONE" > /etc/timezone
+            ;;
+    esac
 
-    # 方法1: 符号链接（Alpine允许但需同时更新/etc/timezone）
-    if ln -sf "$ZONE_FILE" /etc/localtime 2>/dev/null; then
-        echo -e "${GREEN}符号链接创建成功！"
-        [ "$OS" = "alpine" ] && echo "$TARGET_ZONE" > /etc/timezone
+    # 最终验证
+    if date +%z | grep -qE '(\+0800|CST)'; then
+        echo -e "${GREEN}时区配置成功！${NC}"
+        show_time_info
     else
-        # 方法2: 直接复制文件（适用于符号链接受限环境）
-        if cp -f "$ZONE_FILE" /etc/localtime 2>/dev/null; then
-            echo -e "${YELLOW}使用文件复制成功！"
-            [ "$OS" = "alpine" ] && echo "$TARGET_ZONE" > /etc/timezone
-        else
-            # 方法3: 调用系统工具（Alpine专用）
-            echo -e "${YELLOW}尝试通过系统工具配置..."
-            case $OS in
-                alpine)
-                    if command -v setup-timezone >/dev/null; then
-                        setup-timezone -z "$TARGET_ZONE" && echo -e "${GREEN}setup-timezone 配置成功！"
-                    else
-                        echo -e "${RED}Alpine系统缺少setup-timezone工具，请手动安装tzdata！${NC}"
-                        return 1
-                    fi
-                    ;;
-                debian|centos)
-                    timedatectl set-timezone "$TARGET_ZONE" || {
-                        echo -e "${RED}timedatectl 配置失败！请检查:"
-                        echo -e "1. 是否以root运行"
-                        echo -e "2. systemd服务是否正常${NC}"
-                        return 1
-                    }
-                    ;;
-            esac
-        fi
+        echo -e "${RED}时区配置失败！请手动检查系统。${NC}"
+        echo -e "建议命令: 'timedatectl set-timezone ${TARGET_ZONE}' 或 'ln -sf ${ZONE_FILE} /etc/localtime'"
+        return 1
     fi
-
-    # 最终验证（增加重试逻辑）
-    local RETRY=3
-    while [ $RETRY -gt 0 ]; do
-        sleep 1
-        if date +%z | grep -qE '(\+0800|CST)'; then
-            echo -e "${GREEN}时区配置验证通过！${NC}"
-            show_time_info
-            return 0
-        fi
-        RETRY=$((RETRY-1))
-    done
-
-    # 所有方法均失败
-    echo -e "${RED}时区配置失败！请手动执行以下操作:"
-    echo -e "1. 确保文件存在: ls -l $ZONE_FILE"
-    echo -e "2. 手动设置: ln -sf $ZONE_FILE /etc/localtime"
-    echo -e "3. Alpine系统需额外写入: echo $TARGET_ZONE > /etc/timezone${NC}"
-    return 1
 }
 
-# 主程序
-OS=$(detect_os)
-if [ "$OS" == "unknown" ]; then
-    echo -e "${RED}不支持的发行版${NC}"
-    exit 1
-fi
+# --- 主程序入口 ---
+main() {
+    check_root
+    OS=$(detect_os)
 
-check_ssh
-check_timezone
+    if [ "$OS" == "unknown" ]; then
+        echo -e "${RED}错误：无法识别或不支持当前操作系统。${NC}"
+        exit 1
+    fi
+    
+    echo -e "${BLUE}检测到操作系统: $OS, 开始执行自动化检查...${NC}"
 
-echo -e "\n${GREEN}所有配置已完成，即将退出脚本！${NC}"
-exit 0
+    check_ssh
+    check_timezone
+
+    echo -e "\n${GREEN}所有检查与配置任务已完成。${NC}"
+}
+
+# 执行主函数
+main
