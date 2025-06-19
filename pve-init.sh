@@ -117,7 +117,7 @@ show_main_menu() {
   done
 }
 
-# 镜像选择菜单 (代码未变，为保持完整性而保留)
+# 镜像选择菜单
 show_mirror_menu() {
   local config_type=$1
   local config_name
@@ -132,12 +132,20 @@ show_mirror_menu() {
       if [[ "$name" == "龙芯(LoongArch)" && "$ARCH" != "loongarch64" ]]; then
           continue
       fi
-      if [[ "$config_type" -ne 1 && ("$name" == "清华大学" || "$name" == "阿里云" || "$name" == "中科大" || "$name" == "龙芯(LoongArch)") ]]; then
-          : 
-      elif [[ "$config_type" -eq 1 && ("$name" == "Proxmox"*) ]]; then
-          continue
+      # 仅为Debian系统源提供通用镜像
+      if [[ "$config_type" -eq 1 ]]; then
+          if [[ "$name" != "Proxmox"* ]]; then
+              available_mirrors+=("$name")
+          fi
+      # 为PVE和LXC源提供Proxmox相关镜像
+      else
+          if [[ "$name" == "Proxmox"* ]]; then
+              available_mirrors+=("$name")
+          # 国内镜像也提供PVE和LXC镜像
+          elif [[ "$name" == "清华大学" || "$name" == "阿里云" || "$name" == "中科大" || "$name" == "龙芯(LoongArch)" ]]; then
+              available_mirrors+=("$name")
+          fi
       fi
-      available_mirrors+=("$name")
   done
 
   clear
@@ -160,7 +168,7 @@ show_mirror_menu() {
 
   while true; do
     read -p "请选择一个镜像源 [0-$((${#available_mirrors[@]}))]: " mirror_choice
-    if [[ "$mirror_choice" -eq 0 ]]; then
+    if [[ "$mirror_choice" == "0" ]]; then
       return
     fi
     if [[ "$mirror_choice" =~ ^[0-9]+$ ]] && [ "$mirror_choice" -gt 0 ] && [ "$mirror_choice" -le "${#available_mirrors[@]}" ]; then
@@ -176,51 +184,49 @@ show_mirror_menu() {
 }
 
 
-# --- 新增功能：禁用订阅提示 (优化版) ---
+# --- 禁用订阅提示 ---
 disable_subscription_nag() {
     clear
     echo -e "${BLUE}--- 禁用 PVE 网页订阅提示 ---${NC}"
     local js_file="/usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js"
+    local pvemanager_js="/usr/share/pve-manager/js/pvemanagerlib.js"
 
-    if [ ! -f "$js_file" ]; then
-        echo -e "${RED}错误: 未找到目标文件 ${js_file}。可能是 proxmox-widget-toolkit 包未安装或路径已更改。${NC}"
+    # 确定目标文件
+    if [[ -f "$pvemanager_js" ]] && grep -q "PVE.UI.Debian.activateSubscription" "$pvemanager_js"; then
+        echo -e "\n${YELLOW}检测到 PVE 8.1+ 环境，目标文件为 pvemanagerlib.js。${NC}"
+        js_file=$pvemanager_js
+    elif [ ! -f "$js_file" ]; then
+        echo -e "${RED}错误: 未找到JS目标文件。可能是 proxmox-widget-toolkit 包未安装或路径已更改。${NC}"
         sleep 2
         return
+    else
+        echo -e "\n${YELLOW}检测到 PVE 7.x/8.0.x 环境，目标文件为 proxmoxlib.js。${NC}"
     fi
 
     echo "此操作将修改系统文件以禁用“无有效订阅”的弹窗。"
-    echo -e "${YELLOW}注意: 此修改在 'proxmox-widget-toolkit' 包更新后可能会被覆盖，届时需重新运行此脚本。${NC}"
+    echo -e "${YELLOW}注意: 相关软件包更新后此修改可能会被覆盖，届时需重新运行此脚本。${NC}"
 
-    # 优化后的幂等性检查：检查原始代码是否存在，如果不存在，则说明已经被修改
+    # 幂等性检查
     local already_patched=true
-    if [[ $PVE_VER -eq 8 ]]; then
-        # PVE 8 检查关键代码 `Ext.Msg.show` 是否还存在
+    if [[ "$js_file" == "$pvemanager_js" ]]; then
+        # PVE 8.1+ check
+        if ! grep -q "PVE.UI.Debian.SubscriptionEnabled" "$js_file"; then
+            already_patched=false
+        fi
+    elif [[ $PVE_VER -eq 8 ]]; then
+        # PVE 8.0 check
         if grep -q "Ext.Msg.show" "$js_file"; then
             already_patched=false
         fi
     elif [[ $PVE_VER -eq 7 ]]; then
-        # PVE 7 检查关键代码 `data.status !== 'Active'` 是否还存在
+        # PVE 7 check
         if grep -q "data.status !== 'Active'" "$js_file"; then
             already_patched=false
         fi
     fi
-    
-    # 在PVE 8.1+，弹窗逻辑被移到了 pvemanagerlib.js
-    local pvemanager_js="/usr/share/pve-manager/js/pvemanagerlib.js"
-    if [[ -f "$pvemanager_js" ]] && grep -q "PVE.UI.Debian.activateSubscription" "$pvemanager_js"; then
-        echo -e "\n${YELLOW}检测到 PVE 8.1+ 环境，将对 pvemanagerlib.js 应用补丁。${NC}"
-        js_file=$pvemanager_js
-        # 检查新文件是否已打补丁
-        if ! grep -q "PVE.UI.Debian.SubscriptionEnabled" "$pvemanager_js"; then
-            already_patched=false
-        else
-            already_patched=true
-        fi
-    fi
-
 
     if $already_patched; then
-        echo -e "\n${GREEN}检测到订阅提示已经被禁用，无需重复操作。${NC}"
+        echo -e "\n${GREEN}检测到订阅提示可能已被禁用，无需重复操作。${NC}"
         read -n 1 -s -r -p "按任意键返回主菜单..."
         return
     fi
@@ -236,22 +242,19 @@ disable_subscription_nag() {
     backup_file "$js_file"
 
     local success=false
-    # 针对不同文件的补丁逻辑
     if [[ "$js_file" == "$pvemanager_js" ]]; then
-        # PVE 8.1+ 的补丁
+        # PVE 8.1+ patch
         if sed -i "s/PVE.UI.Debian.activateSubscription()/PVE.UI.Debian.SubscriptionEnabled = true;/" "$js_file"; then
             success=true
         fi
     elif [[ $PVE_VER -eq 8 ]]; then
-        # PVE 8.0 的补丁 (使用更健壮的正则表达式)
-        if sed -i -E "s/(Ext.Msg.show\s*\(\s*\{)/\1\n\t        title: gettext('No valid subscription'),\n\t\t/g" "$js_file"; then
-            # 上面的sed命令在某些情况下可能不起作用, 采用更通用的方法
-            if sed -i "s/void({ // PVE-No-Subscription-Hax/Ext.Msg.show({/g" "$js_file" >/dev/null 2>&1; # revert no-sub
-            sed -i "s/Ext.Msg.show({/void({ \/\/ PVE-No-Subscription-Hax/g" "$js_file" >/dev/null 2>&1; # apply no-sub
+        # PVE 8.0 patch
+        sed -i "s/void({ \/\/ PVE-No-Subscription-Hax/Ext.Msg.show({/g" "$js_file" >/dev/null 2>&1
+        if sed -i "s/Ext.Msg.show({/void({ \/\/ PVE-No-Subscription-Hax/g" "$js_file"; then
             success=true
         fi
     elif [[ $PVE_VER -eq 7 ]]; then
-        # PVE 7 的补丁
+        # PVE 7 patch
         if sed -i "s/data.status !== 'Active'/false/g" "$js_file"; then
             success=true
         fi
@@ -271,7 +274,7 @@ disable_subscription_nag() {
     read -n 1 -s -r -p "按任意键返回主菜单..."
 }
 
-# 恢复菜单 (代码未变)
+# 恢复菜单
 show_restore_menu() {
     clear
     echo -e "${BLUE}--- 从备份恢复配置 ---${NC}"
@@ -279,7 +282,7 @@ show_restore_menu() {
     echo " 1) Debian 系统源 (/etc/apt/sources.list)"
     echo " 2) Proxmox VE 源 (/etc/apt/sources.list.d/pve-enterprise.list)"
     echo " 3) LXC 模板源 (/usr/share/perl5/PVE/APLInfo.pm)"
-    echo " 4) PVE 网页JS文件 (/usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js)"
+    echo " 4) PVE 网页JS文件 (自动检测)"
     echo " 0) 返回主菜单"
     read -p "请输入选项 [0-4]: " restore_choice
     
@@ -290,7 +293,17 @@ show_restore_menu() {
         1) config_file=$(get_config_path 1) ;;
         2) config_file=$(get_config_path 2) ;;
         3) config_file=$(get_config_path 3) ;;
-        4) config_file="/usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js" ;;
+        4) 
+           local pvemanager_js="/usr/share/pve-manager/js/pvemanagerlib.js"
+           local proxmoxlib_js="/usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js"
+           # 优先检查 pvemanager_js 的备份是否存在
+           if compgen -G "${pvemanager_js}.*.bak" > /dev/null; then
+               config_file=$pvemanager_js
+           else
+               config_file=$proxmoxlib_js
+           fi
+           echo -e "${YELLOW}自动检测到JS文件为: ${config_file}${NC}"
+           ;;
         *) echo -e "${RED}无效选项。${NC}"; sleep 1; return ;;
     esac
     
@@ -328,7 +341,7 @@ show_restore_menu() {
 }
 
 
-# --- 应用配置的核心逻辑 (代码未变) ---
+# --- 应用配置的核心逻辑 ---
 apply_mirror() {
   local config_type=$1; local mirror_name=$2; local base_url=$3
   local config_file=$(get_config_path "$config_type")
@@ -340,37 +353,41 @@ apply_mirror() {
     3) apply_lxc_mirror "$config_file" "$base_url" ;;
   esac
   echo -e "${GREEN}配置已成功更新！${NC}"
-  echo -e "${YELLOW}建议稍后手动执行 'apt update && apt upgrade -y' 来应用更改。${NC}"
+  echo -e "${YELLOW}建议稍后手动执行 'apt update && apt full-upgrade -y' 来应用更改。${NC}"
 }
 apply_debian_mirror() {
   local config_file=$1; local base_url=$2
   local components="main contrib non-free"
   [[ "$DEBIAN_VER" == "bookworm" ]] && components="main contrib non-free non-free-firmware"
+  # 针对龙芯源的特殊处理
+  if [[ "$ARCH" == "loongarch64" ]] && [[ "$base_url" == "http://mirrors.loongnix.cn" ]]; then
+      base_url="${base_url}/debian"
+  fi
   cat > "$config_file" <<EOF
 # Debian ${DEBIAN_VER} - Generated by PVE Tool
-deb ${base_url}/debian/ ${DEBIAN_VER} ${components}
-deb ${base_url}/debian-security/ ${DEBIAN_VER}-security ${components}
-deb ${base_url}/debian/ ${DEBIAN_VER}-updates ${components}
+deb ${base_url}/ ${DEBIAN_VER} ${components}
+deb ${base_url}/ ${DEBIAN_VER}-updates ${components}
+deb ${base_url}-security/ ${DEBIAN_VER}-security ${components}
 EOF
 }
 apply_pve_mirror() {
   local config_file=$1; local mirror_name=$2; local base_url=$3
-  local repo_line=""
+  local pve_no_sub_file="/etc/apt/sources.list.d/pve-no-subscription.list"
+  
+  # 清理旧配置
+  sed -i 's/^deb/#deb/' "$config_file" 2>/dev/null
+  if [ -f "$pve_no_sub_file" ]; then
+    sed -i 's/^deb/#deb/' "$pve_no_sub_file" 2>/dev/null
+  fi
+
   if [[ "$mirror_name" == "Proxmox 官方企业订阅源" ]]; then
-    repo_line="deb ${base_url}/pve ${DEBIAN_VER} pve-enterprise"
-    if [[ -f /etc/apt/sources.list.d/pve-no-subscription.list ]]; then
-        mv /etc/apt/sources.list.d/pve-no-subscription.list /etc/apt/sources.list.d/pve-no-subscription.list.disabled
-        echo "已禁用无订阅源配置文件。"
-    fi
+    echo "deb ${base_url}/pve ${DEBIAN_VER} pve-enterprise" > "$config_file"
+    echo -e "${GREEN}已启用企业订阅源，并注释了其他PVE源。${NC}"
   else
     local pve_path_prefix="proxmox"
     [[ "$mirror_name" == "Proxmox 官方(无订阅)" ]] && pve_path_prefix="pve"
-    repo_line="deb ${base_url}/${pve_path_prefix} ${DEBIAN_VER} pve-no-subscription"
-    sed -i 's/^deb/#deb/' "$config_file" 2>/dev/null
-    echo "$repo_line" > /etc/apt/sources.list.d/pve-no-subscription.list
-  fi
-  if [[ -n "$repo_line" && "$mirror_name" == "Proxmox 官方企业订阅源" ]]; then
-      echo "$repo_line" > "$config_file"
+    echo "deb ${base_url}/${pve_path_prefix} ${DEBIAN_VER} pve-no-subscription" > "$pve_no_sub_file"
+    echo -e "${GREEN}已启用无订阅源，并注释了企业订阅源。${NC}"
   fi
 }
 apply_lxc_mirror() {
@@ -379,7 +396,7 @@ apply_lxc_mirror() {
     if [[ "$base_url" == "http://download.proxmox.com" ]]; then
         lxc_url="${base_url}/images/"
     fi
-    sed -i.bak -E "s|(our \$default_base_url = ).*|\1\"${lxc_url}\";|" "$config_file"
+    sed -i "s|^our \$default_base_url = .*|our \$default_base_url = \"${lxc_url}\";|" "$config_file"
 }
 
 # --- 脚本入口 ---
