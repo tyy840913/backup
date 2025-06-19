@@ -1,193 +1,270 @@
-#!/bin/bash
-# 设置终端列宽为1，强制单列显示
+#!/usr/bin/env bash
+#
+# 通用 Linux 发行版镜像源更换脚本
+# 版本: 2.0 (稳定增强版)
+#
+# 功能:
+# - 支持 Alpine, Debian, Ubuntu, CentOS 7, CentOS 8+ (Stream/Rocky/Alma)
+# - 自动检测发行版和版本号，应用最合适的配置。
+# - 提供国内主流镜像源选择。
+# - 自动备份旧的源文件。
+# - 交互式确认是否执行系统升级。
+
+# --- 全局设置 ---
+# 设置终端列宽为1，确保`select`菜单单列显示，更美观
 COLUMNS=1
 
-# 检查是否为root，否则尝试用sudo重新运行
-if [[ $EUID -ne 0 ]]; then
-    exec sudo "$0" "$@" || {
-        echo "需要root权限，请使用sudo运行或切换至root用户"
-        exit 1
-    }
-fi
+# --- 颜色定义 ---
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-# 检测发行版信息
-source /etc/os-release 2>/dev/null
-DISTRO="${ID:-unknown}"
-CODENAME="${VERSION_CODENAME}"
-VERSION_ID="${VERSION_ID:-unknown}"
+# --- 核心函数 ---
 
-# 显示系统信息
-echo -e "\n========== 系统信息 =========="
-echo "发行版: ${PRETTY_NAME:-$ID}"
-echo "版本号: ${VERSION_ID}"
-
-# 确定包管理器
-declare -A PKG_MANAGERS=(
-    [alpine]="apk"
-    [debian]="apt"
-    [ubuntu]="apt"
-    [centos]="yum"
-    [fedora]="dnf"
-    [rhel]="yum"
-)
-
-PKG_CMD="${PKG_MANAGERS[$DISTRO]}"
-case $PKG_CMD in
-    apk)   echo "包管理器: Alpine APK" ;;
-    apt)   echo "包管理器: Debian/Ubuntu APT" ;;
-    yum|dnf) echo "包管理器: RedHat/YUM" ;;
-    *)     echo "未知包管理器"; exit 1 ;;
-esac
-
-# 镜像源选择菜单
-echo -e "\n========== 镜像源选择 =========="
-PS3='请选择镜像源 (1-5): '
-options=(
-    "阿里云"
-    "腾讯云" 
-    "华为云"
-    "中科大"
-    "清华大学"
-)
-select opt in "${options[@]}"; do
-    case $REPLY in
-        1) MIRROR="ali" ;;
-        2) MIRROR="tencent" ;;
-        3) MIRROR="huawei" ;;
-        4) MIRROR="ustc" ;;
-        5) MIRROR="tsinghua" ;;
-        *) echo "无效选项"; exit 1 ;;
-    esac
-    break
-done
-
-# 获取发行版特定信息
-case $DISTRO in
-    alpine)
-        ALPINE_VERSION=$(cut -d. -f1,2 /etc/alpine-release 2>/dev/null)
-        REPO_FILE="/etc/apk/repositories"
-        ;;
-    debian|ubuntu)
-        CODENAME=${CODENAME:-$(lsb_release -cs 2>/dev/null || echo "unknown")}
-        REPO_FILE="/etc/apt/sources.list"
-        ;;
-    centos|fedora|rhel)
-        REPO_DIR="/etc/yum.repos.d/"
-        MAJOR_VERSION=$(echo "$VERSION_ID" | cut -d. -f1)
-        ;;
-esac
-
-# 备份原始文件
-backup_file() {
-    local file=$1
-    cp "$file" "${file}.bak" && echo "已备份: ${file}.bak"
+# 1. 检查并获取Root权限
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        echo -e "${YELLOW}需要root权限来修改系统配置。${NC}"
+        # 尝试用sudo重新运行脚本，并传递所有参数
+        if command -v sudo >/dev/null 2>&1; then
+            echo -e "尝试使用 sudo 提权..."
+            exec sudo "$0" "$@"
+        else
+            echo -e "${RED}错误: 未找到 sudo 命令，请切换到 root 用户后运行此脚本。${NC}"
+            exit 1
+        fi
+    fi
 }
 
-# 处理不同发行版的镜像源
-case $DISTRO in
-alpine)
-    case $MIRROR in
-        ali)      URL="http://mirrors.aliyun.com/alpine/" ;;
-        tencent)  URL="https://mirrors.tencent.com/alpine/" ;;
-        huawei)   URL="https://repo.huaweicloud.com/alpine/" ;;
-        ustc)     URL="http://mirrors.ustc.edu.cn/alpine/" ;;
-        tsinghua) URL="https://mirrors.tuna.tsinghua.edu.cn/alpine/" ;;
+# 2. 交互式选择镜像源
+select_mirror() {
+    echo -e "\n${BLUE}========== 镜像源选择 ==========${NC}"
+    PS3='请选择一个镜像源 (输入数字): '
+    options=(
+        "阿里云"
+        "腾讯云"
+        "华为云"
+        "中科大"
+        "清华大学"
+    )
+    
+    # 使用循环确保用户做出有效选择
+    while true; do
+        select opt in "${options[@]}"; do
+            case $REPLY in
+                1) MIRROR_KEY="ali" && break ;;
+                2) MIRROR_KEY="tencent" && break ;;
+                3) MIRROR_KEY="huawei" && break ;;
+                4) MIRROR_KEY="ustc" && break ;;
+                5) MIRROR_KEY="tsinghua" && break ;;
+                *) echo -e "${YELLOW}无效选项 '$REPLY'，请重新选择。${NC}"; break ;;
+            esac
+        done
+        # 如果MIRROR_KEY被赋值，说明选择了有效选项，跳出外层while循环
+        if [[ -n "$MIRROR_KEY" ]]; then
+            SELECTED_MIRROR_NAME=$opt
+            break
+        fi
+    done
+}
+
+# 3. 备份原始仓库文件/目录
+backup_repo() {
+    local repo_path="$1"
+    local backup_path="${repo_path}.bak_$(date +%Y%m%d_%H%M%S)"
+    if [[ -e "$repo_path" ]]; then
+        echo -e "正在备份原始文件: ${repo_path} -> ${backup_path}"
+        mv "$repo_path" "$backup_path"
+    else
+        echo -e "${YELLOW}警告: 原始文件 ${repo_path} 不存在，无需备份。${NC}"
+    fi
+}
+
+# 4. 更新软件源并询问是否升级
+update_and_upgrade() {
+    local pkg_cmd="$1"
+    echo -e "\n${BLUE}========== 更新软件源索引 ==========${NC}"
+    case $pkg_cmd in
+        apk)   apk update ;;
+        apt)   apt-get update ;;
+        yum|dnf) "$pkg_cmd" clean all && "$pkg_cmd" makecache ;;
     esac
 
-    backup_file "$REPO_FILE"
-    cat > "$REPO_FILE" <<EOF
-${URL}v${ALPINE_VERSION}/main
-${URL}v${ALPINE_VERSION}/community
-${URL}edge/main
-${URL}edge/community
-${URL}edge/testing
+    if [[ $? -ne 0 ]]; then
+        echo -e "${RED}软件源索引更新失败！请检查您的网络连接或镜像源配置。${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}软件源索引更新成功！${NC}"
+
+    read -p "是否要立即执行系统升级 (apt upgrade / yum update)? [y/N]: " choice
+    case "$choice" in
+        y|Y )
+            echo -e "${BLUE}========== 开始系统升级 ==========${NC}"
+            case $pkg_cmd in
+                apk)   apk upgrade ;;
+                apt)   apt-get upgrade -y && apt-get autoremove -y ;;
+                yum|dnf) "$pkg_cmd" update -y ;;
+            esac
+            echo -e "${GREEN}系统升级完成。${NC}"
+            ;;
+        * )
+            echo -e "${YELLOW}已跳过系统升级。${NC}"
+            ;;
+    esac
+}
+
+
+# --- 主程序 ---
+main() {
+    check_root "$@"
+
+    # 检测发行版信息
+    if [[ ! -f /etc/os-release ]]; then
+        echo -e "${RED}错误: /etc/os-release 文件不存在，无法检测系统信息。${NC}"
+        exit 1
+    fi
+    source /etc/os-release
+    DISTRO="${ID:-unknown}"
+    VERSION_ID="${VERSION_ID:-unknown}"
+
+    # 显示系统信息
+    echo -e "\n${BLUE}========== 系统信息 ==========${NC}"
+    echo -e "发行版: ${PRETTY_NAME:-$ID}"
+    echo -e "版本号: ${VERSION_ID}"
+
+    # 确定包管理器
+    local PKG_CMD=""
+    case $DISTRO in
+        alpine)     PKG_CMD="apk" ;;
+        debian|ubuntu) PKG_CMD="apt" ;;
+        centos|rhel) PKG_CMD="yum" ;;
+        fedora)     PKG_CMD="dnf" ;;
+        *) echo -e "${RED}错误: 不支持的发行版 '$DISTRO'。${NC}"; exit 1 ;;
+    esac
+    echo "包管理器: $PKG_CMD"
+
+    select_mirror
+
+    # 定义镜像主机地址
+    declare -A MIRROR_HOSTS=(
+        [ali]="mirrors.aliyun.com"
+        [tencent]="mirrors.tencent.com"
+        [huawei]="repo.huaweicloud.com"
+        [ustc]="mirrors.ustc.edu.cn"
+        [tsinghua]="mirrors.tuna.tsinghua.edu.cn"
+    )
+    MIRROR_HOST="${MIRROR_HOSTS[$MIRROR_KEY]}"
+
+    echo -e "\n${BLUE}开始配置 ${DISTRO} 的镜像源...${NC}"
+
+    case $DISTRO in
+    alpine)
+        local ALPINE_VERSION
+        ALPINE_VERSION=$(cut -d. -f1,2 < /etc/alpine-release)
+        REPO_FILE="/etc/apk/repositories"
+        backup_repo "$REPO_FILE"
+        cat > "$REPO_FILE" <<EOF
+https://${MIRROR_HOST}/alpine/v${ALPINE_VERSION}/main
+https://${MIRROR_HOST}/alpine/v${ALPINE_VERSION}/community
 EOF
-    ;;
+        ;;
 
-debian)
-    declare -A MIRROR_URLS=(
-        [ali]="http://mirrors.aliyun.com/debian/"
-        [tencent]="http://mirrors.tencentyun.com/debian/"
-        [huawei]="http://repo.huaweicloud.com/debian/"
-        [ustc]="http://mirrors.ustc.edu.cn/debian/"
-        [tsinghua]="https://mirrors.tuna.tsinghua.edu.cn/debian/"
-    )
-    declare -A SECURITY_URLS=(
-        [ali]="http://mirrors.aliyun.com/debian-security/"
-        [tencent]="http://mirrors.tencentyun.com/debian-security/"
-        [huawei]="http://repo.huaweicloud.com/debian-security/"
-        [ustc]="http://mirrors.ustc.edu.cn/debian-security/"
-        [tsinghua]="https://mirrors.tuna.tsinghua.edu.cn/debian-security/"
-    )
-
-    backup_file "$REPO_FILE"
-    cat > "$REPO_FILE" <<EOF
-deb ${MIRROR_URLS[$MIRROR]} $CODENAME main contrib non-free non-free-firmware
-deb ${MIRROR_URLS[$MIRROR]} $CODENAME-updates main contrib non-free non-free-firmware
-deb ${MIRROR_URLS[$MIRROR]} $CODENAME-backports main contrib non-free non-free-firmware
-deb ${SECURITY_URLS[$MIRROR]} $CODENAME-security main contrib non-free non-free-firmware
+    debian)
+        local CODENAME="${VERSION_CODENAME}"
+        if [[ -z "$CODENAME" ]]; then
+            echo -e "${RED}无法从 /etc/os-release 获取 Debian 的版本代号(CODENAME)。${NC}"
+            exit 1
+        fi
+        local REPO_FILE="/etc/apt/sources.list"
+        backup_repo "$REPO_FILE"
+        
+        # Debian 12+ (Bookworm) 包含 non-free-firmware
+        local FIRMWARE_PART="non-free-firmware"
+        if [[ $(echo "$VERSION_ID" | cut -d. -f1) -lt 12 ]]; then
+            FIRMWARE_PART=""
+        fi
+        
+        cat > "$REPO_FILE" <<EOF
+deb https://${MIRROR_HOST}/debian/ ${CODENAME} main contrib non-free ${FIRMWARE_PART}
+deb https://${MIRROR_HOST}/debian/ ${CODENAME}-updates main contrib non-free ${FIRMWARE_PART}
+deb https://${MIRROR_HOST}/debian/ ${CODENAME}-backports main contrib non-free ${FIRMWARE_PART}
+deb https://${MIRROR_HOST}/debian-security/ ${CODENAME}-security main contrib non-free ${FIRMWARE_PART}
 EOF
-    ;;
+        ;;
 
-ubuntu)
-    declare -A MIRROR_URLS=(
-        [ali]="http://mirrors.aliyun.com/ubuntu/"
-        [tencent]="http://mirrors.tencentyun.com/ubuntu/"
-        [huawei]="http://repo.huaweicloud.com/ubuntu/"
-        [ustc]="http://mirrors.ustc.edu.cn/ubuntu/"
-        [tsinghua]="https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
-    )
-
-    backup_file "$REPO_FILE"
-    cat > "$REPO_FILE" <<EOF
-deb ${MIRROR_URLS[$MIRROR]} $CODENAME main restricted universe multiverse
-deb ${MIRROR_URLS[$MIRROR]} $CODENAME-updates main restricted universe multiverse
-deb ${MIRROR_URLS[$MIRROR]} $CODENAME-backports main restricted universe multiverse
-deb ${MIRROR_URLS[$MIRROR]} $CODENAME-security main restricted universe multiverse
+    ubuntu)
+        local CODENAME="${VERSION_CODENAME}"
+        if [[ -z "$CODENAME" ]]; then
+            echo -e "${RED}无法从 /etc/os-release 获取 Ubuntu 的版本代号(CODENAME)。${NC}"
+            exit 1
+        fi
+        local REPO_FILE="/etc/apt/sources.list"
+        backup_repo "$REPO_FILE"
+        cat > "$REPO_FILE" <<EOF
+deb https://${MIRROR_HOST}/ubuntu/ ${CODENAME} main restricted universe multiverse
+deb https://${MIRROR_HOST}/ubuntu/ ${CODENAME}-updates main restricted universe multiverse
+deb https://${MIRROR_HOST}/ubuntu/ ${CODENAME}-backports main restricted universe multiverse
+deb http://security.ubuntu.com/ubuntu/ ${CODENAME}-security main restricted universe multiverse
 EOF
-    ;;
-
-centos|fedora|rhel)
-    CENTOS_REPO="${REPO_DIR}/CentOS-Base.repo"
-    backup_file "$CENTOS_REPO"
-
-    declare -A BASE_URLS=(
-        [ali]="http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/"
-        [tencent]="http://mirrors.tencentyun.com/centos/\$releasever/os/\$basearch/"
-        [huawei]="https://repo.huaweicloud.com/centos/\$releasever/os/\$basearch/"
-        [ustc]="http://mirrors.ustc.edu.cn/centos/\$releasever/os/\$basearch/"
-        [tsinghua]="https://mirrors.tuna.tsinghua.edu.cn/centos/\$releasever/os/\$basearch/"
-    )
-
-    sed -i -e "s|^mirrorlist=|#mirrorlist=|g" \
-           -e "s|^#baseurl=|baseurl=|g" \
-           -e "s|baseurl=.*|baseurl=${BASE_URLS[$MIRROR]}|g" \
-           "$CENTOS_REPO"
-    ;;
-
-*)
-    echo "不支持的发行版"
-    exit 1
-    ;;
-esac
-
-# 更新软件索引
-echo -e "\n========== 更新软件源 =========="
-case $PKG_CMD in
-    apk)
-        apk update 
-        apk upgrade -y
         ;;
-    apt)
-        apt update -y 2>&1 | grep -v '^N: '
-        apt upgrade -y
-        apt autoremove -y
-        ;;
-    yum|dnf)
-        $PKG_CMD clean all
-        $PKG_CMD makecache
-        $PKG_CMD update -y
-        ;;
-esac
 
-echo -e "\n[完成] 镜像源已成功更换为 $opt，软件已更新"
+    centos|rhel|fedora)
+        REPO_DIR="/etc/yum.repos.d"
+        backup_repo "$REPO_DIR" # 备份整个目录
+        mkdir -p "$REPO_DIR"   # 确保目录存在
+        
+        local MAJOR_VERSION
+        MAJOR_VERSION=$(echo "$VERSION_ID" | cut -d. -f1)
+        
+        if [[ "$MAJOR_VERSION" -le 7 ]]; then
+            # CentOS 7 / RHEL 7
+            cat > "${REPO_DIR}/CentOS-Base-custom.repo" <<EOF
+[base]
+name=CentOS-\$releasever - Base - ${MIRROR_HOST}
+baseurl=https://${MIRROR_HOST}/centos/\$releasever/os/\$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+
+[updates]
+name=CentOS-\$releasever - Updates - ${MIRROR_HOST}
+baseurl=https://${MIRROR_HOST}/centos/\$releasever/updates/\$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+
+[extras]
+name=CentOS-\$releasever - Extras - ${MIRROR_HOST}
+baseurl=https://${MIRROR_HOST}/centos/\$releasever/extras/\$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+EOF
+        else
+            # CentOS 8+, RHEL 8+, Fedora
+            # 这些系统使用 BaseOS 和 AppStream
+            cat > "${REPO_DIR}/CentOS-Base-custom.repo" <<EOF
+[BaseOS]
+name=CentOS Stream \$releasever - BaseOS - ${MIRROR_HOST}
+baseurl=https://${MIRROR_HOST}/centos-stream/\$releasever/BaseOS/\$basearch/os/
+gpgcheck=1
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
+
+[AppStream]
+name=CentOS Stream \$releasever - AppStream - ${MIRROR_HOST}
+baseurl=https://${MIRROR_HOST}/centos-stream/\$releasever/AppStream/\$basearch/os/
+gpgcheck=1
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
+EOF
+        fi
+        ;;
+    esac
+
+    update_and_upgrade "$PKG_CMD"
+
+    echo -e "\n${GREEN}[完成] 镜像源已成功更换为 ${SELECTED_MIRROR_NAME}。${NC}"
+}
+
+# --- 脚本执行入口 ---
+main "$@"
