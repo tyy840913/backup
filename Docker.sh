@@ -185,6 +185,8 @@ configure_mirror() {
         "https://dockerpull.pw"
         "https://docker.1panel.top"
         "https://hub.fast360.xyz"
+        "https://docker.woskee.dns.navy"
+        "https://docker.luxxk.dpdns.org"
         "https://docker.woskee.dpdns.org"
         "https://docker.woskee.dns.army"
         "https://docker.woskee.dynv6.net"
