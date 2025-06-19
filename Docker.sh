@@ -136,7 +136,7 @@ install_compose() {
         "alpine")
             apk add --no-cache docker-compose ;;
         *)
-            COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
+            COMPOSE_VERSION=$(curl -s https://add.luxxk.dpdns.org/api.github.com/repos/docker/compose/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
             BINARY_URL="https://add.wosken.dpdns.org/github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
             
             # 使用临时目录和install命令
