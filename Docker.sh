@@ -206,9 +206,7 @@ configure_mirror() {
         read -p $'\n是否要替换现有配置？(y/N): ' replace_choice
         case "$replace_choice" in
             y|Y)
-                BACKUP_FILE="${DAEMON_JSON}.bak_$(date +%Y%m%d%H%M%S)"
-                cp -v "$DAEMON_JSON" "$BACKUP_FILE"
-                echo -e "${GREEN}已备份原配置到: $BACKUP_FILE${NC}" ;;
+                echo -e "${GREEN}正在更新配置文件.............." ;;
             *)
                 echo -e "${BLUE}保留现有配置，跳过镜像加速设置${NC}"
                 return ;;
