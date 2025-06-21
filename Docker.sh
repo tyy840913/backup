@@ -167,6 +167,10 @@ install_compose() {
 configure_mirror() {
     local DAEMON_JSON="/etc/docker/daemon.json"
     declare -a MIRRORS=(
+        "https://docker.wosken.dpdns.org"
+        "https://docker.luxxk.dpdns.org"
+        "https://docker.woskee.dpdns.org"
+        "https://docker.woskee.nyc.mn"
         "https://registry.lfree.org"
         "https://docker.1ms.run"
         "https://docker.tbedu.top"
@@ -185,11 +189,6 @@ configure_mirror() {
         "https://dockerpull.pw"
         "https://docker.1panel.top"
         "https://hub.fast360.xyz"
-        "https://docker.woskee.dns.navy"
-        "https://docker.luxxk.dpdns.org"
-        "https://docker.woskee.dpdns.org"
-        "https://docker.woskee.dns.army"
-        "https://docker.woskee.dynv6.net"
     )
 
     echo -e "\n${CYAN}=== 镜像加速配置 ===${NC}"
