@@ -167,10 +167,10 @@ install_compose() {
 configure_mirror() {
     local DAEMON_JSON="/etc/docker/daemon.json"
     declare -a MIRRORS=(
-        "https://docker.wosken.dpdns.org"
+        "https://docker.woskee.nyc.mn"
         "https://docker.luxxk.dpdns.org"
         "https://docker.woskee.dpdns.org"
-        "https://docker.woskee.nyc.mn"
+        "https://docker.wosken.dpdns.org"
     )
 
     echo -e "\n${CYAN}=== 镜像加速配置 ===${NC}"
