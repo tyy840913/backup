@@ -7,7 +7,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # 下载配置
-URL="https://alist.woskee.dpdns.org:88/dav/nutcloud-A/backup/auto.sh"
+URL="https://dav.jianguoyun.com/dav/backup/auto.sh"
 TARGET="/root/auto.sh"
 
 # 交互式凭据输入
