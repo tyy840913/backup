@@ -1,234 +1,170 @@
-#!/usr/bin/env bash
-#
-# 系统配置自动化检查与修复脚本
-# 版本: 2.0 (稳定版)
-#
-# 变更日志:
-# - 增加全局Root权限检查，确保脚本在正确的权限下运行。
-# - 优化SSH配置检查的正则表达式，使其能兼容不同的空格格式。
-# - 调整manage_service函数参数顺序，提高代码可读性。
-# - 移除函数内冗余的权限检查。
-#
-# 支持系统：Debian/Ubuntu, CentOS/RHEL, Alpine Linux
+#!/bin/bash
 
-# --- 颜色定义 ---
-RED='\033[0;31m'    # 错误
-GREEN='\033[0;32m'  # 成功
-YELLOW='\033[0;33m' # 警告
-BLUE='\033[0;34m'   # 信息
-NC='\033[0m'      # 颜色重置
+# --- 权限检查 ---
+if [[ $EUID -ne 0 ]]; then
+   echo "错误：此脚本必须以 root 权限运行。"
+   echo "请尝试使用: sudo bash $0"
+   exit 1
+fi
 
-# --- 核心函数 ---
+# --- 主循环 ---
+while true; do
+    # 清屏，显示菜单
+    clear
+    echo "================================================"
+    echo "          Debian && Ubuntu服务器设置脚本          "
+    echo "================================================"
+    echo "请选择要执行的功能："
+    echo
+    echo "1. 设置时区为 Asia/Shanghai"
+    echo "2. 更换 APT 源为清华大学镜像"
+    echo "3. 开启 SSH 远程 root/密码登录 (有风险!)"
+    echo
+    echo "0. 退出脚本"
+    echo "================================================"
+    read -p "请输入选项 [1-4]: " choice
 
-# 1. 检查Root权限 (全局)
-check_root() {
-    if [ "$(id -u)" -ne 0 ]; then
-        echo -e "${RED}错误: 此脚本必须以root权限运行。${NC}"
-        echo -e "${YELLOW}请尝试使用 'sudo $0' 命令来运行此脚本。${NC}"
-        exit 1
-    fi
-}
-
-# 2. 精准检测系统发行版
-detect_os() {
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        case $ID in
-            debian|ubuntu) echo "debian" ;;
-            centos|rhel|fedora) echo "centos" ;; # 将Fedora归入此类
-            alpine)        echo "alpine" ;;
-            *)             echo "unknown" ;;
-        esac
-    else
-        echo "unknown"
-    fi
-}
-
-# 3. 服务管理抽象层 (优化后)
-# 用法: manage_service <action> <service_name>
-# 例如: manage_service "restart" "sshd"
-manage_service() {
-    local action=$1
-    local service=$2
-    case $OS in
-        debian|centos)
-            systemctl "$action" "$service"
-            ;;
-        alpine)
-            # Alpine的rc-service命令参数顺序是 service action
-            rc-service "$service" "$action"
-            ;;
-    esac
-}
-
-# --- 功能模块 ---
-
-# 模块一: SSH服务检查与配置（增强版）
-check_ssh() {
-    echo -e "\n${BLUE}=== SSH 服务检查与配置 ===${NC}"
-    
-    local PKG=""
-    local SERVICE=""
-    case $OS in
-        debian)
-            PKG="openssh-server"
-            SERVICE="ssh"
-            ;;
-        centos)
-            PKG="openssh-server"
-            SERVICE="sshd"
-            ;;
-        alpine)
-            PKG="openssh"
-            SERVICE="sshd"
-            ;;
-    esac
-
-    # 安装状态检查
-    if ! command -v sshd &>/dev/null; then
-        echo -e "${YELLOW}[SSH] 服务未安装，正在安装...${NC}"
-        case $OS in
-            debian) apt-get update && apt-get install -y $PKG ;;
-            centos) yum install -y $PKG ;;
-            alpine) apk add --no-cache $PKG ;;
-        esac || {
-            echo -e "${RED}[SSH] 安装失败，请检查网络或软件源。${NC}"
-            return 1 # 使用return代替exit，增加灵活性
-        }
-    fi
-
-    # 自启动配置
-    case $OS in
-        debian|centos)
-            if ! systemctl is-enabled "$SERVICE" &>/dev/null; then
-                manage_service "enable" "$SERVICE"
-                echo -e "${GREEN}[SSH] 已成功启用 $SERVICE 开机自启动。${NC}"
+    case $choice in
+        1)
+            echo
+            echo "--- 1. 设置时区 ---"
+            echo
+            
+            # 策略1：优先使用现代系统的 timedatectl 命令
+            echo "[策略1] 正在尝试使用推荐命令 'timedatectl'..."
+            if command -v timedatectl &> /dev/null; then
+                # 命令存在，执行它
+                if timedatectl set-timezone Asia/Shanghai; then
+                    echo "成功！时区已通过 timedatectl 设置。"
+                else
+                    echo "错误：timedatectl 命令执行失败！"
+                fi
             else
-                echo -e "[SSH] 服务 $SERVICE 已启用自启动，无需操作。"
+                # 命令不存在，进入备用方案
+                echo "'timedatectl' 命令不存在。启动备用方案..."
+                echo
+                echo "[策略2] 正在尝试使用传统的符号链接方法..."
+                
+                # 检查时区文件是否存在
+                if [ -f /usr/share/zoneinfo/Asia/Shanghai ]; then
+                    ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+                    if [ $? -eq 0 ]; then
+                        echo "成功！时区已通过符号链接设置。"
+                        echo "注意：在某些老系统上，可能需要重启服务(如cron)或系统才能完全生效。"
+                    else
+                        echo "错误：创建符号链接失败！"
+                    fi
+                else
+                    echo "错误：备用方案也失败了，因为时区文件 /usr/share/zoneinfo/Asia/Shanghai 不存在。"
+                fi
             fi
+
+            echo "------------------------------------------------"
+            echo "检查最终结果：当前系统时间为 $(date)"
+            echo
+            read -p "按 Enter 键返回主菜单..."
             ;;
-        alpine)
-            if ! rc-update show | grep -q "$SERVICE"; then
-                rc-update add "$SERVICE" default # 添加到默认运行级别
-                echo -e "${GREEN}[SSH] 已成功将 $SERVICE 添加至默认运行级别。${NC}"
+
+        2)
+            echo
+            echo "--- 2. 更换 APT 源 ---"
+            read -p "按 Enter 键开始..."
+
+            echo "[步骤 1/4] 正在获取系统代号..."
+            CODENAME=$(lsb_release -cs)
+            
+            # 检查是否成功获取代号
+            if [ -z "$CODENAME" ]; then
+                echo "错误：无法获取系统代号。请先确保 'lsb-release' 包已安装 (sudo apt install lsb-release)。"
             else
-                echo -e "[SSH] 服务 $SERVICE 已在运行级别中，无需操作。"
+                echo "系统代号: $CODENAME"
+                
+                BACKUP_FILE="/etc/apt/sources.list.bak.$(date +%s)"
+                echo "[步骤 2/4] 正在备份原始文件到 $BACKUP_FILE ..."
+                cp /etc/apt/sources.list "$BACKUP_FILE"
+                
+                echo "[步骤 3/4] 正在写入新的清华大学镜像源..."
+                # 根据系统ID选择不同的镜像源地址
+                if grep -q "ubuntu" /etc/os-release; then
+                    MIRROR_URL="https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
+                else
+                    MIRROR_URL="https://mirrors.tuna.tsinghua.edu.cn/debian/"
+                fi
+                
+                cat << EOF > /etc/apt/sources.list
+deb ${MIRROR_URL} ${CODENAME} main restricted universe multiverse
+# deb-src ${MIRROR_URL} ${CODENAME} main restricted universe multiverse
+deb ${MIRROR_URL} ${CODENAME}-updates main restricted universe multiverse
+# deb-src ${MIRROR_URL} ${CODENAME}-updates main restricted universe multiverse
+deb ${MIRROR_URL} ${CODENAME}-backports main restricted universe multiverse
+# deb-src ${MIRROR_URL} ${CODENAME}-backports main restricted universe multiverse
+deb ${MIRROR_URL} ${CODENAME}-security main restricted universe multiverse
+# deb-src ${MIRROR_URL} ${CODENAME}-security main restricted universe multiverse
+EOF
+
+                echo "[步骤 4/4] 正在执行 'apt-get update'..."
+                # 检查 apt-get update 是否成功
+                if apt-get update; then
+                    echo "成功！APT 源已更新。"
+                else
+                    echo "错误：'apt-get update' 执行失败！"
+                    echo "正在从备份 $BACKUP_FILE 自动恢复原始配置..."
+                    mv "$BACKUP_FILE" /etc/apt/sources.list
+                    echo "已恢复原始 sources.list 文件。请手动检查网络或源地址问题。"
+                fi
             fi
+            
+            echo "------------------------------------------------"
+            echo "所有步骤执行完毕！"
+            echo
+            read -p "按 Enter 键返回主菜单..."
+            ;;
+
+        3)
+            echo
+            echo "--- 3. 开启 SSH 远程 root/密码登录 ---"
+            echo "!!!!!! 安全警告 !!!!!!"
+            echo "此操作会极大增加服务器被攻击的风险，请仅在受信任的环境中使用。"
+            echo "!!!!!!!!!!!!!!!!!!!!"
+            read -p "您是否理解风险并确认要继续？(y/n): " confirm_ssh
+            
+            if [[ "$confirm_ssh" =~ ^[Yy]$ ]]; then
+                echo "正在修改 SSH 配置文件..."
+                sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+                sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+                
+                echo "正在重启 SSH 服务..."
+                # 检查重启是否成功
+                if systemctl restart ssh; then
+                    echo "成功！SSH 服务已重启。"
+                    # 最终确认服务是否在运行
+                    if systemctl is-active --quiet ssh; then
+                        echo "检查通过：SSH 服务当前正在运行。"
+                    else
+                        echo "警告：SSH 服务重启后并未处于活动状态！请立即检查！"
+                    fi
+                else
+                    echo "!!!!!! 严重错误：SSH服务重启失败! !!!!!! "
+                    echo "为防止您被锁定，请不要关闭当前的终端连接！"
+                    echo "请立即手动执行 'systemctl status ssh' 和 'journalctl -xeu ssh' 来排查问题。"
+                fi
+            else
+                echo "操作已取消。"
+            fi
+            
+            echo "------------------------------------------------"
+            echo
+            read -p "按 Enter 键返回主菜单..."
+            ;;
+
+        0)
+            echo "正在退出脚本..."
+            exit 0
+            ;;
+
+        *)
+            echo "无效选项，请输入 1-4 之间的数字。"
+            read -p "按 Enter 键重试..."
             ;;
     esac
-
-    # 配置文件优化（使用更精确的grep和状态检测）
-    local SSH_CONFIG="/etc/ssh/sshd_config"
-    local CONFIG_CHANGED=0
-
-    # 检查Root登录配置 (^\s*... 匹配带前导空格的行)
-    if ! grep -qE "^\s*PermitRootLogin\s+yes\s*$" "$SSH_CONFIG"; then
-        sed -i 's/^\s*#*\s*PermitRootLogin.*/PermitRootLogin yes/' "$SSH_CONFIG"
-        echo -e "[SSH] 配置更新：已启用 Root 登录。"
-        CONFIG_CHANGED=1
-    else
-        echo -e "[SSH] 配置检查：Root 登录已启用，无需修改。"
-    fi
-
-    # 检查密码认证配置
-    if ! grep -qE "^\s*PasswordAuthentication\s+yes\s*$" "$SSH_CONFIG"; then
-        sed -i 's/^\s*#*\s*PasswordAuthentication.*/PasswordAuthentication yes/' "$SSH_CONFIG"
-        echo -e "[SSH] 配置更新：已启用密码认证。"
-        CONFIG_CHANGED=1
-    else
-        echo -e "[SSH] 配置检查：密码认证已启用，无需修改。"
-    fi
-
-    # 仅在配置变更时重启服务
-    if [ $CONFIG_CHANGED -eq 1 ]; then
-        echo -e "${YELLOW}[SSH] 配置已变更，正在重启服务以生效...${NC}"
-        if ! manage_service "restart" "$SERVICE"; then
-            echo -e "${RED}[SSH] 服务重启失败，请手动执行 'systemctl restart $SERVICE' 或 'rc-service $SERVICE restart'。${NC}"
-            return 1
-        fi
-        echo -e "${GREEN}[SSH] 服务配置已更新并成功重启。${NC}"
-    else
-        echo -e "${GREEN}[SSH] 配置无变动，无需重启服务。${NC}"
-    fi
-}
-
-# 模块二: 时区配置检查（增强版）
-check_timezone() {
-    echo -e "\n${BLUE}=== 时区检查与配置 ===${NC}"
-    local TARGET_ZONE="Asia/Shanghai"
-    local ZONE_FILE="/usr/share/zoneinfo/${TARGET_ZONE}"
-
-    # 内部函数：显示当前时间信息
-    show_time_info() {
-        echo -n "当前系统时间: "
-        date "+%Y-%m-%d %H:%M:%S %Z (UTC%z)"
-    }
-
-    # 判断是否已经是目标时区
-    if date +%z | grep -qE '(\+0800|CST)'; then
-        echo -e "${GREEN}时区已正确设置为 ${TARGET_ZONE}。${NC}"
-        show_time_info
-        return 0
-    fi
-
-    echo -e "${YELLOW}当前时区不正确，开始自动配置为 ${TARGET_ZONE}...${NC}"
-
-    # 确保时区数据包已安装（仅在缺失时）
-    if [ ! -f "$ZONE_FILE" ]; then
-        echo -e "${YELLOW}时区数据文件缺失，正在安装...${NC}"
-        case $OS in
-            debian) apt-get update && apt-get install -y tzdata ;;
-            centos) yum install -y tzdata ;;
-            alpine) apk add --no-cache tzdata ;;
-        esac || {
-            echo -e "${RED}时区数据包安装失败！请检查网络或软件源配置。${NC}"
-            return 1
-        }
-    fi
-
-    # 核心配置逻辑
-    case $OS in
-        debian|centos)
-            if command -v timedatectl >/dev/null; then
-                timedatectl set-timezone "$TARGET_ZONE"
-            else
-                ln -sf "$ZONE_FILE" /etc/localtime
-            fi
-            ;;
-        alpine)
-            # Alpine需要同时更新/etc/timezone文件
-            ln -sf "$ZONE_FILE" /etc/localtime && echo "$TARGET_ZONE" > /etc/timezone
-            ;;
-    esac
-
-    # 最终验证
-    if date +%z | grep -qE '(\+0800|CST)'; then
-        echo -e "${GREEN}时区配置成功！${NC}"
-        show_time_info
-    else
-        echo -e "${RED}时区配置失败！请手动检查系统。${NC}"
-        echo -e "建议命令: 'timedatectl set-timezone ${TARGET_ZONE}' 或 'ln -sf ${ZONE_FILE} /etc/localtime'"
-        return 1
-    fi
-}
-
-# --- 主程序入口 ---
-main() {
-    check_root
-    OS=$(detect_os)
-
-    if [ "$OS" == "unknown" ]; then
-        echo -e "${RED}错误：无法识别或不支持当前操作系统。${NC}"
-        exit 1
-    fi
-    
-    echo -e "${BLUE}检测到操作系统: $OS, 开始执行自动化检查...${NC}"
-
-    check_ssh
-    check_timezone
-
-    echo -e "\n${GREEN}所有检查与配置任务已完成。${NC}"
-}
-
-# 执行主函数
-main
+done
