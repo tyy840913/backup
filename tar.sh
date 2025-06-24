@@ -11,6 +11,4 @@ tar --numeric-owner -czpf debian12-rootfs.tar.gz -C /mnt/rootfs \
     --exclude=var/tmp \
     --exclude=var/cache/apt/archives \
     --exclude=var/lib/apt/lists \
-    --exclude=boot/initrd.img.old \
-    --exclude=boot/vmlinuz.old \
     .
