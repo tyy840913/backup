@@ -18,7 +18,7 @@ services:
     restart: always
     network_mode: bridge
     volumes:
-      - /data/openlist:/opt/openlist/data
+      - /docker_data/openlist:/opt/openlist/data
     ports:
       - "5244:5244"
     environment:
@@ -31,7 +31,7 @@ services:
     restart: always
     network_mode: host
     volumes:
-      - /data/luckyconf:/goodluck
+      - /docker_data/luckyconf:/goodluck
     environment:
       - TZ=Asia/Shanghai
 
@@ -44,7 +44,7 @@ services:
     ports:
       - "8082:8082"
     volumes:
-      - /data/easynode:/easynode/app/db
+      - /docker_data/easynode:/easynode/app/db
     environment:
       - TZ=Asia/Shanghai
 
@@ -55,7 +55,7 @@ services:
     restart: always
     network_mode: bridge
     volumes:
-      - /data/bitwarden:/data
+      - /docker_data/bitwarden:/data
     ports:
       - 8081:80
     environment:
@@ -80,7 +80,7 @@ services:
     image: ghcr.nju.edu.cn/beck-8/subs-check:latest
     container_name: subs-check
     volumes:
-      - /data/subs:/app/config
+      - /docker_data/subs:/app/config
     ports:
       - "8199:8199"
       - "8299:8299"
