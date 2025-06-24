@@ -1,0 +1,127 @@
+#!/bin/bash
+# U 盘自动安装 Debian 系统脚本（支持每次开机检查 SSH 和 IP）
+
+set -e
+
+DISK="/dev/sda"
+PART="${DISK}1"
+
+clear
+echo "警告：本操作将清空硬盘 $DISK 并安装 Debian 系统！"
+echo ""
+echo "是否继续？"
+echo "1. 确认并开始安装"
+echo "2. 取消"
+read -p "请输入选择（1/2）: " confirm
+[ "$confirm" != "1" ] && echo "安装取消" && exit 1
+
+# 获取 root 密码
+while true; do
+  echo ""
+  echo "请输入 Debian 系统 root 密码（输入不显示）："
+  read -s -p "请输入密码：" rootpw1; echo
+  read -s -p "请再次输入确认：" rootpw2; echo
+  [ "$rootpw1" = "$rootpw2" ] && break
+  echo "两次密码不一致，请重试。"
+done
+
+# 分区与格式化
+echo ">>> 正在分区..."
+echo -e "o\nn\np\n1\n\n\nw" | fdisk "$DISK"
+sleep 2
+
+echo ">>> 格式化..."
+mkfs.ext4 "$PART"
+
+echo ">>> 挂载目标分区..."
+mount "$PART" /mnt
+
+echo ">>> 解压 Debian 系统..."
+tar -xzf /autoinstall/debian-rootfs.tar.gz -C /mnt
+
+# 绑定系统目录
+mount --bind /dev /mnt/dev
+mount --bind /sys /mnt/sys
+mount -t proc proc /mnt/proc
+
+# 获取分区 UUID 生成 fstab
+UUID=$(blkid -s UUID -o value "$PART")
+echo "UUID=$UUID / ext4 defaults 0 1" > /mnt/etc/fstab
+
+# 设置系统内部配置
+cat <<EOF | chroot /mnt /bin/bash
+# 安装 GRUB
+grub-install "$DISK"
+update-grub
+
+# 设置 root 密码
+echo root:$rootpw1 | chpasswd
+
+# 启用 SSH，并允许 root 密码登录
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+systemctl enable ssh
+
+# 写入 /root/set-static-ip.sh（每次启动检测 SSH 和 IP）
+cat << 'EOSTATIC' > /root/set-static-ip.sh
+#!/bin/bash
+set -e
+
+INTERFACE=\$(ip -o link show | awk -F': ' '{print \$2}' | grep -v lo | head -n 1)
+
+# SSH 检查
+NEED_SSH_FIX=0
+if ! grep -Eq '^PermitRootLogin\\s+yes' /etc/ssh/sshd_config; then
+    sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+    NEED_SSH_FIX=1
+fi
+if ! grep -Eq '^PasswordAuthentication\\s+yes' /etc/ssh/sshd_config; then
+    sed -i 's/^#\\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+    NEED_SSH_FIX=1
+fi
+[ \$NEED_SSH_FIX -eq 1 ] && systemctl restart ssh || echo "SSH 配置正常"
+
+# IP 检查
+IP=\$(ip addr show \$INTERFACE | grep 'inet ' | awk '{print \$2}' | cut -d/ -f1)
+PREFIX=\$(echo \$IP | cut -d'.' -f1-3)
+TARGET="\$PREFIX.254"
+GATEWAY="\$PREFIX.1"
+
+if [ "\$IP" != "\$TARGET" ]; then
+    echo "修复 IP 为 \$TARGET"
+    ip addr flush dev \$INTERFACE
+    ip addr add \$TARGET/24 dev \$INTERFACE
+    ip link set \$INTERFACE up
+    ip route replace default via \$GATEWAY
+    echo "nameserver 114.114.114.114" > /etc/resolv.conf
+else
+    echo "IP 配置正常"
+fi
+EOSTATIC
+
+chmod +x /root/set-static-ip.sh
+
+# 写入 systemd 服务（每次开机自动检查）
+cat << 'EOSVC' > /etc/systemd/system/fix-ssh-ip.service
+[Unit]
+Description=Check SSH & IP on boot
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/set-static-ip.sh
+
+[Install]
+WantedBy=multi-user.target
+EOSVC
+
+systemctl enable fix-ssh-ip.service
+EOF
+
+# 卸载挂载点
+umount -l /mnt/dev /mnt/sys /mnt/proc
+umount -l /mnt
+
+echo "安装完成，10 秒后重启..."
+sleep 10
+reboot
