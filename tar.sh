@@ -1,5 +1,14 @@
-cd /
-tar --exclude=/mnt --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/tmp \
-    --exclude=/var/tmp --exclude=/media --exclude=/run --exclude=/boot \
-    --exclude=/lost+found --exclude=/swapfile --exclude=/etc/hostname \
-    -czpf /root/debian-rootfs.tar.gz .
+tar --numeric-owner -czpf debian12-rootfs.tar.gz -C /mnt/rootfs \
+    --exclude=dev \
+    --exclude=proc \
+    --exclude=sys \
+    --exclude=run \
+    --exclude=tmp \
+    --exclude=mnt \
+    --exclude=media \
+    --exclude=lost+found \
+    --exclude=var/log \
+    --exclude=var/tmp \
+    --exclude=var/cache/apt/archives \
+    --exclude=var/lib/apt/lists \
+    .
