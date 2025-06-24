@@ -1,3 +1,20 @@
-sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
-sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-systemctl enable ssh
+#!/bin/bash
+# 启用 SSH root 登录及密码认证
+
+# 配置 PermitRootLogin 为 yes
+echo ">>> 设置 PermitRootLogin 为 yes ..."
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config || { echo "修改 PermitRootLogin 失败"; exit 1; }
+
+# 配置 PasswordAuthentication 为 yes
+echo ">>> 设置 PasswordAuthentication 为 yes ..."
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config || { echo "修改 PasswordAuthentication 失败"; exit 1; }
+
+# 启用 SSH 服务
+echo ">>> 启用 SSH 服务 ..."
+systemctl enable ssh || { echo "启用 SSH 服务失败"; exit 1; }
+
+# 重启 SSH 服务以应用配置
+echo ">>> 重启 SSH 服务 ..."
+systemctl restart ssh || { echo "重启 SSH 服务失败"; exit 1; }
+
+echo "SSH 配置已成功更新，root 用户可以通过 SSH 登录。"
