@@ -244,7 +244,7 @@ disable_firewall() {
 
 # ===================== 自定义访问规则管理 =====================
 custom_rule_manager() {
-    while true; do # 添加一个循环以在执行操作后保持在当前菜单
+    while true; do
         clear
         echo -e "${BLUE}---------- 当前规则列表 (带编号) ----------${NC}"
         ufw status numbered
@@ -270,14 +270,14 @@ custom_rule_manager() {
                 else
                     process_ports "$ports" "allow" "$proto" "$ip"
                 fi
-                pause # 在操作完成后暂停
+                pause
                 ;;
             2)
                 read -p "请输入要开放的端口或端口范围 (支持空格分隔多个端口，例如: 80 443 8000-8005): " ports
                 read -p "请输入协议 [tcp|udp|both] (默认为 both): " proto
                 proto=${proto:-both}
                 process_ports "$ports" "allow" "$proto"
-                pause # 在操作完成后暂停
+                pause
                 ;;
             3)
                 read -p "您想封禁 IP 还是端口? [ip/port]: " block_type
@@ -293,7 +293,7 @@ custom_rule_manager() {
                 else
                     echo -e "${RED}❌ 无效的选择。操作已取消。${NC}"
                 fi
-                pause # 在操作完成后暂停
+                pause
                 ;;
             4)
                 read -p "请输入要删除的规则【编号】: " rule_num
@@ -308,9 +308,9 @@ custom_rule_manager() {
                         echo -e "${RED}❌ 操作已取消。${NC}"
                     fi
                 fi
-                pause # 在操作完成后暂停
+                pause
                 ;;
-            0) # 返回主菜单，不调用 pause
+            0) # 返回主菜单，这里不暂停
                 return
                 ;;
             *)
@@ -352,7 +352,7 @@ manage_logs_menu() {
 
                 ufw logging "$level"
                 echo -e "${GREEN}✅ 日志级别已设置为: $(echo $level | sed 's/low/低/;s/medium/中/;s/high/高/;s/full/完整/;s/off/关闭/')${NC}"
-                pause
+                pause # 只有成功设置后才暂停
                 ;;
             2)
                 echo -e "\n${YELLOW}--- 最近 50 行 UFW 日志 ---${NC}"
@@ -362,7 +362,7 @@ manage_logs_menu() {
                     echo -e "${RED}日志文件 /var/log/ufw.log 不存在（可能是日志功能未开启）。${NC}"
                 fi
                 echo -e "${YELLOW}----------------------------${NC}"
-                pause
+                pause # 查看后暂停
                 ;;
             3)
                 echo -e "\n${YELLOW}--- 实时监控 UFW 日志 (按 Ctrl+C 退出) ---${NC}"
@@ -370,15 +370,16 @@ manage_logs_menu() {
                     tail -f /var/log/ufw.log
                 else
                     echo -e "${RED}日志文件 /var/log/ufw.log 不存在（可能是日志功能未开启）。${NC}"
-                    pause
+                    pause # 监控失败时暂停
                 fi
+                # 注意：tail -f 会一直运行，直到用户按 Ctrl+C，所以这里不需要 pause
                 ;;
-            0) # 返回主菜单，不调用 pause
+            0) # 返回主菜单，这里不暂停
                 return
                 ;;
             *)
                 echo -e "${RED}无效的输入。${NC}"
-                pause
+                pause # 在无效输入后暂停
                 ;;
         esac
     done
@@ -392,7 +393,7 @@ manage_backup_menu() {
         echo -e "${YELLOW}--- 备份与恢复 ---${NC}"
         echo "  1) 导出 (备份) 当前所有UFW规则"
         echo "  2) 导入 (恢复) UFW规则"
-        echo -e "\n  0) 返回主菜单"
+        echo "  0) 返回主菜单"
         read -p "请选择一个操作 [0-2]: " backup_opt
         case $backup_opt in
             1)
@@ -405,7 +406,7 @@ manage_backup_menu() {
                 else
                     echo -e "${RED}❌ 导出失败。请检查路径和权限。${NC}"
                 fi
-                pause
+                pause # 导出后暂停
                 ;;
             2)
                 read -p "请输入要导入的备份文件路径: " file
@@ -430,14 +431,14 @@ manage_backup_menu() {
                 else
                     echo -e "${RED}❌ 文件 '$file' 不存在。${NC}"
                 fi
-                pause
+                pause # 导入后暂停
                 ;;
-            0) # 返回主菜单，不调用 pause
+            0) # 返回主菜单，这里不暂停
                 return
                 ;;
             *)
                 echo -e "${RED}无效的输入。${NC}"
-                pause
+                pause # 在无效输入后暂停
                 ;;
         esac
     done
@@ -489,17 +490,16 @@ main_menu() {
         read -p "请输入您的选择 [0-7]: " choice
         
         case $choice in
-            1) enable_firewall; pause ;; # 在操作完成后暂停
-            2) disable_firewall; pause ;; # 在操作完成后暂停
-            3) show_detailed_status; pause ;; # 在操作完成后暂停
-            4) reset_firewall; pause ;; # 在操作完成后暂停
-            5) custom_rule_manager ;; # 子菜单内部已有暂停逻辑或返回不暂停
-            6) manage_logs_menu ;; # 子菜单内部已有暂停逻辑或返回不暂停
-            7) manage_backup_menu ;; # 子菜单内部已有暂停逻辑或返回不暂停
+            1) enable_firewall; pause ;;
+            2) disable_firewall; pause ;;
+            3) show_detailed_status; pause ;;
+            4) reset_firewall; pause ;;
+            5) custom_rule_manager ;; # 子菜单内部已处理暂停
+            6) manage_logs_menu ;;    # 子菜单内部已处理暂停
+            7) manage_backup_menu ;;  # 子菜单内部已处理暂停
             0) echo -e "\n${GREEN}感谢使用，再见！${NC}"; exit 0 ;;
-            *) echo -e "${RED}无效的输入，请输入 0-7 之间的数字。${NC}"; pause ;; # 在无效输入后暂停
+            *) echo -e "${RED}无效的输入，请输入 0-7 之间的数字。${NC}"; pause ;;
         esac
-        # 主菜单循环末尾的全局 pause 已移除
     done
 }
 
