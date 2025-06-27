@@ -20,10 +20,11 @@ function get_credentials() {
 # 下载验证函数
 function download_with_auth() {
   echo "正在尝试下载..."
-  if curl -L -# -u "$1:$2" -o "$TARGET" "$URL"; then
+  # curl 命令的输出和错误重定向到 /dev/null
+  if curl -L -# -u "$1:$2" -o "$TARGET" "$URL" &> /dev/null; then
     if [ -s "$TARGET" ]; then
-      # 检查文件是否为HTML（简单通过文件头判断）
-      if grep -q "<html" "$TARGET"; then
+      # 检查文件是否为HTML（简单通过文件头判断），grep 的输出也重定向
+      if grep -q "<html" "$TARGET" &> /dev/null; then
         echo -e "\n错误：下载到的是HTML页面，请检查URL或认证信息" >&2
         return 1
       else
@@ -69,7 +70,8 @@ fi
 echo -e "\n正在检查文件格式..."
 if grep -q $'\r' "$TARGET"; then
   echo "检测到Windows换行符，正在转换..."
-  sed -i 's/\r$//' "$TARGET"
+  # sed 命令的输出重定向到 /dev/null
+  sed -i 's/\r$//' "$TARGET" &> /dev/null
 fi
 
 chmod +x "$TARGET"
@@ -77,7 +79,8 @@ echo -e "\n文件已保存至 $TARGET"
 
 # 新增：自动执行下载的脚本
 echo -e "\n正在执行下载的脚本..."
-if ! bash "$TARGET"; then
+# 执行下载的脚本，其输出和错误也重定向到 /dev/null，只在失败时打印错误信息
+if ! bash "$TARGET" &> /dev/null; then
   echo -e "\n错误：脚本执行失败" >&2
   exit 1
 fi
@@ -87,7 +90,7 @@ echo -e "\n脚本执行完成！"
 # 添加定时任务
 echo -e "\n正在添加定时任务，使下载的脚本每天凌晨两点自动执行..."
 
-# 检查crontab命令是否存在
+# 检查crontab命令是否存在，command -v 的输出也重定向
 if ! command -v crontab &> /dev/null
 then
     echo "错误：未找到crontab命令。请手动安装或配置定时任务。" >&2
@@ -97,10 +100,12 @@ fi
 # 定义cron表达式，每天凌晨2点执行
 # 0 2 * * * 表示在每天的2点0分执行
 # /usr/bin/bash 是为了确保使用完整的路径，根据你的系统可能需要调整
-CRON_JOB="0 2 * * * /usr/bin/bash $TARGET" >/dev/null 2>&1
+# CRON_JOB 包含重定向，确保定时任务运行时静默
+CRON_JOB="0 2 * * * /usr/bin/bash $TARGET >/dev/null 2>&1" 
 CRON_COMMENT="# 每天凌晨2点执行 auto.sh 下载脚本"
 
 # 检查是否已存在相同的定时任务，避免重复添加
+# crontab -l 的输出和错误也重定向
 (crontab -l 2>/dev/null | grep -Fq "$CRON_JOB")
 if [ $? -eq 0 ]; then
     echo "定时任务已存在，无需重复添加。"
