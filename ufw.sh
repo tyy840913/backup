@@ -10,7 +10,7 @@ set -o pipefail
 #   适用系统：Debian / Ubuntu
 #
 #   作者：Gemini AI & User Collaboration
-#   最终版本：2025.07.07
+#   最终版本：2025.07.09
 #
 # ===============================================================
 
@@ -81,21 +81,13 @@ read_with_esc_cancel() {
     while IFS= read -r -s -n 1 char; do
         case "$char" in
             $'\e') # ESC key
-                stty echo; trap - EXIT; return 1
-                ;;
+                stty echo; trap - EXIT; return 1 ;;
             "") # Enter key
-                stty echo; trap - EXIT; echo; return 0
-                ;;
+                stty echo; trap - EXIT; echo; return 0 ;;
             $'\177') # Backspace key
-                if [ -n "$USER_INPUT" ]; then
-                    USER_INPUT="${USER_INPUT%?}"
-                    echo -ne "\b \b"
-                fi
-                ;;
+                if [ -n "$USER_INPUT" ]; then USER_INPUT="${USER_INPUT%?}"; echo -ne "\b \b"; fi ;;
             *)
-                USER_INPUT+="$char"
-                echo -n "$char"
-                ;;
+                USER_INPUT+="$char"; echo -n "$char" ;;
         esac
     done
     stty echo; trap - EXIT
@@ -174,21 +166,21 @@ reset_firewall() {
 custom_rule_manager() {
     while true; do
         clear
-        echo -e "${BLUE}---------- 当前规则列表 (带编号) ----------${NC}"; ufw status numbered; echo -e "${BLUE}------------------------------------------${NC}"
+        echo -e "${BLUE}---------- 当前规则列表 (带编号) ----------${NC}"
+        ufw status numbered
+        echo -e "${BLUE}------------------------------------------${NC}"
         echo -e "\n${YELLOW}自定义访问规则管理 (在任何输入时按 ESC 可返回此菜单):${NC}"
         echo -e "  1) 允许特定 IP/IP段 访问"
         echo -e "  2) 开放端口 (多个用${RED}空格${NC}分隔)"
         echo -e "  3) 封禁/拒绝 IP 或 端口"
         echo -e "  4) 删除规则 (输入编号)"
-        echo -e "\n  ${BLUE}0) 返回主菜单${NC}"
+        echo -e "\n  ${BLUE}0) 返回主菜单 (或在等待时按 ESC)${NC}"
         read -p "请选择一个操作 [0-4]: " opt
         
-        if [[ "$opt" == "0" ]]; then
-            return
-        fi
+        if [[ "$opt" == "0" ]]; then return; fi
         
         case $opt in
-            1) # 允许 IP
+            1)
                 read_with_esc_cancel "请输入要允许的 IP/IP段: "; local ret=$?
                 if [ $ret -ne 0 ]; then echo -e "\n${RED}操作取消。${NC}"; sleep 1; continue; fi
                 local ip=$USER_INPUT
@@ -197,27 +189,21 @@ custom_rule_manager() {
                 if [ $ret -ne 0 ]; then echo -e "\n${RED}操作取消。${NC}"; sleep 1; continue; fi
                 local port=$USER_INPUT
                 
-                read -p "协议 [tcp|udp|both] (默认 both): " proto
-                proto=${proto:-both}
+                read -p "协议 [tcp|udp|both] (默认 both): " proto; proto=${proto:-both}
 
                 if [ -z "$port" ]; then
                     ufw allow from "$ip"
-                    echo -e "${GREEN}✅ 已添加规则：允许来自 [$ip] 的所有访问。${NC}"
                 else
                     if [[ "$proto" =~ ^(tcp|both)$ ]]; then ufw allow proto tcp from "$ip" to any port "$port"; fi
                     if [[ "$proto" =~ ^(udp|both)$ ]]; then ufw allow proto udp from "$ip" to any port "$port"; fi
-                    echo -e "${GREEN}✅ 已添加规则：允许来自 [$ip] 访问端口 [$port]。${NC}"
                 fi
-                if ! pause; then return; fi
+                echo -e "${GREEN}✅ 规则已添加。${NC}"; if ! pause; then return; fi
                 ;;
-            2) # 开放端口
+            2)
                 read_with_esc_cancel "请输入要开放的端口(多个用${RED}空格${NC}分隔): "; local ret=$?
                 if [ $ret -ne 0 ]; then echo -e "\n${RED}操作取消。${NC}"; sleep 1; continue; fi
                 local ports_array=($USER_INPUT)
-                
-                read -p "协议 [tcp|udp|both] (默认 both): " proto
-                proto=${proto:-both}
-                
+                read -p "协议 [tcp|udp|both] (默认 both): " proto; proto=${proto:-both}
                 for p in "${ports_array[@]}"; do
                     if [[ "$proto" =~ ^(tcp|both)$ ]]; then ufw allow "$p"/tcp; fi
                     if [[ "$proto" =~ ^(udp|both)$ ]]; then ufw allow "$p"/udp; fi
@@ -225,19 +211,17 @@ custom_rule_manager() {
                 done
                 if ! pause; then return; fi
                 ;;
-            3) # 封禁
+            3)
                 read -p "您想封禁 IP 还是 Port? [ip/port]: " block_type
                 if [[ "$block_type" == "ip" ]]; then
                     read_with_esc_cancel "请输入要封禁的 IP 地址: "; ret=$?
                     if [ $ret -ne 0 ]; then echo -e "\n${RED}操作取消。${NC}"; sleep 1; continue; fi
-                    ufw deny from "$USER_INPUT"
-                    echo -e "${GREEN}✅ IP [$USER_INPUT] 已封禁。${NC}"
+                    ufw deny from "$USER_INPUT"; echo -e "${GREEN}✅ IP [$USER_INPUT] 已封禁。${NC}";
                 elif [[ "$block_type" == "port" ]]; then
                     read_with_esc_cancel "请输入要封禁的端口(多个用${RED}空格${NC}分隔): "; ret=$?
                     if [ $ret -ne 0 ]; then echo -e "\n${RED}操作取消。${NC}"; sleep 1; continue; fi
                     local ports_array=($USER_INPUT)
-                    read -p "协议 [tcp|udp|both] (默认 both): " proto
-                    proto=${proto:-both}
+                    read -p "协议 [tcp|udp|both] (默认 both): " proto; proto=${proto:-both}
                     for p in "${ports_array[@]}"; do
                         if [[ "$proto" =~ ^(tcp|both)$ ]]; then ufw deny "$p"/tcp; fi
                         if [[ "$proto" =~ ^(udp|both)$ ]]; then ufw deny "$p"/udp; fi
@@ -248,15 +232,13 @@ custom_rule_manager() {
                 fi
                 if ! pause; then return; fi
                 ;;
-            4) # 删除规则
+            4)
                 read_with_esc_cancel "请输入要删除的规则【编号】: "; local ret=$?
                 if [ $ret -ne 0 ]; then echo -e "\n${RED}操作取消。${NC}"; sleep 1; continue; fi
-                local rule_num=$USER_INPUT
-                
-                read -p "您确定要删除规则【#$rule_num】吗? (y/n): " confirm
+                read -p "您确定要删除规则【#$USER_INPUT】吗? (y/n): " confirm
                 if [[ $confirm =~ ^[Yy]$ ]]; then
-                    ufw --force delete "$rule_num"
-                    echo -e "${GREEN}✅ 规则 #${rule_num} 已删除。${NC}"
+                    ufw --force delete "$USER_INPUT"
+                    echo -e "${GREEN}✅ 规则 #${USER_INPUT} 已删除。${NC}"
                 else
                     echo -e "${RED}❌ 操作已取消。${NC}"
                 fi
@@ -273,7 +255,10 @@ manage_logs_menu() {
     while true; do
         clear
         echo -e "${YELLOW}--- 日志管理 ---${NC}"
-        echo -e "  1) 设置日志级别\n  2) 查看最近日志\n  3) 实时监控日志\n\n  ${BLUE}0) 返回主菜单${NC}"
+        echo -e "  1) 设置日志级别"
+        echo -e "  2) 查看最近日志"
+        echo -e "  3) 实时监控日志"
+        echo -e "\n  ${BLUE}0) 返回主菜单 (或在等待时按 ESC)${NC}"
         read -p "请选择 [0-3]: " opt
         case $opt in
             1)
@@ -284,27 +269,15 @@ manage_logs_menu() {
                 ;;
             2)
                 echo -e "\n${YELLOW}--- 最近 50行 UFW 日志 ---${NC}"
-                if [ -f "/var/log/ufw.log" ]; then
-                    tail -n 50 /var/log/ufw.log
-                else
-                    echo -e "${RED}日志文件不存在。${NC}"
-                fi
+                if [ -f "/var/log/ufw.log" ]; then tail -n 50 /var/log/ufw.log; else echo -e "${RED}日志文件不存在。${NC}"; fi
                 if ! pause; then return; fi
                 ;;
             3)
                 echo -e "\n${YELLOW}--- 实时监控 (按 Ctrl+C 退出) ---${NC}"
-                if [ -f "/var/log/ufw.log" ]; then
-                    tail -f /var/log/ufw.log
-                else
-                    echo -e "${RED}日志文件不存在。${NC}"; if ! pause; then return; fi
-                fi
+                if [ -f "/var/log/ufw.log" ]; then tail -f /var/log/ufw.log; else echo -e "${RED}日志文件不存在。${NC}"; if ! pause; then return; fi; fi
                 ;;
-            0)
-                return
-                ;;
-            *)
-                echo -e "${RED}无效输入。${NC}"; if ! pause; then return; fi
-                ;;
+            0) return ;;
+            *) echo -e "${RED}无效输入。${NC}"; if ! pause; then return; fi ;;
         esac
     done
 }
@@ -313,18 +286,15 @@ manage_backup_menu() {
     while true; do
         clear
         echo -e "${YELLOW}--- 备份与恢复 ---${NC}"
-        echo -e "  1) 导出规则\n  2) 导入规则\n\n  ${BLUE}0) 返回主菜单${NC}"
+        echo -e "  1) 导出规则"
+        echo -e "  2) 导入规则"
+        echo -e "\n  ${BLUE}0) 返回主菜单 (或在等待时按 ESC)${NC}"
         read -p "请选择 [0-2]: " opt
         case $opt in
             1)
                 local f="/root/ufw-backup-$(date +%Y%m%d).tar.gz"
-                read -p "输入备份路径 (默认: $f): " p
-                p=${p:-$f}
-                if tar -czf "$p" /etc/ufw /lib/ufw/user*.rules &>/dev/null; then
-                    echo -e "${GREEN}✅ 规则已导出到: $p${NC}"
-                else
-                    echo -e "${RED}❌ 导出失败。${NC}"
-                fi
+                read -p "输入备份路径 (默认: $f): " p; p=${p:-$f}
+                if tar -czf "$p" /etc/ufw /lib/ufw/user*.rules &>/dev/null; then echo -e "${GREEN}✅ 规则已导出到: $p${NC}"; else echo -e "${RED}❌ 导出失败。${NC}"; fi
                 if ! pause; then return; fi
                 ;;
             2)
@@ -335,10 +305,7 @@ manage_backup_menu() {
                         if tar -xzf "$f" -C /; then
                             echo -e "${GREEN}✅ 配置已导入。${NC}"
                             read -p "立即重载防火墙? (y/n): " r
-                            if [[ $r =~ ^[Yy]$ ]]; then
-                                ufw reload
-                                echo -e "${GREEN}✅ 防火墙已重载。${NC}"
-                            fi
+                            if [[ $r =~ ^[Yy]$ ]]; then ufw reload; echo -e "${GREEN}✅ 防火墙已重载。${NC}"; fi
                         else
                             echo -e "${RED}❌ 导入失败。${NC}"
                         fi
@@ -348,12 +315,8 @@ manage_backup_menu() {
                 fi
                 if ! pause; then return; fi
                 ;;
-            0)
-                return
-                ;;
-            *)
-                echo -e "${RED}无效输入。${NC}"; if ! pause; then return; fi
-                ;;
+            0) return ;;
+            *) echo -e "${RED}无效输入。${NC}"; if ! pause; then return; fi ;;
         esac
     done
 }
@@ -363,14 +326,10 @@ main_menu() {
     while true; do
         clear
         echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${GREEN}║${NC}              🛡️  ${YELLOW}UFW 防火墙管理器 v2025.07.07${NC}              ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}              🛡️  ${YELLOW}UFW 防火墙管理器 v2025.07.09${NC}              ${GREEN}║${NC}"
         echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
-        
         show_simple_status
-        if [ -n "$STARTUP_MSG" ]; then
-            echo -e "$STARTUP_MSG"
-            STARTUP_MSG=""
-        fi
+        if [ -n "$STARTUP_MSG" ]; then echo -e "$STARTUP_MSG"; STARTUP_MSG=""; fi
         
         echo -e "\n${YELLOW}--- 基本操作 ---${NC}"
         echo -e "  1) 启用防火墙"
@@ -384,20 +343,34 @@ main_menu() {
         echo -e "  7) 备份与恢复"
         
         echo -e "\n${YELLOW}--------------------------------------------------------------${NC}"
-        echo -e "  ${BLUE}0) 退出脚本${NC}"
-        
+        echo -e "  ${BLUE}0) 退出脚本 (或在等待时按 ESC)${NC}"
         read -p "请输入您的选择 [0-7]: " choice
         
         case $choice in
-            1) enable_firewall; pause || continue ;;
-            2) disable_firewall; pause || continue ;;
-            3) show_detailed_status; pause || continue ;;
-            4) reset_firewall; pause || continue ;;
+            1)
+                enable_firewall
+                if ! pause; then echo -e "\n${GREEN}按 ESC 退出... 再见！${NC}"; exit 0; fi
+                ;;
+            2)
+                disable_firewall
+                if ! pause; then echo -e "\n${GREEN}按 ESC 退出... 再见！${NC}"; exit 0; fi
+                ;;
+            3)
+                show_detailed_status
+                if ! pause; then echo -e "\n${GREEN}按 ESC 退出... 再见！${NC}"; exit 0; fi
+                ;;
+            4)
+                reset_firewall
+                if ! pause; then echo -e "\n${GREEN}按 ESC 退出... 再见！${NC}"; exit 0; fi
+                ;;
             5) custom_rule_manager ;;
             6) manage_logs_menu ;;
             7) manage_backup_menu ;;
             0) echo -e "\n${GREEN}感谢使用，再见！${NC}"; exit 0 ;;
-            *) echo -e "${RED}无效的输入。${NC}"; pause || continue ;;
+            *)
+                echo -e "${RED}无效的输入。${NC}"
+                if ! pause; then echo -e "\n${GREEN}按 ESC 退出... 再见！${NC}"; exit 0; fi
+                ;;
         esac
     done
 }
