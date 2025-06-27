@@ -489,19 +489,17 @@ main_menu() {
         read -p "请输入您的选择 [0-7]: " choice
         
         case $choice in
-            1) enable_firewall ;;
-            2) disable_firewall ;;
-            3) show_detailed_status ;;
-            4) reset_firewall ;;
-            5) custom_rule_manager ;;
-            6) manage_logs_menu ;;
-            7) manage_backup_menu ;;
+            1) enable_firewall; pause ;; # 在操作完成后暂停
+            2) disable_firewall; pause ;; # 在操作完成后暂停
+            3) show_detailed_status; pause ;; # 在操作完成后暂停
+            4) reset_firewall; pause ;; # 在操作完成后暂停
+            5) custom_rule_manager ;; # 子菜单内部已有暂停逻辑或返回不暂停
+            6) manage_logs_menu ;; # 子菜单内部已有暂停逻辑或返回不暂停
+            7) manage_backup_menu ;; # 子菜单内部已有暂停逻辑或返回不暂停
             0) echo -e "\n${GREEN}感谢使用，再见！${NC}"; exit 0 ;;
-            *) echo -e "${RED}无效的输入，请输入 0-7 之间的数字。${NC}" ;;
+            *) echo -e "${RED}无效的输入，请输入 0-7 之间的数字。${NC}"; pause ;; # 在无效输入后暂停
         esac
-        
-        echo
-        pause # 主菜单操作完成后依然需要暂停，以便用户查看执行结果
+        # 主菜单循环末尾的全局 pause 已移除
     done
 }
 
