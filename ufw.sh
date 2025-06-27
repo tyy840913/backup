@@ -250,7 +250,7 @@ custom_rule_manager() {
         ufw status numbered
         echo -e "${BLUE}------------------------------------------${NC}"
         echo -e "\n${YELLOW}自定义访问规则管理:${NC}"
-        echo "\n1) 允许特定 IP/IP段 访问 (可指定端口)"
+        echo "  1) 允许特定 IP/IP段 访问 (可指定端口)"
         echo "  2) 开放端口 (可指定范围，支持空格分隔多个端口)"
         echo "  3) 封禁/拒绝 IP 或 端口 (支持空格分隔多个端口)"
         echo "  4) 删除规则 (输入编号)"
