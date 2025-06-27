@@ -249,7 +249,7 @@ custom_rule_manager() {
         echo -e "${BLUE}---------- 当前规则列表 (带编号) ----------${NC}"
         ufw status numbered
         echo -e "${BLUE}------------------------------------------${NC}"
-        echo -e "\n${YELLOW}自定义访问规则管理:${NC}"
+        echo -e "\n${YELLOW}自定义访问规则管理:${NC}\n"
         echo "  1) 允许特定 IP/IP段 访问 (可指定端口)"
         echo "  2) 开放端口 (可指定范围，支持空格分隔多个端口)"
         echo "  3) 封禁/拒绝 IP 或 端口 (支持空格分隔多个端口)"
@@ -473,13 +473,13 @@ main_menu() {
             STARTUP_MSG=""
         fi
         
-        echo -e "\n${YELLOW}--- 基本操作与状态 ---${NC}"
+        echo -e "\n${YELLOW}--------- 基本操作与状态 ---------${NC}"
         echo "  1) 启用防火墙"
         echo "  2) 关闭防火墙"
         echo "  3) 查看详细状态与规则列表"
         echo "  4) 重置防火墙 (清空所有规则)"
         
-        echo -e "\n${YELLOW}--- 规则与高级功能 ---${NC}"
+        echo -e "\n${YELLOW}--------- 规则与高级功能 ---------${NC}"
         echo "  5) 管理防火墙规则 (IP/端口)"
         echo "  6) 日志管理 (设置/查看)"
         echo "  7) 备份与恢复 (导入/导出)"
