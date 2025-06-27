@@ -282,21 +282,27 @@ custom_rule_manager() {
             1) # 允许特定 IP/IP段 访问
                 local ip=""
                 while true; do
-                    prompt_for_input "请输入要允许的 IP 地址或 IP 段" ip
-                    if [ $? -ne 0 ]; then return; fi # 用户输入 Q 返回
-                    if [ -n "$ip" ]; then break; fi # 非空则跳出循环
+                    if ! prompt_for_input "请输入要允许的 IP 地址或 IP 段" ip; then 
+                        # 用户输入 Q，返回到 custom_rule_manager 菜单的顶层
+                        continue 2 
+                    fi
+                    if [ -n "$ip" ]; then break; fi
                     echo -e "${RED}⚠️ IP 地址不能为空，请重新输入。${NC}"
                 done
 
                 local ports=""
-                prompt_for_input "请输入端口 (留空为所有端口，支持空格分隔多个端口)" ports
-                if [ "$ports" == "__RETURN__" ]; then pause; continue; fi # 用户输入 Q 返回当前子菜单
+                if ! prompt_for_input "请输入端口 (留空为所有端口，支持空格分隔多个端口)" ports; then 
+                    # 用户输入 Q，返回到 custom_rule_manager 菜单的顶层
+                    continue 
+                fi
 
                 local proto_input=""
                 local proto="both" # Default protocol
                 while true; do
-                    prompt_for_input "请输入协议 [tcp|udp|both] (默认为 both)" proto_input
-                    if [ "$proto_input" == "__RETURN__" ]; then pause; continue 2; fi # 用户输入 Q 返回当前子菜单
+                    if ! prompt_for_input "请输入协议 [tcp|udp|both] (默认为 both)" proto_input; then 
+                        # 用户输入 Q，返回到 custom_rule_manager 菜单的顶层
+                        continue 2 
+                    fi
                     if [ -z "$proto_input" ]; then
                         proto="both"
                         break
@@ -319,8 +325,10 @@ custom_rule_manager() {
             2) # 开放端口
                 local ports=""
                 while true; do
-                    prompt_for_input "请输入要开放的端口或端口范围 (支持空格分隔多个端口，例如: 80 443 8000-8005)" ports
-                    if [ $? -ne 0 ]; then return; fi # 用户输入 Q 返回
+                    if ! prompt_for_input "请输入要开放的端口或端口范围 (支持空格分隔多个端口，例如: 80 443 8000-8005)" ports; then 
+                        # 用户输入 Q，返回到 custom_rule_manager 菜单的顶层
+                        continue 2 
+                    fi
                     if [ -n "$ports" ]; then break; fi
                     echo -e "${RED}⚠️ 端口不能为空，请重新输入。${NC}"
                 done
@@ -328,8 +336,10 @@ custom_rule_manager() {
                 local proto_input=""
                 local proto="both"
                 while true; do
-                    prompt_for_input "请输入协议 [tcp|udp|both] (默认为 both)" proto_input
-                    if [ "$proto_input" == "__RETURN__" ]; then pause; continue 2; fi # 用户输入 Q 返回当前子菜单
+                    if ! prompt_for_input "请输入协议 [tcp|udp|both] (默认为 both)" proto_input; then 
+                        # 用户输入 Q，返回到 custom_rule_manager 菜单的顶层
+                        continue 2 
+                    fi
                     if [ -z "$proto_input" ]; then
                         proto="both"
                         break
@@ -347,8 +357,10 @@ custom_rule_manager() {
             3) # 封禁/拒绝 IP 或 端口
                 local block_type=""
                 while true; do
-                    prompt_for_input "您想封禁 IP 还是端口? [ip/port]" block_type
-                    if [ $? -ne 0 ]; then return; fi # 用户输入 Q 返回
+                    if ! prompt_for_input "您想封禁 IP 还是端口? [ip/port]" block_type; then 
+                        # 用户输入 Q，返回到 custom_rule_manager 菜单的顶层
+                        continue 2 
+                    fi
 
                     block_type=$(echo "$block_type" | tr '[:upper:]' '[:lower:]') # 转为小写
                     if [[ "$block_type" == "ip" || "$block_type" == "port" ]]; then
@@ -361,8 +373,10 @@ custom_rule_manager() {
                 if [[ "$block_type" == "ip" ]]; then
                     local target_ip=""
                     while true; do
-                        prompt_for_input "请输入要封禁的 IP 地址" target_ip
-                        if [ $? -ne 0 ]; then pause; continue 2; fi # 用户输入 Q 返回当前子菜单
+                        if ! prompt_for_input "请输入要封禁的 IP 地址" target_ip; then 
+                            # 用户输入 Q，返回到 custom_rule_manager 菜单的顶层
+                            continue 3 
+                        fi
                         if [ -n "$target_ip" ]; then break; fi
                         echo -e "${RED}⚠️ IP 地址不能为空，请重新输入。${NC}"
                     done
@@ -371,8 +385,10 @@ custom_rule_manager() {
                 elif [[ "$block_type" == "port" ]]; then
                     local target_ports=""
                     while true; do
-                        prompt_for_input "请输入要封禁的端口或范围 (支持空格分隔多个端口，例如: 21 23 3389)" target_ports
-                        if [ $? -ne 0 ]; then pause; continue 2; fi # 用户输入 Q 返回当前子菜单
+                        if ! prompt_for_input "请输入要封禁的端口或范围 (支持空格分隔多个端口，例如: 21 23 3389)" target_ports; then 
+                            # 用户输入 Q，返回到 custom_rule_manager 菜单的顶层
+                            continue 3 
+                        fi
                         if [ -n "$target_ports" ]; then break; fi
                         echo -e "${RED}⚠️ 端口不能为空，请重新输入。${NC}"
                     done
@@ -380,8 +396,10 @@ custom_rule_manager() {
                     local proto_input=""
                     local proto="both"
                     while true; do
-                        prompt_for_input "协议类型 [tcp|udp|both] (默认为 both)" proto_input
-                        if [ "$proto_input" == "__RETURN__" ]; then pause; continue 3; fi # 用户输入 Q 返回当前子菜单
+                        if ! prompt_for_input "协议类型 [tcp|udp|both] (默认为 both)" proto_input; then 
+                            # 用户输入 Q，返回到 custom_rule_manager 菜单的顶层
+                            continue 4 
+                        fi
                         if [ -z "$proto_input" ]; then
                             proto="both"
                             break
@@ -399,8 +417,10 @@ custom_rule_manager() {
             4) # 删除规则
                 local rule_num=""
                 while true; do
-                    prompt_for_input "请输入要删除的规则【编号】" rule_num
-                    if [ $? -ne 0 ]; then return; fi # 用户输入 Q 返回
+                    if ! prompt_for_input "请输入要删除的规则【编号】" rule_num; then 
+                        # 用户输入 Q，返回到 custom_rule_manager 菜单的顶层
+                        continue 2 
+                    fi
                     if [[ "$rule_num" =~ ^[0-9]+$ ]]; then # 确保是纯数字
                         break
                     else
@@ -452,7 +472,7 @@ manage_logs_menu() {
                     read -p "请输入选项 [1-5] (输入 Q 返回): " level_choice
                     level_choice=$(echo "$level_choice" | xargs | tr '[:upper:]' '[:lower:]')
                     
-                    if [[ "$level_choice" =~ ^[Qq]$ ]]; then return; fi # 用户输入 Q 返回上一级菜单
+                    if [[ "$level_choice" =~ ^[Qq]$ ]]; then return; fi # 用户输入 Q 返回日志管理菜单
                     
                     case "$level_choice" in
                         1) level="low"; break ;;
@@ -512,8 +532,10 @@ manage_backup_menu() {
             1)
                 local file_path="/root/ufw-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
                 local custom_path=""
-                prompt_for_input "请输入备份文件保存路径 (默认为 ${file_path})" custom_path
-                if [ "$custom_path" == "__RETURN__" ]; then pause; continue; fi # 用户输入 Q 返回当前子菜单
+                if ! prompt_for_input "请输入备份文件保存路径 (默认为 ${file_path})" custom_path; then 
+                    # 用户输入 Q，返回到 manage_backup_menu 菜单的顶层
+                    continue 
+                fi
                 file_path=${custom_path:-$file_path} # 如果用户输入为空，则使用默认路径
                 
                 if tar -czf "$file_path" /etc/ufw; then
@@ -526,8 +548,10 @@ manage_backup_menu() {
             2)
                 local file=""
                 while true; do
-                    prompt_for_input "请输入要导入的备份文件路径" file
-                    if [ $? -ne 0 ]; then return; fi # 用户输入 Q 返回
+                    if ! prompt_for_input "请输入要导入的备份文件路径" file; then 
+                        # 用户输入 Q，返回到 manage_backup_menu 菜单的顶层
+                        continue 2 
+                    fi
                     if [ -f "$file" ]; then break; fi
                     echo -e "${RED}❌ 文件 '$file' 不存在。请重新输入。${NC}"
                 done
@@ -612,9 +636,9 @@ main_menu() {
             2) disable_firewall; pause ;;
             3) show_detailed_status; pause ;;
             4) reset_firewall; pause ;;
-            5) custom_rule_manager ;; # 子菜单内部已处理暂停和 Q 返回
-            6) manage_logs_menu ;;    # 子菜单内部已处理暂停和 Q 返回
-            7) manage_backup_menu ;;  # 子菜单内部已处理暂停和 Q 返回
+            5) custom_rule_manager ;;
+            6) manage_logs_menu ;;
+            7) manage_backup_menu ;;
             0) echo -e "\n${GREEN}感谢使用，再见！${NC}"; exit 0 ;;
             *) echo -e "${RED}无效的输入，请输入 0-7 之间的数字。${NC}"; pause ;;
         esac
