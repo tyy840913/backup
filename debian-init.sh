@@ -279,32 +279,37 @@ auto_configure_firewall() {
 
     if command -v ufw &>/dev/null; then
         local ufw_needs_reconfiguration=false # 假设不需要重新配置，除非检查失败
+        local ufw_status_output=$(ufw status verbose) # 捕获一次完整输出，避免多次调用
 
         # 1. 检查 UFW 是否已启用
-        if ! ufw status | grep -q "Status: active"; then
+        if ! echo "$ufw_status_output" | grep -q "Status: active"; then
             ufw_needs_reconfiguration=true
         fi
 
         # 2. 检查默认策略是否符合预期 (incoming deny, outgoing allow)
-        # 根据您提供的输出，匹配 'Default: deny (incoming), allow (outgoing), deny (routed)' 中的关键部分
-        if ! ufw status verbose | grep -q "Default: deny (incoming), allow (outgoing)"; then
+        # 匹配 "deny (incoming)" 和 "allow (outgoing)"，即使它们可能在同一行或者后面跟着其他描述
+        if ! (echo "$ufw_status_output" | grep -qE "deny \(incoming\)" && \
+              echo "$ufw_status_output" | grep -qE "allow \(outgoing\)"); then
            ufw_needs_reconfiguration=true
         fi
 
         # 3. 检查内网规则
-        for net in $PRIVATE_NETWORKS; do
-            # 检查是否存在 'ALLOW IN' 规则，来源为特定网络，且包含指定注释
-            if ! ufw status verbose | grep -qi "ALLOW IN\s*.*From\s*$net\s*# Allow-Internal-LAN"; then
-                ufw_needs_reconfiguration=true
-                break # 找到一个不匹配就标记并跳出，减少不必要检查
-            fi
-        done
+        # 如果已经确定需要重新配置，则跳过详细规则检查
+        if ! "$ufw_needs_reconfiguration"; then
+            for net in $PRIVATE_NETWORKS; do
+                # 检查是否存在包含 'ALLOW IN'，来源为特定网络，且包含指定注释的规则 (匹配更宽松)
+                if ! echo "$ufw_status_output" | grep -qiE "ALLOW\s*IN\s*.*From\s*$net\s*#\s*Allow-Internal-LAN"; then
+                    ufw_needs_reconfiguration=true
+                    break # 找到一个不匹配就标记并跳出
+                fi
+            done
+        fi
 
         # 4. 检查常用端口规则 (仅在内网规则检查通过后继续)
-        if ! "$ufw_needs_reconfiguration"; then # 如果前面检查已经发现需要重新配置，则无需继续检查端口
+        if ! "$ufw_needs_reconfiguration"; then
             for port in $COMMON_PORTS; do
-                # 检查是否存在 'ALLOW IN' 规则，目标为特定端口，且包含指定注释
-                if ! ufw status verbose | grep -qi "ALLOW IN\s*$port/tcp\s*.*# Allow-Common-Services"; then
+                # 检查是否存在包含 'ALLOW IN'，目标为特定端口，且包含指定注释的规则 (匹配更宽松)
+                if ! echo "$ufw_status_output" | grep -qiE "ALLOW\s*IN\s*$port/tcp\s*.*#\s*Allow-Common-Services"; then
                     ufw_needs_reconfiguration=true
                     break # 找到一个不匹配就标记并跳出
                 fi
@@ -315,19 +320,18 @@ auto_configure_firewall() {
         if "$ufw_needs_reconfiguration"; then
             echo "  - 检测到 UFW 配置不完整或不匹配，将进行重新配置..."
             ufw --force reset >/dev/null 2>&1
-            ufw default allow outgoing
-            ufw default deny incoming
+            ufw default allow outgoing >/dev/null 2>&1
+            ufw default deny incoming >/dev/null 2>&1
             
-            echo "    - 正在开放内网访问..."
+            # 隐藏 UFW 自身输出
             for net in $PRIVATE_NETWORKS; do
-                ufw allow from "$net" to any comment 'Allow-Internal-LAN' >/dev/null # 隐藏 UFW 自身输出
+                ufw allow from "$net" to any comment 'Allow-Internal-LAN' >/dev/null 2>&1
             done
             
-            echo "    - 正在开放外网常用端口: $COMMON_PORTS"
             for port in $COMMON_PORTS; do
-                ufw allow "$port/tcp" comment 'Allow-Common-Services' >/dev/null # 隐藏 UFW 自身输出
+                ufw allow "$port/tcp" comment 'Allow-Common-Services' >/dev/null 2>&1
             done
-            ufw --force enable >/dev/null 2>&1 # 隐藏 UFW 自身输出
+            ufw --force enable >/dev/null 2>&1
             echo "✅ UFW 配置完成并已启用。"
         else
             echo "  - ✅ UFW 已完全配置并启用，无需重复设置。"
@@ -336,9 +340,8 @@ auto_configure_firewall() {
         return
     fi
     
-    # firewalld 部分（保持不变，除非你需要更精确的检查）
+    # firewalld 和 iptables 部分保持不变，因其检查逻辑和行为已相对稳定
     if systemctl is-active --quiet firewalld; then
-        # 假设 firewalld 配置检查足够准确
         local firewalld_needs_reconfiguration=false
         if ! firewall-cmd --query-source="10.0.0.0/8" --zone=trusted >/dev/null 2>&1 || \
            ! firewall-cmd --query-port="22/tcp" --zone=public >/dev/null 2>&1; then
@@ -347,9 +350,9 @@ auto_configure_firewall() {
 
         if "$firewalld_needs_reconfiguration"; then
             echo "  - 检测到 firewalld 配置不完整或不匹配，将进行重新配置..."
-            for net in $PRIVATE_NETWORKS; do firewall-cmd --permanent --zone=trusted --add-source="$net" >/dev/null; done
-            for port in $COMMON_PORTS; do firewall-cmd --permanent --zone=public --add-port="$port/tcp" >/dev/null; done
-            firewall-cmd --reload >/dev/null # 隐藏 firewalld 自身输出
+            for net in $PRIVATE_NETWORKS; do firewall-cmd --permanent --zone=trusted --add-source="$net" >/dev/null 2>&1; done
+            for port in $COMMON_PORTS; do firewall-cmd --permanent --zone=public --add-port="$port/tcp" >/dev/null 2>&1; done
+            firewall-cmd --reload >/dev/null 2>&1
             echo "✅ firewalld 配置完成。"
         else
             echo "  - ✅ firewalld 已配置内网及常用端口，无需重复设置。"
@@ -358,7 +361,6 @@ auto_configure_firewall() {
         return
     fi
 
-    # iptables 部分（保持不变，因为它通常直接重置）
     if command -v iptables &>/dev/null; then
         echo "  - 未检测到 UFW/firewalld, 使用 iptables 作为备用方案..."
         ensure_command "netfilter-persistent" "iptables-persistent" >/dev/null
@@ -368,7 +370,7 @@ auto_configure_firewall() {
         iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
         for net in $PRIVATE_NETWORKS; do iptables -A INPUT -s "$net" -j ACCEPT; done
         for port in $COMMON_PORTS; do iptables -A INPUT -p tcp --dport "$port" -j ACCEPT; done
-        netfilter-persistent save >/dev/null # 隐藏输出
+        netfilter-persistent save >/dev/null 2>&1
         echo "✅ iptables 规则已配置并持久化。"
         echo "-------------------------------------"
         return
