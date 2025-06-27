@@ -419,7 +419,7 @@ manage_backup_menu() {
                 echo -e "${RED}无效的输入。${NC}"
                 pause
                 ;;
-        esolac
+        esac
     done
 }
 
