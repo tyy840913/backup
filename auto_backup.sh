@@ -83,3 +83,43 @@ if ! bash "$TARGET"; then
 fi
 
 echo -e "\n脚本执行完成！"
+
+---
+
+## 添加定时任务
+
+```bash
+# 添加定时任务
+echo -e "\n正在添加定时任务，使下载的脚本每天凌晨两点自动执行..."
+
+# 检查crontab命令是否存在
+if ! command -v crontab &> /dev/null
+then
+    echo "错误：未找到crontab命令。请手动安装或配置定时任务。" >&2
+    exit 1
+fi
+
+# 定义cron表达式，每天凌晨2点执行
+# 0 2 * * * 表示在每天的2点0分执行
+# /usr/bin/bash 是为了确保使用完整的路径，根据你的系统可能需要调整
+CRON_JOB="0 2 * * * /usr/bin/bash $TARGET" >/dev/null 2>&1
+CRON_COMMENT="# 每天凌晨2点执行 auto.sh 下载脚本"
+
+# 检查是否已存在相同的定时任务，避免重复添加
+(crontab -l 2>/dev/null | grep -Fq "$CRON_JOB")
+if [ $? -eq 0 ]; then
+    echo "定时任务已存在，无需重复添加。"
+else
+    # 将新的cron任务添加到crontab
+    # 使用 (crontab -l; echo ...) | crontab - 命令来添加
+    (crontab -l 2>/dev/null; echo "$CRON_JOB $CRON_COMMENT") | crontab -
+    if [ $? -eq 0 ]; then
+        echo "定时任务添加成功！'$CRON_JOB' 已添加到 crontab。"
+        echo "你可以通过运行 'crontab -l' 查看已添加的任务。"
+    else
+        echo "错误：定时任务添加失败。" >&2
+        exit 1
+    fi
+fi
+
+echo -e "\n所有操作完成！"
