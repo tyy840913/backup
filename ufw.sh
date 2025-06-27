@@ -244,74 +244,81 @@ disable_firewall() {
 
 # ===================== 自定义访问规则管理 =====================
 custom_rule_manager() {
-    clear
-    echo -e "${BLUE}---------- 当前规则列表 (带编号) ----------${NC}"
-    ufw status numbered
-    echo -e "${BLUE}------------------------------------------${NC}"
-    echo -e "\n${YELLOW}自定义访问规则管理:${NC}"
-    echo "  1) 允许特定 IP/IP段 访问 (可指定端口)"
-    echo "  2) 开放端口 (可指定范围，支持空格分隔多个端口)"
-    echo "  3) 封禁/拒绝 IP 或 端口 (支持空格分隔多个端口)"
-    echo "  4) 删除规则 (输入编号)"
-    echo -e "\n  0) 返回主菜单"
-    read -p "请选择一个操作 [0-4]: " opt
-    
-    case $opt in
-        1)
-            read -p "请输入要允许的 IP 地址或 IP 段: " ip
-            read -p "请输入端口 (留空为所有端口，支持空格分隔多个端口): " ports
-            read -p "请输入协议 [tcp|udp|both] (默认为 both): " proto
-            proto=${proto:-both}
-
-            if [ -z "$ports" ]; then
-                ufw allow from "$ip" comment "自定义-IP-放行"
-                echo -e "${GREEN}✅ 已添加规则：允许来自 [${ip}] 的所有协议访问。${NC}"
-            else
-                process_ports "$ports" "allow" "$proto" "$ip"
-            fi
-            ;;
-        2)
-            read -p "请输入要开放的端口或端口范围 (支持空格分隔多个端口，例如: 80 443 8000-8005): " ports
-            read -p "请输入协议 [tcp|udp|both] (默认为 both): " proto
-            proto=${proto:-both}
-            process_ports "$ports" "allow" "$proto"
-            ;;
-        3)
-            read -p "您想封禁 IP 还是端口? [ip/port]: " block_type
-            if [[ "$block_type" == "ip" ]]; then
-                read -p "请输入要封禁的 IP 地址: " target_ip
-                ufw deny from "$target_ip" to any comment "自定义-IP-封禁"
-                echo -e "${GREEN}✅ 来自 [${target_ip}] 的所有访问已被封禁。${NC}"
-            elif [[ "$block_type" == "port" ]]; then
-                read -p "请输入要封禁的端口或范围 (支持空格分隔多个端口，例如: 21 23 3389): " target_ports
-                read -p "协议类型 [tcp|udp|both] (默认为 both): " proto
+    while true; do # 添加一个循环以在执行操作后保持在当前菜单
+        clear
+        echo -e "${BLUE}---------- 当前规则列表 (带编号) ----------${NC}"
+        ufw status numbered
+        echo -e "${BLUE}------------------------------------------${NC}"
+        echo -e "\n${YELLOW}自定义访问规则管理:${NC}"
+        echo "  1) 允许特定 IP/IP段 访问 (可指定端口)"
+        echo "  2) 开放端口 (可指定范围，支持空格分隔多个端口)"
+        echo "  3) 封禁/拒绝 IP 或 端口 (支持空格分隔多个端口)"
+        echo "  4) 删除规则 (输入编号)"
+        echo -e "\n  0) 返回主菜单"
+        read -p "请选择一个操作 [0-4]: " opt
+        
+        case $opt in
+            1)
+                read -p "请输入要允许的 IP 地址或 IP 段: " ip
+                read -p "请输入端口 (留空为所有端口，支持空格分隔多个端口): " ports
+                read -p "请输入协议 [tcp|udp|both] (默认为 both): " proto
                 proto=${proto:-both}
-                process_ports "$target_ports" "deny" "$proto"
-            else
-                echo -e "${RED}❌ 无效的选择。操作已取消。${NC}"
-            fi
-            ;;
-        4)
-            read -p "请输入要删除的规则【编号】: " rule_num
-            if ! [[ "$rule_num" =~ ^[0-9]+$ ]]; then
-                echo -e "${RED}❌ 错误: 请输入有效的规则编号 (纯数字)。${NC}"
-            else
-                read -p "您确定要删除规则【#${rule_num}】吗? (y/n): " confirm
-                if [[ $confirm =~ ^[Yy]$ ]]; then
-                    ufw --force delete "$rule_num"
-                    echo -e "${GREEN}✅ 规则 #${rule_num} 已成功删除。${NC}"
+
+                if [ -z "$ports" ]; then
+                    ufw allow from "$ip" comment "自定义-IP-放行"
+                    echo -e "${GREEN}✅ 已添加规则：允许来自 [${ip}] 的所有协议访问。${NC}"
                 else
-                    echo -e "${RED}❌ 操作已取消。${NC}"
+                    process_ports "$ports" "allow" "$proto" "$ip"
                 fi
-            fi
-            ;;
-        0) # 返回主菜单
-            return
-            ;;
-        *)
-            echo -e "${RED}无效的输入。${NC}"
-            ;;
-    esac
+                pause # 在操作完成后暂停
+                ;;
+            2)
+                read -p "请输入要开放的端口或端口范围 (支持空格分隔多个端口，例如: 80 443 8000-8005): " ports
+                read -p "请输入协议 [tcp|udp|both] (默认为 both): " proto
+                proto=${proto:-both}
+                process_ports "$ports" "allow" "$proto"
+                pause # 在操作完成后暂停
+                ;;
+            3)
+                read -p "您想封禁 IP 还是端口? [ip/port]: " block_type
+                if [[ "$block_type" == "ip" ]]; then
+                    read -p "请输入要封禁的 IP 地址: " target_ip
+                    ufw deny from "$target_ip" to any comment "自定义-IP-封禁"
+                    echo -e "${GREEN}✅ 来自 [${target_ip}] 的所有访问已被封禁。${NC}"
+                elif [[ "$block_type" == "port" ]]; then
+                    read -p "请输入要封禁的端口或范围 (支持空格分隔多个端口，例如: 21 23 3389): " target_ports
+                    read -p "协议类型 [tcp|udp|both] (默认为 both): " proto
+                    proto=${proto:-both}
+                    process_ports "$target_ports" "deny" "$proto"
+                else
+                    echo -e "${RED}❌ 无效的选择。操作已取消。${NC}"
+                fi
+                pause # 在操作完成后暂停
+                ;;
+            4)
+                read -p "请输入要删除的规则【编号】: " rule_num
+                if ! [[ "$rule_num" =~ ^[0-9]+$ ]]; then
+                    echo -e "${RED}❌ 错误: 请输入有效的规则编号 (纯数字)。${NC}"
+                else
+                    read -p "您确定要删除规则【#${rule_num}】吗? (y/n): " confirm
+                    if [[ $confirm =~ ^[Yy]$ ]]; then
+                        ufw --force delete "$rule_num"
+                        echo -e "${GREEN}✅ 规则 #${rule_num} 已成功删除。${NC}"
+                    else
+                        echo -e "${RED}❌ 操作已取消。${NC}"
+                    fi
+                fi
+                pause # 在操作完成后暂停
+                ;;
+            0) # 返回主菜单，不调用 pause
+                return
+                ;;
+            *)
+                echo -e "${RED}无效的输入。${NC}"
+                pause # 在无效输入后暂停
+                ;;
+        esac
+    done
 }
 
 # ===================== 日志管理 (子菜单) =====================
@@ -319,7 +326,7 @@ manage_logs_menu() {
     while true; do
         clear
         echo -e "${YELLOW}--- 日志管理 ---${NC}"
-        echo "  1) 设置日志级别 (低, 中, 高, 完整, 关闭)" # 修改为中文
+        echo "  1) 设置日志级别 (低, 中, 高, 完整, 关闭)"
         echo "  2) 查看最近 50 条日志"
         echo "  3) 实时监控日志"
         echo -e "\n  0) 返回主菜单"
@@ -344,7 +351,7 @@ manage_logs_menu() {
                 esac
 
                 ufw logging "$level"
-                echo -e "${GREEN}✅ 日志级别已设置为: $(echo $level | sed 's/low/低/;s/medium/中/;s/high/高/;s/full/完整/;s/off/关闭/')${NC}" # 显示中文级别
+                echo -e "${GREEN}✅ 日志级别已设置为: $(echo $level | sed 's/low/低/;s/medium/中/;s/high/高/;s/full/完整/;s/off/关闭/')${NC}"
                 pause
                 ;;
             2)
@@ -366,7 +373,7 @@ manage_logs_menu() {
                     pause
                 fi
                 ;;
-            0)
+            0) # 返回主菜单，不调用 pause
                 return
                 ;;
             *)
@@ -425,7 +432,7 @@ manage_backup_menu() {
                 fi
                 pause
                 ;;
-            0)
+            0) # 返回主菜单，不调用 pause
                 return
                 ;;
             *)
@@ -465,13 +472,13 @@ main_menu() {
             STARTUP_MSG=""
         fi
         
-        echo -e "\n${YELLOW}--- 基本操作与状态 ---${NC}" # 更改为中文
+        echo -e "\n${YELLOW}--- 基本操作与状态 ---${NC}"
         echo "  1) 启用防火墙"
         echo "  2) 关闭防火墙"
         echo "  3) 查看详细状态与规则列表"
         echo "  4) 重置防火墙 (清空所有规则)"
         
-        echo -e "\n${YELLOW}--- 规则与高级功能 ---${NC}" # 更改为中文
+        echo -e "\n${YELLOW}--- 规则与高级功能 ---${NC}"
         echo "  5) 管理防火墙规则 (IP/端口)"
         echo "  6) 日志管理 (设置/查看)"
         echo "  7) 备份与恢复 (导入/导出)"
@@ -494,7 +501,7 @@ main_menu() {
         esac
         
         echo
-        pause
+        pause # 主菜单操作完成后依然需要暂停，以便用户查看执行结果
     done
 }
 
