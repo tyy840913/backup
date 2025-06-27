@@ -106,7 +106,8 @@ process_ports() {
     local proto=$3
     local ip=$4 # For IP based rules
 
-    IFS=',' read -ra ADDR <<< "$ports_input"
+    # 使用空格作为分隔符
+    read -ra ADDR <<< "$ports_input"
     local success_count=0
     local fail_count=0
     local success_msg=""
@@ -166,7 +167,7 @@ process_ports() {
                     else
                         current_success=false
                     fi
-                fi
+                    fi
             fi
 
             if [ "$current_success" = true ]; then
@@ -249,8 +250,8 @@ custom_rule_manager() {
     echo -e "${BLUE}------------------------------------------${NC}"
     echo -e "\n${YELLOW}自定义访问规则管理:${NC}"
     echo "  1) 允许特定 IP/IP段 访问 (可指定端口)"
-    echo "  2) 开放端口 (可指定范围，支持逗号分隔多个端口)" # 更新提示
-    echo "  3) 封禁/拒绝 IP 或 端口 (支持逗号分隔多个端口)" # 更新提示
+    echo "  2) 开放端口 (可指定范围，支持空格分隔多个端口)" # 更新提示
+    echo "  3) 封禁/拒绝 IP 或 端口 (支持空格分隔多个端口)" # 更新提示
     echo "  4) 删除规则 (输入编号)"
     echo -e "\n  0) 返回主菜单" # 添加返回主菜单选项
     read -p "请选择一个操作 [0-4]: " opt
@@ -258,7 +259,7 @@ custom_rule_manager() {
     case $opt in
         1)
             read -p "请输入要允许的 IP 地址或 IP 段: " ip
-            read -p "请输入端口 (留空为所有端口，支持逗号分隔多个端口): " ports # 更新提示
+            read -p "请输入端口 (留空为所有端口，支持空格分隔多个端口): " ports # 更新提示
             read -p "请输入协议 [tcp|udp|both] (默认为 both): " proto
             proto=${proto:-both}
 
@@ -270,7 +271,7 @@ custom_rule_manager() {
             fi
             ;;
         2)
-            read -p "请输入要开放的端口或端口范围 (支持逗号分隔多个端口，例如: 80,443,8000-8005): " ports # 更新提示
+            read -p "请输入要开放的端口或端口范围 (支持空格分隔多个端口，例如: 80 443 8000-8005): " ports # 更新提示
             read -p "请输入协议 [tcp|udp|both] (默认为 both): " proto
             proto=${proto:-both}
             process_ports "$ports" "allow" "$proto" # 调用处理多端口的函数
@@ -282,7 +283,7 @@ custom_rule_manager() {
                 ufw deny from "$target_ip" to any comment "Custom-IP-Deny"
                 echo -e "${GREEN}✅ 来自 [$target_ip] 的所有访问已被封禁。${NC}"
             elif [[ "$block_type" == "port" ]]; then
-                read -p "请输入要封禁的端口或范围 (支持逗号分隔多个端口，例如: 21,23,3389): " target_ports # 更新提示
+                read -p "请输入要封禁的端口或范围 (支持空格分隔多个端口，例如: 21 23 3389): " target_ports # 更新提示
                 read -p "协议类型 [tcp|udp|both] (默认为 both): " proto
                 proto=${proto:-both}
                 process_ports "$target_ports" "deny" "$proto" # 调用处理多端口的函数
@@ -295,7 +296,7 @@ custom_rule_manager() {
             if ! [[ "$rule_num" =~ ^[0-9]+$ ]]; then
                 echo -e "${RED}❌ 错误: 请输入有效的规则编号 (纯数字)。${NC}"
             else
-                read -p "您确定要删除规则【#$rule_num】吗? (y/n): " confirm
+                read -p "您确定要删除规则【#$rule_num}吗? (y/n): " confirm
                 if [[ $confirm =~ ^[Yy]$ ]]; then
                     ufw --force delete "$rule_num"
                     echo -e "${GREEN}✅ 规则 #${rule_num} 已成功删除。${NC}"
@@ -456,7 +457,7 @@ main_menu() {
         echo "  1) 启用防火墙"
         echo "  2) 关闭防火墙"
         echo "  3) 查看详细状态与规则列表"
-        echo "  4) 重置防火墙 (清空所有规则)"
+        echo "  4) 重置防火墙 (清空所有规则)" # 修复：添加了 echo 命令
         
         echo -e "\n${YELLOW}--- 规则与高级功能 ---${NC}"
         echo "  5) 管理防火墙规则 (IP/端口)"
