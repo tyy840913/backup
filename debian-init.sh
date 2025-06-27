@@ -258,30 +258,111 @@ auto_config_ssh() {
     echo "-------------------------------------"
 }
 
-# ================== 6. 禁用防火墙 ===================
-auto_disable_firewall() {
-    echo "6/7 禁用系统防火墙..."
+# ================== 5. 配置防火墙 (开放内网及常用端口) ===================
+auto_configure_firewall() {
+    echo "5/7 配置防火墙 (开放内网及常用端口)..."
 
+    # --- 在此定义需要对外网开放的常用端口 ---
+    # 可根据需要添加, 用空格隔开, 例如: "22 80 443 3306 8888"
+    local COMMON_PORTS="22 80 88 443 5244 5678 9000"
+
+    # --- RFC1918 私有IP地址段 (内网地址) ---
+    local PRIVATE_NETWORKS="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
+
+    # 优先使用 UFW (Ubuntu 默认)
     if command -v ufw &>/dev/null; then
-        ufw --force disable >/dev/null 2>&1
-        echo "✅ UFW已禁用"
+        echo "  - 检测到 UFW, 开始进行配置..."
+        # 重置UFW到初始状态，避免旧规则干扰
+        yes | ufw reset >/dev/null 2>&1
+        
+        # 设定默认策略：允许所有出站，拒绝所有入站
+        ufw default allow outgoing
+        ufw default deny incoming
+
+        # 允许内网IP段无限制访问
+        echo "    - 正在开放内网访问..."
+        for net in $PRIVATE_NETWORKS; do
+            ufw allow from "$net" to any comment 'Allow Internal LAN'
+        done
+
+        # 开放外网常用端口
+        echo "    - 正在开放外网常用端口: $COMMON_PORTS"
+        for port in $COMMON_PORTS; do
+            ufw allow "$port/tcp" comment 'Allow Common Services'
+        done
+        
+        # 启用防火墙
+        ufw --force enable
+        echo "✅ UFW 配置完成并已启用。"
+        echo "-------------------------------------"
+        return
     fi
 
-    if systemctl list-unit-files | grep -q firewalld.service; then
-        systemctl stop firewalld.service
-        systemctl disable firewalld.service
-        echo "✅ firewalld已禁用"
+    # 其次尝试 firewalld
+    if systemctl is-active --quiet firewalld; then
+        echo "  - 检测到 firewalld, 开始进行配置..."
+        
+        # 允许内网IP段无限制访问 (添加到trusted区域)
+        echo "    - 正在开放内网访问..."
+        for net in $PRIVATE_NETWORKS; do
+            firewall-cmd --permanent --zone=trusted --add-source="$net" >/dev/null
+        done
+
+        # 开放外网常用端口 (添加到public区域)
+        echo "    - 正在开放外网常用端口: $COMMON_PORTS"
+        for port in $COMMON_PORTS; do
+            firewall-cmd --permanent --zone=public --add-port="$port/tcp" >/dev/null
+        done
+
+        # 重新加载防火墙规则使其生效
+        firewall-cmd --reload
+        echo "✅ firewalld 配置完成。"
+        echo "-------------------------------------"
+        return
     fi
 
+    # 最后使用 iptables 作为备用方案
     if command -v iptables &>/dev/null; then
+        echo "  - 未检测到 UFW/firewalld, 使用 iptables 作为备用方案..."
+        # 确保 iptables-persistent 包存在, 用于保存规则
+        ensure_command "netfilter-persistent" "iptables-persistent" >/dev/null
+
+        # 清空现有规则
         iptables -F
         iptables -X
-        iptables -P INPUT ACCEPT
-        iptables -P FORWARD ACCEPT
+        iptables -Z
+
+        # 设定默认策略：允许出站，拒绝入站和转发
+        iptables -P INPUT DROP
+        iptables -P FORWARD DROP
         iptables -P OUTPUT ACCEPT
-        echo "✅ iptables规则已清空"
+
+        # 允许回环接口
+        iptables -A INPUT -i lo -j ACCEPT
+        # 允许已建立的、相关的连接（非常重要，否则出站连接的回包也会被拒绝）
+        iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+        # 允许内网IP段
+        echo "    - 正在开放内网访问..."
+        for net in $PRIVATE_NETWORKS; do
+            iptables -A INPUT -s "$net" -j ACCEPT
+        done
+
+        # 允许外网常用端口
+        echo "    - 正在开放外网常用端口: $COMMON_PORTS"
+        for port in $COMMON_PORTS; do
+            iptables -A INPUT -p tcp --dport "$port" -j ACCEPT
+        done
+        
+        # 保存规则
+        echo "  - 正在持久化 iptables 规则..."
+        netfilter-persistent save
+        echo "✅ iptables 规则已配置并持久化。"
+        echo "-------------------------------------"
+        return
     fi
 
+    echo "⚠️ 未找到可用的防火墙管理工具 (UFW, firewalld, iptables), 跳过防火墙配置。"
     echo "-------------------------------------"
 }
 
@@ -594,7 +675,7 @@ main() {
     auto_install_dependencies
     auto_set_timezone
     auto_config_ssh
-    auto_disable_firewall
+    auto_configure_firewall
 
     read -p "是否需要进行交互式静态IP设置? (y/N): " setup_ip
     if [[ "$setup_ip" =~ ^[yY]([eE][sS])?$ ]]; then
