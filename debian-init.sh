@@ -287,17 +287,18 @@ auto_configure_firewall() {
         fi
 
         # 2. 检查默认策略是否符合预期 (incoming deny, outgoing allow)
-        # 匹配 "deny (incoming)" 和 "allow (outgoing)"，即使它们可能在同一行或者后面跟着其他描述
-        if ! (echo "$ufw_status_output" | grep -qE "deny \(incoming\)" && \
-              echo "$ufw_status_output" | grep -qE "allow \(outgoing\)"); then
-           ufw_needs_reconfiguration=true
+        # 精确提取默认策略部分进行比较，而不是依赖grep -qE的模糊匹配
+        local current_incoming_policy=$(echo "$ufw_status_output" | awk -F'Default: ' '/^Default:/ {split($2, policies, ","); for(i=1; i<=length(policies); i++) { if (policies[i] ~ /incoming/) print policies[i] }}' | awk '{print $1}')
+        local current_outgoing_policy=$(echo "$ufw_status_output" | awk -F'Default: ' '/^Default:/ {split($2, policies, ","); for(i=1; i<=length(policies); i++) { if (policies[i] ~ /outgoing/) print policies[i] }}' | awk '{print $1}')
+
+        if [[ "$current_incoming_policy" != "deny" ]] || [[ "$current_outgoing_policy" != "allow" ]]; then
+            ufw_needs_reconfiguration=true
         fi
 
         # 3. 检查内网规则
         # 如果已经确定需要重新配置，则跳过详细规则检查
         if ! "$ufw_needs_reconfiguration"; then
             for net in $PRIVATE_NETWORKS; do
-                # 检查是否存在包含 'ALLOW IN'，来源为特定网络，且包含指定注释的规则 (匹配更宽松)
                 if ! echo "$ufw_status_output" | grep -qiE "ALLOW\s*IN\s*.*From\s*$net\s*#\s*Allow-Internal-LAN"; then
                     ufw_needs_reconfiguration=true
                     break # 找到一个不匹配就标记并跳出
@@ -308,7 +309,6 @@ auto_configure_firewall() {
         # 4. 检查常用端口规则 (仅在内网规则检查通过后继续)
         if ! "$ufw_needs_reconfiguration"; then
             for port in $COMMON_PORTS; do
-                # 检查是否存在包含 'ALLOW IN'，目标为特定端口，且包含指定注释的规则 (匹配更宽松)
                 if ! echo "$ufw_status_output" | grep -qiE "ALLOW\s*IN\s*$port/tcp\s*.*#\s*Allow-Common-Services"; then
                     ufw_needs_reconfiguration=true
                     break # 找到一个不匹配就标记并跳出
@@ -340,7 +340,7 @@ auto_configure_firewall() {
         return
     fi
     
-    # firewalld 和 iptables 部分保持不变，因其检查逻辑和行为已相对稳定
+    # firewalld 部分（保持不变，因其检查逻辑和行为已相对稳定）
     if systemctl is-active --quiet firewalld; then
         local firewalld_needs_reconfiguration=false
         if ! firewall-cmd --query-source="10.0.0.0/8" --zone=trusted >/dev/null 2>&1 || \
@@ -361,6 +361,7 @@ auto_configure_firewall() {
         return
     fi
 
+    # iptables 部分（保持不变，因为它通常直接重置）
     if command -v iptables &>/dev/null; then
         echo "  - 未检测到 UFW/firewalld, 使用 iptables 作为备用方案..."
         ensure_command "netfilter-persistent" "iptables-persistent" >/dev/null
