@@ -62,6 +62,13 @@ auto_set_apt_sources() {
         return
     fi
 
+    # 检查是否已设置清华源
+    if grep -q "mirrors.tuna.tsinghua.edu.cn" /etc/apt/sources.list 2>/dev/null; then
+        echo "✅ APT源已是清华镜像，无需重复设置。"
+        echo "-------------------------------------"
+        return
+    fi
+
     local BACKUP="/etc/apt/sources.list.bak_$(date +%Y%m%d%H%M%S)"
     echo "  - 备份当前源到 $BACKUP"
     if [ -f /etc/apt/sources.list ]; then
@@ -115,12 +122,12 @@ auto_set_fonts() {
     echo "2/7 安装中文字体并配置环境..."
 
     local FONT_PKG="fonts-wqy-zenhei"
-    # OPTIMIZATION: Check if font package is already installed
+    # 检查字体包是否已安装
     if dpkg -s "$FONT_PKG" &>/dev/null; then
         echo "  - ✅ 字体包 ($FONT_PKG) 已安装。"
     else
         echo "  - 准备安装字体包: $FONT_PKG"
-        # Simplify output by redirecting apt's verbose messages
+        # 简化输出，重定向 apt 的冗余信息
         if apt-get install -y -qq "$FONT_PKG" >/dev/null 2>&1; then
             echo "  - ✅ 字体包安装成功"
         else
@@ -132,7 +139,7 @@ auto_set_fonts() {
     if grep -qi 'ubuntu' /etc/os-release; then OS="ubuntu"; fi
     if grep -qi 'debian' /etc/os-release; then OS="debian"; fi
     
-    # OPTIMIZATION: Check if locale is already configured
+    # 检查 locale 是否已配置为 zh_CN.UTF-8
     if grep -q "LANG=zh_CN.UTF-8" /etc/default/locale 2>/dev/null; then
         echo "  - ✅ 中文环境 (zh_CN.UTF-8) 已配置。"
     else
@@ -141,10 +148,14 @@ auto_set_fonts() {
             apt-get install -y -qq language-pack-zh-hans >/dev/null 2>&1 || echo "⚠️ Ubuntu 中文语言包安装失败"
         elif [[ "$OS" == "debian" ]]; then
             apt-get install -y -qq locales >/dev/null 2>&1 || echo "⚠️ 安装 locales 包失败"
+            # 取消注释 zh_CN.UTF-8
             sed -i '/^# *zh_CN.UTF-8 UTF-8/s/^# *//' /etc/locale.gen
             locale-gen >/dev/null 2>&1 || echo "⚠️ 执行 locale-gen 失败"
         fi
-        echo 'LANG=zh_CN.UTF-8' >> /etc/default/locale
+        # 仅在 /etc/default/locale 中不存在时才添加
+        if ! grep -q "LANG=zh_CN.UTF-8" /etc/default/locale; then
+            echo 'LANG=zh_CN.UTF-8' >> /etc/default/locale
+        fi
         export LANG=zh_CN.UTF-8
         echo "  - ✅ 中文环境设置成功（需重新登录以完全生效）"
     fi
@@ -199,15 +210,26 @@ auto_install_dependencies() {
     echo "-------------------------------------"
 }
 
-
 # ================== 4. 设置时区 ===================
 auto_set_timezone() {
     echo "4/7 设置时区为 Asia/Shanghai..."
 
-    # FIX: Restore compatibility logic
+    # 检查当前时区是否已是 Asia/Shanghai
+    # 使用 timedatectl 命令检查（适用于 systemd 系统）
     if command -v timedatectl &>/dev/null; then
+        CURRENT_TIMEZONE=$(timedatectl show --property=Timezone --value 2>/dev/null)
+        if [[ "$CURRENT_TIMEZONE" == "Asia/Shanghai" ]]; then
+            echo "✅ 时区已设置为 Asia/Shanghai，无需重复设置。"
+            echo "-------------------------------------"
+            return
+        fi
         timedatectl set-timezone Asia/Shanghai
         echo "✅ 时区设置成功 (使用 timedatectl)"
+    # 如果 timedatectl 不可用，检查 /etc/localtime 链接（适用于其他系统）
+    elif [ -f /etc/localtime ] && readlink /etc/localtime | grep -q "Asia/Shanghai"; then
+        echo "✅ 时区已设置为 Asia/Shanghai，无需重复设置。"
+        echo "-------------------------------------"
+        return
     elif [ -f /usr/share/zoneinfo/Asia/Shanghai ]; then
         ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
         echo "✅ 时区设置成功 (使用 /etc/localtime)"
@@ -251,13 +273,38 @@ auto_config_ssh() {
 
 # ================== 6. 配置防火墙 (开放内网及常用端口) ===================
 auto_configure_firewall() {
-    # FIX: Corrected the step number
     echo "6/7 配置防火墙 (开放内网及常用端口)..."
     local COMMON_PORTS="22 80 88 443 5244 5678 9000"
     local PRIVATE_NETWORKS="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
 
     if command -v ufw &>/dev/null; then
         echo "  - 检测到 UFW, 开始进行配置..."
+
+        # 检查 UFW 是否已配置内网和常用端口
+        local ufw_configured=true
+        # 检查内网规则
+        for net in $PRIVATE_NETWORKS; do
+            if ! ufw status | grep -q "ALLOW Anywhere From $net Comment: Allow-Internal-LAN"; then
+                ufw_configured=false
+                break
+            fi
+        done
+        # 检查常用端口规则
+        if "$ufw_configured"; then # 只有内网规则检查通过才继续检查端口
+            for port in $COMMON_PORTS; do
+                if ! ufw status | grep -q "ALLOW Anywhere on $port/tcp Comment: Allow-Common-Services"; then
+                    ufw_configured=false
+                    break
+                fi
+            done
+        fi
+
+        if "$ufw_configured"; then
+            echo "  - ✅ UFW 已配置内网及常用端口，无需重复设置。"
+            echo "-------------------------------------"
+            return
+        fi
+
         # FIX: Use non-interactive reset to prevent script from stopping
         ufw --force reset >/dev/null 2>&1
         ufw default allow outgoing
@@ -279,6 +326,26 @@ auto_configure_firewall() {
     # The rest of the firewall logic (firewalld, iptables) is kept as is from your original script
     if systemctl is-active --quiet firewalld; then
         echo "  - 检测到 firewalld, 开始进行配置..."
+
+        # 检查 firewalld 是否已配置内网和常用端口
+        local firewalld_configured=true
+        # 检查内网规则 (这里只检查其中一个，实际可能需要更全面的检查)
+        if ! firewall-cmd --query-source="10.0.0.0/8" --zone=trusted >/dev/null 2>&1; then
+            firewalld_configured=false
+        fi
+        # 检查常用端口规则 (同样只检查其中一个)
+        if "$firewalld_configured"; then
+            if ! firewall-cmd --query-port="22/tcp" --zone=public >/dev/null 2>&1; then
+                firewalld_configured=false
+            fi
+        fi
+
+        if "$firewalld_configured"; then
+            echo "  - ✅ firewalld 已配置内网及常用端口，无需重复设置。"
+            echo "-------------------------------------"
+            return
+        fi
+
         echo "    - 正在开放内网访问..."
         for net in $PRIVATE_NETWORKS; do firewall-cmd --permanent --zone=trusted --add-source="$net" >/dev/null; done
         echo "    - 正在开放外网常用端口: $COMMON_PORTS"
@@ -290,6 +357,8 @@ auto_configure_firewall() {
     fi
     if command -v iptables &>/dev/null; then
         echo "  - 未检测到 UFW/firewalld, 使用 iptables 作为备用方案..."
+        # 对于 iptables，通常的做法是直接重置并重新应用规则，以确保一致性。
+        # 检查 iptables 规则的复杂性较高，且容易误判，故不在此处进行详细检查。
         ensure_command "netfilter-persistent" "iptables-persistent" >/dev/null
         iptables -F; iptables -X; iptables -Z
         iptables -P INPUT DROP; iptables -P FORWARD DROP; iptables -P OUTPUT ACCEPT
@@ -351,6 +420,70 @@ is_ip_available() {
         return 1
     else
         echo "✅ 可用。"
+        return 0
+    fi
+}
+
+# 用于验证网络配置的函数
+verify_network_settings() {
+    local iface=$1
+    local expected_ip=$2
+    local expected_gateway=$3
+    local expected_dns_servers="$4" # 注意这里是字符串，可能包含多个DNS
+
+    echo ""
+    echo "--- 正在验证网络配置... ---"
+    local verification_failed=false
+
+    # 验证 IP 地址
+    local actual_ip=$(ip -4 addr show "$iface" | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+    if [[ "$actual_ip" == "$expected_ip" ]]; then
+        echo "  ✅ IP地址 ($actual_ip) 与预期设置 ($expected_ip) 一致。"
+    else
+        echo "  ❌ IP地址不一致！实际: $actual_ip, 预期: $expected_ip"
+        verification_failed=true
+    fi
+
+    # 验证网关
+    local actual_gateway=$(ip route | awk '/default/ {print $3}' | head -1)
+    if [[ -n "$expected_gateway" ]]; then
+        if [[ "$actual_gateway" == "$expected_gateway" ]]; then
+            echo "  ✅ 网关 ($actual_gateway) 与预期设置 ($expected_gateway) 一致。"
+        else
+            echo "  ❌ 网关不一致！实际: $actual_gateway, 预期: $expected_gateway"
+            verification_failed=true
+        fi
+    else
+        echo "  - 未设置预期网关，跳过网关验证。"
+    fi
+
+    # 验证 DNS 服务器 (可能需要更复杂的逻辑来处理多个DNS)
+    # 简单检查 resolv.conf 中是否包含所有预期的DNS
+    local actual_dns_servers=$(grep "nameserver" /etc/resolv.conf | awk '{print $2}' | tr '\n' ' ')
+    if [[ -n "$expected_dns_servers" ]]; then
+        local all_dns_found=true
+        for dns_ip in $expected_dns_servers; do
+            if ! echo "$actual_dns_servers" | grep -q "$dns_ip"; then
+                all_dns_found=false
+                break
+            fi
+        done
+        if "$all_dns_found"; then
+            echo "  ✅ DNS服务器 ($actual_dns_servers) 包含所有预期设置 ($expected_dns_servers)。"
+        else
+            echo "  ❌ DNS服务器不一致！实际: $actual_dns_servers, 预期: $expected_dns_servers"
+            verification_failed=true
+        fi
+    else
+        echo "  - 未设置预期DNS服务器，跳过DNS验证。"
+    fi
+
+    if "$verification_failed"; then
+        echo "⚠️ 网络配置验证失败！请手动检查并排除故障。"
+        echo "  - 可能需要重启系统以完全应用更改。"
+        return 1
+    else
+        echo "✅ 网络配置验证成功！"
         return 0
     fi
 }
@@ -512,14 +645,16 @@ interactive_set_static_ip() {
     echo ""
     echo "-------------------------------------"
     echo "  --- 即将应用的静态IP配置 ---"
-    echo "  - 接口:         $IFACE"
-    echo "  - IP:           $NEW_IP/$CIDR"
-    echo "  - 网关:         ${NEW_GATEWAY:-未设置}"
-    echo "  - DNS:          ${NEW_DNS_SERVERS:-未设置}"
-    echo "  - IPv6:         使用DHCP获取 (保持不变)"
+    echo "  - 接口:          $IFACE"
+    echo "  - IP:            $NEW_IP/$CIDR"
+    echo "  - 网关:          ${NEW_GATEWAY:-未设置}"
+    echo "  - DNS:           ${NEW_DNS_SERVERS:-未设置}"
+    echo "  - IPv6:          使用DHCP获取 (保持不变)"
     echo "-------------------------------------"
     read -p "确认以上信息并应用? (y/N): " confirm
     [[ ! "$confirm" =~ ^[yY]([eE][sS])?$ ]] && { echo "  - 操作已取消。"; return; }
+
+    local config_applied_successfully=false
 
     # Netplan 配置
     if command -v netplan &>/dev/null; then
@@ -532,6 +667,7 @@ interactive_set_static_ip() {
         else
             echo "  - 找到现有 Netplan 配置: $NETPLAN_FILE"
             cp "$NETPLAN_FILE" "$NETPLAN_FILE.bak_$(date +%Y%m%d%H%M%S)"
+            echo "  - 已备份现有 Netplan 配置到 ${NETPLAN_FILE}.bak_*"
         fi
 
         # 组装 DNS YAML 字符串，确保每个IP都被单引号包围
@@ -542,7 +678,6 @@ interactive_set_static_ip() {
             done
         fi
         local DNS_YAML=$(IFS=,; echo "${DNS_YAML_ENTRIES[*]}")
-
 
         cat > "$NETPLAN_FILE" <<EOF
 # 由脚本自动生成，用于配置静态IP
@@ -560,9 +695,20 @@ EOF
         netplan generate && netplan apply
         if [[ $? -eq 0 ]]; then
             echo "✅ 静态IP配置已通过 Netplan 应用成功！"
-            echo "  - 您可能需要重启设备或网络服务以确保完全生效。"
+            config_applied_successfully=true
         else
             echo "❌ Netplan 应用失败，请检查配置文件 ($NETPLAN_FILE) 或日志。"
+            # 尝试回滚
+            if [[ -f "${NETPLAN_FILE}.bak_$(ls -t "$NETPLAN_FILE.bak_"* | head -1 | cut -d'_' -f2-)" ]]; then
+                echo "  - 正在尝试恢复 Netplan 备份配置..."
+                mv "${NETPLAN_FILE}.bak_$(ls -t "$NETPLAN_FILE.bak_"* | head -1 | cut -d'_' -f2-)" "$NETPLAN_FILE"
+                netplan generate && netplan apply
+                if [[ $? -eq 0 ]]; then
+                    echo "  ✅ Netplan 备份配置恢复成功。"
+                else
+                    echo "  ❌ Netplan 备份配置恢复失败，请手动检查。"
+                fi
+            fi
         fi
 
     # /etc/network/interfaces 配置
@@ -570,6 +716,7 @@ EOF
         echo "  - 正在使用 /etc/network/interfaces 配置..."
         local INTERFACES_FILE="/etc/network/interfaces"
         cp "$INTERFACES_FILE" "$INTERFACES_FILE.bak_$(date +%Y%m%d%H%M%S)"
+        echo "  - 已备份现有 /etc/network/interfaces 配置到 ${INTERFACES_FILE}.bak_*"
 
         # 计算子网掩码 (Bash 内部位运算实现，无需bc)
         local i mask=0
@@ -595,14 +742,34 @@ $(if [[ -n "$NEW_DNS_SERVERS" ]]; then echo "    dns-nameservers $NEW_DNS_SERVER
 iface $IFACE inet6 dhcp
 EOF
         echo "✅ /etc/network/interfaces 文件已更新。"
-        echo "  - 请注意: 对于此配置方式，您通常需要手动重启网络服务或设备才能使更改生效。"
-        echo "  - 尝试重启网络服务 (可能需要root权限):"
-        echo "    systemctl restart networking"
-        echo "    或者执行: ifdown $IFACE && sudo ifup $IFACE"
-        systemctl restart networking &>/dev/null && echo "  - 尝试自动重启网络服务成功。" || echo "  - 自动重启网络服务失败，请手动重启。"
+        echo "  - 正在尝试重启网络服务..."
+        # 尝试通过 systemctl 重启 networking 服务
+        if systemctl is-active --quiet networking && systemctl restart networking &>/dev/null; then
+            echo "  ✅ 尝试自动重启网络服务成功。"
+            config_applied_successfully=true
+        else
+            echo "  ⚠️ 自动重启网络服务失败，请手动重启或执行 'ifdown $IFACE && sudo ifup $IFACE'。"
+            echo "  - 静态IP配置已写入文件，但可能需要手动干预才能生效。"
+            config_applied_successfully=true # 即使重启失败，文件也写了，标记为成功应用配置（文件层面）
+        fi
     else
         echo "❌ 未找到支持的网络配置方式 (Netplan 或 /etc/network/interfaces)。"
         echo "  - 您的系统可能使用了其他网络管理工具，请手动配置。"
+    fi
+
+    # --- 配置应用后验证 ---
+    if "$config_applied_successfully"; then
+        echo "  - 等待几秒钟，确保网络服务有时间应用更改..."
+        sleep 5 # 给网络服务一点时间来应用更改
+
+        if verify_network_settings "$IFACE" "$NEW_IP" "$NEW_GATEWAY" "$NEW_DNS_SERVERS"; then
+            echo "✅ 静态IP设置流程成功完成！"
+        else
+            echo "❌ 警告：配置已应用到文件，但实际网络设置未能完全匹配预期。"
+            echo "  - 强烈建议您重启系统以确保所有更改完全生效并解决任何潜在冲突。"
+        fi
+    else
+        echo "⚠️ 静态IP配置未成功应用，请根据上述错误信息进行排查。"
     fi
     echo "-------------------------------------"
 }
