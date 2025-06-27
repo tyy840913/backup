@@ -597,8 +597,8 @@ EOF
         echo "✅ /etc/network/interfaces 文件已更新。"
         echo "  - 请注意: 对于此配置方式，您通常需要手动重启网络服务或设备才能使更改生效。"
         echo "  - 尝试重启网络服务 (可能需要root权限):"
-        echo "    sudo systemctl restart networking"
-        echo "    或者执行: sudo ifdown $IFACE && sudo ifup $IFACE"
+        echo "    systemctl restart networking"
+        echo "    或者执行: ifdown $IFACE && sudo ifup $IFACE"
         systemctl restart networking &>/dev/null && echo "  - 尝试自动重启网络服务成功。" || echo "  - 自动重启网络服务失败，请手动重启。"
     else
         echo "❌ 未找到支持的网络配置方式 (Netplan 或 /etc/network/interfaces)。"
