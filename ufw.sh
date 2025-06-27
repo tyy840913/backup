@@ -1,7 +1,8 @@
 #!/bin/bash
 # set -e：当命令返回非零状态时，立即退出脚本
 # set -o pipefail：如果管道中任一命令失败，整个管道失败
-set -e
+# 移除 set -e 来避免在用户输入 Q 返回时，因为某些命令的非零退出状态导致脚本意外终止。
+# 在用户交互式脚本中，这种严格模式有时会带来不便。
 set -o pipefail
 
 # ===============================================================
@@ -10,7 +11,7 @@ set -o pipefail
 #   适用系统：Debian / Ubuntu
 #
 #   作者：Gemini AI & User Collaboration
-#   最终版本：2025.07.03 - 再次修正 Q 键退出问题
+#   最终版本：2025.07.03 - 彻底修正 Q 键退出问题
 #
 # ===============================================================
 
@@ -63,10 +64,12 @@ startup_check_and_apply() {
         local port=${common_ports[$i]}
         local name=${port_names[$i]}
         # 恢复为更精确的 grep 判断，确保只匹配 ALLOW 规则
-        if ufw status | grep -qw "$port" | grep -q 'ALLOW'; then
+        # 这里使用 ufw status --status-only 来避免 verbose 输出，提高匹配效率和准确性
+        if ufw status | grep -qE "ALLOW.*${port_names[$i]}"; then # 这里匹配注释更通用
             messages+="  ${YELLOW}✓${NC} 常用端口规则已存在: $name ($port)\n"
         else
-            ufw allow "$port" comment "Auto-Setup-$name"
+            # 使用 set +e 和 set -e 来局部控制，避免 UFW 命令失败导致脚本退出
+            ( set +e; ufw allow "$port" comment "Auto-Setup-$name" ) || true
             messages+="  ${GREEN}✓${NC} 已自动开放常用端口: $name ($port)\n"
             changes_made=true
         fi
@@ -78,7 +81,7 @@ startup_check_and_apply() {
         if ufw status | grep -qE "ALLOW.*from $lan"; then
             messages+="  ${YELLOW}✓${NC} 内网访问规则已存在: $lan\n"
         else
-            ufw allow from "$lan" to any comment "Auto-Setup-LAN"
+            ( set +e; ufw allow from "$lan" to any comment "Auto-Setup-LAN" ) || true
             messages+="  ${GREEN}✓${NC} 已自动开放内网访问: $lan\n"
             changes_made=true
         fi
@@ -149,50 +152,45 @@ process_ports() {
         if [[ "$action" == "allow" ]]; then
             if [ -n "$ip" ]; then # 针对 IP + 端口的允许规则
                 if [[ "$proto" =~ ^(tcp|both)$ ]]; then
-                    if ufw allow proto tcp from "$ip" to any port "$p" comment "自定义-IP-端口放行"; then
+                    # 局部禁用 set -e 防止 UFW 命令失败导致脚本退出
+                    ( set +e; ufw allow proto tcp from "$ip" to any port "$p" comment "自定义-IP-端口放行" ) || current_success=false
+                    if [ "$current_success" = true ]; then
                         success_msg+="TCP: 已允许来自 [${ip}] 访问端口 [${p}]。\n"
-                    else
-                        current_success=false
                     fi
                 fi
                 if [[ "$proto" =~ ^(udp|both)$ ]]; then
-                    if ufw allow proto udp from "$ip" to any port "$p" comment "自定义-IP-端口放行"; then
+                    ( set +e; ufw allow proto udp from "$ip" to any port "$p" comment "自定义-IP-端口放行" ) || current_success=false
+                    if [ "$current_success" = true ]; then
                         success_msg+="UDP: 已允许来自 [${ip}] 访问端口 [${p}]。\n"
-                    else
-                        current_success=false
                     fi
                 fi
             else # 针对只开放端口的允许规则
                 if [[ "$proto" =~ ^(tcp|both)$ ]]; then
-                    if ufw allow "$p"/tcp comment "自定义-TCP-端口放行"; then
+                    ( set +e; ufw allow "$p"/tcp comment "自定义-TCP-端口放行" ) || current_success=false
+                    if [ "$current_success" = true ]; then
                         success_msg+="TCP 端口 [${p}] 已开放。\n"
-                    else
-                        current_success=false
                     fi
                 fi
                 if [[ "$proto" =~ ^(udp|both)$ ]]; then
-                    if ufw allow "$p"/udp comment "自定义-UDP-端口放行"; then
+                    ( set +e; ufw allow "$p"/udp comment "自定义-UDP-端口放行" ) || current_success=false
+                    if [ "$current_success" = true ]; then
                         success_msg+="UDP 端口 [${p}] 已开放。\n"
-                    else
-                        current_success=false
                     fi
                 fi
             fi
         elif [[ "$action" == "deny" ]]; then
             if [[ "$proto" =~ ^(tcp|both)$ ]]; then
-                if ufw deny "$p"/tcp comment "自定义-端口封禁"; then
+                ( set +e; ufw deny "$p"/tcp comment "自定义-端口封禁" ) || current_success=false
+                if [ "$current_success" = true ]; then
                     success_msg+="TCP 端口 [${p}] 已封禁。\n"
-                else
-                    current_success=false
                 fi
             fi
             if [[ "$proto" =~ ^(udp|both)$ ]]; then
-                if ufw deny "$p"/udp comment "自定义-端口封禁"; then
+                ( set +e; ufw deny "$p"/udp comment "自定义-端口封禁" ) || current_success=false
+                if [ "$current_success" = true ]; then
                     success_msg+="UDP 端口 [${p}] 已封禁。\n"
-                else
-                    current_success=false
                 fi
-                fi
+            fi
         fi
 
         if [ "$current_success" = true ]; then
@@ -238,9 +236,9 @@ enable_firewall() {
         if [[ $confirm =~ ^[Yy]$ ]]; then
             if ! ufw status | grep -q '22/tcp.*ALLOW'; then
                 echo -e "${YELLOW}⚠️ 为防止失联，将自动放行 SSH (22/tcp) 端口...${NC}"
-                ufw allow 22/tcp comment "紧急-SSH-启用"
+                ( set +e; ufw allow 22/tcp comment "紧急-SSH-启用" ) || true # 局部禁用 set -e
             fi
-            ufw enable
+            ( set +e; ufw enable ) # 局部禁用 set -e
             echo -e "${GREEN}✅ 防火墙已成功启用。${NC}"
         else
             echo -e "${RED}❌ 操作已取消。${NC}"
@@ -255,7 +253,7 @@ disable_firewall() {
     else
         read -p "警告：关闭防火墙会使服务器暴露在风险中。您确定要关闭吗? (y/n): " confirm
         if [[ $confirm =~ ^[Yy]$ ]]; then
-            ufw disable
+            ( set +e; ufw disable ) # 局部禁用 set -e
             echo -e "${GREEN}✅ 防火墙已成功关闭。${NC}"
         else
             echo -e "${RED}❌ 操作已取消。${NC}"
@@ -280,29 +278,26 @@ custom_rule_manager() {
         
         case $opt in
             1) # 允许特定 IP/IP段 访问
-                local ip=""
+                local ip_to_allow=""
                 while true; do
-                    if ! prompt_for_input "请输入要允许的 IP 地址或 IP 段" ip; then 
-                        # 用户输入 Q，跳出当前输入循环，并继续到 custom_rule_manager 的下一次迭代
-                        break 
+                    if ! prompt_for_input "请输入要允许的 IP 地址或 IP 段" ip_to_allow; then 
+                        break # 用户输入 Q，跳出当前 while true 循环
                     fi
-                    if [ -n "$ip" ]; then break; fi
+                    if [ -n "$ip_to_allow" ]; then break; fi # 有效输入，跳出循环
                     echo -e "${RED}⚠️ IP 地址不能为空，请重新输入。${NC}"
                 done
-                if [ -z "$ip" ]; then continue; fi # 如果 ip 为空 (用户按 Q)，则跳过当前 case
+                if [ -z "$ip_to_allow" ]; then continue; fi # 如果为空说明用户按 Q 返回了，跳到外层循环
 
-                local ports=""
-                if ! prompt_for_input "请输入端口 (留空为所有端口，支持空格分隔多个端口)" ports; then 
-                    # 用户输入 Q，跳出当前输入循环，并继续到 custom_rule_manager 的下一次迭代
-                    continue 
+                local ports_to_open=""
+                if ! prompt_for_input "请输入端口 (留空为所有端口，支持空格分隔多个端口)" ports_to_open; then 
+                    continue # 用户输入 Q，跳到外层循环
                 fi
 
                 local proto_input=""
                 local proto="both" # Default protocol
                 while true; do
                     if ! prompt_for_input "请输入协议 [tcp|udp|both] (默认为 both)" proto_input; then 
-                        # 用户输入 Q，跳出当前输入循环，并继续到 custom_rule_manager 的下一次迭代
-                        continue 
+                        break # 用户输入 Q，跳出当前 while true 循环
                     fi
                     if [ -z "$proto_input" ]; then
                         proto="both"
@@ -314,56 +309,54 @@ custom_rule_manager() {
                         echo -e "${RED}⚠️ 无效的协议类型，请重新输入。${NC}"
                     fi
                 done
+                if [ -z "$proto_input" ] && ! [[ "$proto" =~ ^(tcp|udp|both)$ ]]; then continue; fi # 如果 proto_input 为空且 proto 未被设置 (用户按 Q)，则跳到外层循环
                 
-                if [ -z "$ports" ]; then
-                    ufw allow from "$ip" comment "自定义-IP-放行"
-                    echo -e "${GREEN}✅ 已添加规则：允许来自 [${ip}] 的所有协议访问。${NC}"
+                if [ -z "$ports_to_open" ]; then
+                    ( set +e; ufw allow from "$ip_to_allow" comment "自定义-IP-放行" ) || true # 局部禁用 set -e
+                    echo -e "${GREEN}✅ 已添加规则：允许来自 [${ip_to_allow}] 的所有协议访问。${NC}"
                 else
-                    process_ports "$ports" "allow" "$proto" "$ip"
+                    process_ports "$ports_to_open" "allow" "$proto" "$ip_to_allow"
                 fi
                 pause
                 ;;
             2) # 开放端口
-                local ports=""
+                local ports_to_open_all=""
                 while true; do
-                    if ! prompt_for_input "请输入要开放的端口或端口范围 (支持空格分隔多个端口，例如: 80 443 8000-8005)" ports; then 
-                        # 用户输入 Q，跳出当前输入循环，并继续到 custom_rule_manager 的下一次迭代
-                        break 
+                    if ! prompt_for_input "请输入要开放的端口或端口范围 (支持空格分隔多个端口，例如: 80 443 8000-8005)" ports_to_open_all; then 
+                        break # 用户输入 Q，跳出当前 while true 循环
                     fi
-                    if [ -n "$ports" ]; then break; fi
+                    if [ -n "$ports_to_open_all" ]; then break; fi
                     echo -e "${RED}⚠️ 端口不能为空，请重新输入。${NC}"
                 done
-                if [ -z "$ports" ]; then continue; fi # 如果 ports 为空 (用户按 Q)，则跳过当前 case
+                if [ -z "$ports_to_open_all" ]; then continue; fi # 如果为空说明用户按 Q 返回了，跳到外层循环
 
-                local proto_input=""
-                local proto="both"
+                local proto_input_all=""
+                local proto_all="both"
                 while true; do
-                    if ! prompt_for_input "请输入协议 [tcp|udp|both] (默认为 both)" proto_input; then 
-                        # 用户输入 Q，跳出当前输入循环，并继续到 custom_rule_manager 的下一次迭代
-                        continue 
+                    if ! prompt_for_input "请输入协议 [tcp|udp|both] (默认为 both)" proto_input_all; then 
+                        break # 用户输入 Q，跳出当前 while true 循环
                     fi
-                    if [ -z "$proto_input" ]; then
-                        proto="both"
+                    if [ -z "$proto_input_all" ]; then
+                        proto_all="both"
                         break
-                    elif [[ "$proto_input" =~ ^(tcp|udp|both)$ ]]; then
-                        proto="$proto_input"
+                    elif [[ "$proto_input_all" =~ ^(tcp|udp|both)$ ]]; then
+                        proto_all="$proto_input_all"
                         break
                     else
                         echo -e "${RED}⚠️ 无效的协议类型，请重新输入。${NC}"
                     fi
                 done
+                if [ -z "$proto_input_all" ] && ! [[ "$proto_all" =~ ^(tcp|udp|both)$ ]]; then continue; fi # 如果 proto_input_all 为空且 proto_all 未被设置 (用户按 Q)，则跳到外层循环
 
-                process_ports "$ports" "allow" "$proto"
+                process_ports "$ports_to_open_all" "allow" "$proto_all"
                 pause
                 ;;
             3) # 封禁/拒绝 IP 或 端口
                 local block_type=""
                 while true; do
                     if ! prompt_for_input "您想封禁 IP 还是端口? [ip/port]" block_type; then 
-                        # 用户输入 Q，跳出当前输入循环，并继续到 custom_rule_manager 的下一次迭代
-                        break 
+                        break # 用户输入 Q，跳出当前 while true 循环
                     fi
-
                     block_type=$(echo "$block_type" | tr '[:upper:]' '[:lower:]') # 转为小写
                     if [[ "$block_type" == "ip" || "$block_type" == "port" ]]; then
                         break
@@ -371,73 +364,72 @@ custom_rule_manager() {
                         echo -e "${RED}⚠️ 无效的选择，请输入 'ip' 或 'port'。${NC}"
                     fi
                 done
-                if [ -z "$block_type" ]; then continue; fi # 如果 block_type 为空 (用户按 Q)，则跳过当前 case
+                if [ -z "$block_type" ]; then continue; fi # 如果为空说明用户按 Q 返回了，跳到外层循环
 
                 if [[ "$block_type" == "ip" ]]; then
-                    local target_ip=""
+                    local target_ip_block=""
                     while true; do
-                        if ! prompt_for_input "请输入要封禁的 IP 地址" target_ip; then 
-                            # 用户输入 Q，跳出当前输入循环，并继续到 custom_rule_manager 的下一次迭代
-                            continue 2 
+                        if ! prompt_for_input "请输入要封禁的 IP 地址" target_ip_block; then 
+                            break # 用户输入 Q，跳出当前 while true 循环
                         fi
-                        if [ -n "$target_ip" ]; then break; fi
+                        if [ -n "$target_ip_block" ]; then break; fi
                         echo -e "${RED}⚠️ IP 地址不能为空，请重新输入。${NC}"
                     done
-                    if [ -z "$target_ip" ]; then continue; fi # 如果 target_ip 为空 (用户按 Q)，则跳过当前 if
-                    ufw deny from "$target_ip" to any comment "自定义-IP-封禁"
-                    echo -e "${GREEN}✅ 来自 [${target_ip}] 的所有访问已被封禁。${NC}"
+                    if [ -z "$target_ip_block" ]; then continue; fi # 如果为空说明用户按 Q 返回了，跳到外层循环
+                    
+                    ( set +e; ufw deny from "$target_ip_block" to any comment "自定义-IP-封禁" ) || true # 局部禁用 set -e
+                    echo -e "${GREEN}✅ 来自 [${target_ip_block}] 的所有访问已被封禁。${NC}"
                 elif [[ "$block_type" == "port" ]]; then
-                    local target_ports=""
+                    local target_ports_block=""
                     while true; do
-                        if ! prompt_for_input "请输入要封禁的端口或范围 (支持空格分隔多个端口，例如: 21 23 3389)" target_ports; then 
-                            # 用户输入 Q，跳出当前输入循环，并继续到 custom_rule_manager 的下一次迭代
-                            continue 2 
+                        if ! prompt_for_input "请输入要封禁的端口或范围 (支持空格分隔多个端口，例如: 21 23 3389)" target_ports_block; then 
+                            break # 用户输入 Q，跳出当前 while true 循环
                         fi
-                        if [ -n "$target_ports" ]; then break; fi
+                        if [ -n "$target_ports_block" ]; then break; fi
                         echo -e "${RED}⚠️ 端口不能为空，请重新输入。${NC}"
                     done
-                    if [ -z "$target_ports" ]; then continue; fi # 如果 target_ports 为空 (用户按 Q)，则跳过当前 if
+                    if [ -z "$target_ports_block" ]; then continue; fi # 如果为空说明用户按 Q 返回了，跳到外层循环
 
-                    local proto_input=""
-                    local proto="both"
+                    local proto_input_block=""
+                    local proto_block="both"
                     while true; do
-                        if ! prompt_for_input "协议类型 [tcp|udp|both] (默认为 both)" proto_input; then 
-                            # 用户输入 Q，跳出当前输入循环，并继续到 custom_rule_manager 的下一次迭代
-                            continue 3 
+                        if ! prompt_for_input "协议类型 [tcp|udp|both] (默认为 both)" proto_input_block; then 
+                            break # 用户输入 Q，跳出当前 while true 循环
                         fi
-                        if [ -z "$proto_input" ]; then
-                            proto="both"
+                        if [ -z "$proto_input_block" ]; then
+                            proto_block="both"
                             break
-                        elif [[ "$proto_input" =~ ^(tcp|udp|both)$ ]]; then
-                            proto="$proto_input"
+                        elif [[ "$proto_input_block" =~ ^(tcp|udp|both)$ ]]; then
+                            proto_block="$proto_input_block"
                             break
                         else
                             echo -e "${RED}⚠️ 无效的协议类型，请重新输入。${NC}"
                         fi
                     done
-                    process_ports "$target_ports" "deny" "$proto"
+                    if [ -z "$proto_input_block" ] && ! [[ "$proto_block" =~ ^(tcp|udp|both)$ ]]; then continue; fi # 如果 proto_input_block 为空且 proto_block 未被设置 (用户按 Q)，则跳到外层循环
+
+                    process_ports "$target_ports_block" "deny" "$proto_block"
                 fi
                 pause
                 ;;
             4) # 删除规则
-                local rule_num=""
+                local rule_num_delete=""
                 while true; do
-                    if ! prompt_for_input "请输入要删除的规则【编号】" rule_num; then 
-                        # 用户输入 Q，跳出当前输入循环，并继续到 custom_rule_manager 的下一次迭代
-                        continue 2 
+                    if ! prompt_for_input "请输入要删除的规则【编号】" rule_num_delete; then 
+                        break # 用户输入 Q，跳出当前 while true 循环
                     fi
-                    if [[ "$rule_num" =~ ^[0-9]+$ ]]; then # 确保是纯数字
+                    if [[ "$rule_num_delete" =~ ^[0-9]+$ ]]; then # 确保是纯数字
                         break
                     else
                         echo -e "${RED}❌ 错误: 请输入有效的规则编号 (纯数字)。${NC}"
                     fi
                 done
-                if [ -z "$rule_num" ]; then continue; fi # 如果 rule_num 为空 (用户按 Q)，则跳过当前 case
+                if [ -z "$rule_num_delete" ]; then continue; fi # 如果为空说明用户按 Q 返回了，跳到外层循环
                 
-                read -p "您确定要删除规则【#${rule_num}】吗? (y/n): " confirm
+                read -p "您确定要删除规则【#${rule_num_delete}】吗? (y/n): " confirm
                 if [[ $confirm =~ ^[Yy]$ ]]; then
-                    ufw --force delete "$rule_num"
-                    echo -e "${GREEN}✅ 规则 #${rule_num} 已成功删除。${NC}"
+                    ( set +e; ufw --force delete "$rule_num_delete" ) || true # 局部禁用 set -e
+                    echo -e "${GREEN}✅ 规则 #${rule_num_delete} 已成功删除。${NC}"
                 else
                     echo -e "${RED}❌ 操作已取消。${NC}"
                 fi
@@ -467,7 +459,7 @@ manage_logs_menu() {
         case $log_opt in
             1)
                 local level_choice=""
-                local level=""
+                local level_set=""
                 while true; do
                     echo -e "请选择日志级别："
                     echo "  1) 低 (low)"
@@ -479,22 +471,22 @@ manage_logs_menu() {
                     level_choice=$(echo "$level_choice" | xargs | tr '[:upper:]' '[:lower:]')
                     
                     if [[ "$level_choice" =~ ^[Qq]$ ]]; then 
-                        break # 用户输入 Q 返回日志管理菜单的 top-level while
+                        break # 用户输入 Q，跳出当前 while true 循环
                     fi
                     
                     case "$level_choice" in
-                        1) level="low"; break ;;
-                        2) level="medium"; break ;;
-                        3) level="high"; break ;;
-                        4) level="full"; break ;;
-                        5) level="off"; break ;;
+                        1) level_set="low"; break ;;
+                        2) level_set="medium"; break ;;
+                        3) level_set="high"; break ;;
+                        4) level_set="full"; break ;;
+                        5) level_set="off"; break ;;
                         *) echo -e "${RED}❌ 无效的级别选择，请重新输入。${NC}" ;;
                     esac
                 done
-                if [ -z "$level" ]; then continue; fi # 如果 level 为空 (用户按 Q)，则跳过当前 case
+                if [ -z "$level_set" ]; then continue; fi # 如果为空说明用户按 Q 返回了，跳到外层循环
 
-                ufw logging "$level"
-                echo -e "${GREEN}✅ 日志级别已设置为: $(echo $level | sed 's/low/低/;s/medium/中/;s/high/高/;s/full/完整/;s/off/关闭/')${NC}"
+                ( set +e; ufw logging "$level_set" ) || true # 局部禁用 set -e
+                echo -e "${GREEN}✅ 日志级别已设置为: $(echo $level_set | sed 's/low/低/;s/medium/中/;s/high/高/;s/full/完整/;s/off/关闭/')${NC}"
                 pause
                 ;;
             2)
@@ -539,40 +531,38 @@ manage_backup_menu() {
         read -p "请选择一个操作 [0-2]: " backup_opt
         case $backup_opt in
             1)
-                local file_path="/root/ufw-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
-                local custom_path=""
-                if ! prompt_for_input "请输入备份文件保存路径 (默认为 ${file_path})" custom_path; then 
-                    # 用户输入 Q，跳出当前输入循环，并继续到 manage_backup_menu 的下一次迭代
-                    continue 
+                local file_path_export="/root/ufw-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+                local custom_path_export=""
+                if ! prompt_for_input "请输入备份文件保存路径 (默认为 ${file_path_export})" custom_path_export; then 
+                    continue # 用户输入 Q，跳到外层循环
                 fi
-                file_path=${custom_path:-$file_path} # 如果用户输入为空，则使用默认路径
+                file_path_export=${custom_path_export:-$file_path_export} # 如果用户输入为空，则使用默认路径
                 
-                if tar -czf "$file_path" /etc/ufw; then
-                    echo -e "${GREEN}✅ 规则已成功导出到: $file_path${NC}"
+                if ( set +e; tar -czf "$file_path_export" /etc/ufw ); then # 局部禁用 set -e
+                    echo -e "${GREEN}✅ 规则已成功导出到: $file_path_export${NC}"
                 else
                     echo -e "${RED}❌ 导出失败。请检查路径和权限。${NC}"
                 fi
                 pause
                 ;;
             2)
-                local file=""
+                local file_import=""
                 while true; do
-                    if ! prompt_for_input "请输入要导入的备份文件路径" file; then 
-                        # 用户输入 Q，跳出当前输入循环，并继续到 manage_backup_menu 的下一次迭代
-                        break 
+                    if ! prompt_for_input "请输入要导入的备份文件路径" file_import; then 
+                        break # 用户输入 Q，跳出当前 while true 循环
                     fi
-                    if [ -f "$file" ]; then break; fi
-                    echo -e "${RED}❌ 文件 '$file' 不存在。请重新输入。${NC}"
+                    if [ -f "$file_import" ]; then break; fi
+                    echo -e "${RED}❌ 文件 '$file_import' 不存在。请重新输入。${NC}"
                 done
-                if [ -z "$file" ]; then continue; fi # 如果 file 为空 (用户按 Q)，则跳过当前 case
+                if [ -z "$file_import" ]; then continue; fi # 如果为空说明用户按 Q 返回了，跳到外层循环
                 
                 read -p "警告：这将覆盖所有现有规则，是否继续? (y/n): " confirm
                 if [[ $confirm =~ ^[Yy]$ ]]; then
-                    if tar -xzf "$file" -C /; then
+                    if ( set +e; tar -xzf "$file_import" -C / ); then # 局部禁用 set -e
                         echo -e "${GREEN}✅ 配置已成功导入。${NC}"
                         read -p "是否立即重载防火墙以使新规则生效? (y/n): " reload_confirm
                         if [[ $reload_confirm =~ ^[Yy]$ ]]; then
-                            ufw reload
+                            ( set +e; ufw reload ) || true # 局部禁用 set -e
                             echo -e "${GREEN}✅ 防火墙已重载。${NC}"
                         else
                             echo -e "${YELLOW}请记得稍后手动执行 'sudo ufw reload' 来应用配置。${NC}"
@@ -602,7 +592,7 @@ reset_firewall() {
     clear
     read -p "警告：此操作将删除所有规则并恢复到默认安装状态。您确定要重置防火墙吗? (y/n): " confirm
     if [[ $confirm =~ ^[Yy]$ ]]; then
-        ufw reset
+        ( set +e; ufw reset ) # 局部禁用 set -e
         echo -e "${GREEN}✅ 防火墙已重置。防火墙当前为 [关闭] 状态。${NC}"
         echo -e "${YELLOW}下次运行脚本时，将重新进行智能检查与配置。${NC}"
     else
