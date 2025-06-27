@@ -12,8 +12,6 @@
 # =========================================================
 
 # --- 全局设置 ---
-# set -e: 一旦有命令返回非零值（错误），立即退出脚本
-# set -o pipefail: 管道中的任何一个命令失败，整个管道都视为失败
 set -e
 set -o pipefail
 
@@ -31,16 +29,21 @@ ensure_command() {
     local pkg="$2"
     if ! command -v "$cmd" &>/dev/null; then
         echo "⚠️ 命令 '$cmd' 不存在, 尝试安装软件包 '$pkg'..."
-        apt-get update -qq
-        apt-get install -y -qq "$pkg"
-        if ! command -v "$cmd" &>/dev/null; then
+        # 改进点：在安装前确保 apt-get update 成功
+        if ! apt-get update -qq; then
+            echo "❌ apt-get update 失败，无法安装 '$pkg'。请检查网络或APT源。"
+            return 1
+        fi
+        if ! apt-get install -y -qq "$pkg"; then
             echo "❌ 安装 '$pkg' 失败, 无法执行相关功能。"
-            # 返回1表示失败，调用者可以根据此决定是否继续
+            return 1
+        fi
+        if ! command -v "$cmd" &>/dev/null; then
+            echo "❌ 即使安装了 '$pkg'，命令 '$cmd' 仍然不可用，请手动检查。"
             return 1
         fi
         echo "✅ 命令 '$cmd' 安装成功。"
     fi
-    # 返回0表示成功
     return 0
 }
 
@@ -53,7 +56,6 @@ ensure_command() {
 auto_set_apt_sources() {
     echo "1/7 更换APT源为清华镜像..."
 
-    # 确保 lsb_release 命令存在
     if ! ensure_command "lsb_release" "lsb-release"; then
         echo "⚠️ 跳过APT源替换。"
         return
@@ -69,7 +71,7 @@ auto_set_apt_sources() {
     CODENAME=$(lsb_release -cs 2>/dev/null)
     if [[ -z "$CODENAME" ]]; then
         echo "⚠️ 无法获取系统代号, 跳过APT源替换"
-        cp "$BACKUP" /etc/apt/sources.list # 恢复备份
+        cp "$BACKUP" /etc/apt/sources.list
         return
     fi
 
@@ -86,7 +88,7 @@ EOF
         cat >/etc/apt/sources.list <<EOF
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $CODENAME main contrib non-free
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $CODENAME-updates main contrib non-free
-deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $CODENAME-backports main contrib non-free
+deb https://mirrors.tuna.tsinghua.edu.cn/debian-backports/ $CODENAME-backports main contrib non-free
 deb https://mirrors.tuna.tsinghua.edu.cn/debian-security/ $CODENAME-security main contrib non-free
 EOF
     else
@@ -110,8 +112,8 @@ EOF
 auto_install_dependencies() {
     echo "2/7 安装必要工具..."
 
-    # 核心工具列表 (字体包移至字体模块)
-    local PKGS="curl wget vim htop net-tools git ufw unzip bc"
+    local PKGS="curl wget vim htop net-tools nano ufw unzip bc tar"
+    local FAILED_PKGS=()
 
     if ! command -v apt-get &>/dev/null; then
         echo "⚠️ 未检测到apt-get, 跳过依赖安装"
@@ -119,10 +121,18 @@ auto_install_dependencies() {
     fi
 
     echo "  - 准备安装: $PKGS"
-    if apt-get install -y $PKGS -qq; then
-        echo "✅ 工具安装成功"
+    for pkg in $PKGS; do
+        if ! apt-get install -y "$pkg" -qq; then
+            echo "⚠️ 软件包 $pkg 安装失败"
+            FAILED_PKGS+=("$pkg")
+        fi
+    done
+
+    if [ ${#FAILED_PKGS[@]} -eq 0 ]; then
+        echo "✅ 所有工具安装成功"
     else
-        echo "⚠️ 部分工具安装失败, 请手动检查。"
+        echo "❌ 以下软件包安装失败: ${FAILED_PKGS[*]}"
+        echo "   请手动检查网络连接或APT源问题。"
     fi
     echo "-------------------------------------"
 }
@@ -131,7 +141,6 @@ auto_install_dependencies() {
 auto_set_timezone() {
     echo "3/7 设置时区为 Asia/Shanghai..."
 
-    # 优先用timedatectl
     if command -v timedatectl &>/dev/null; then
         timedatectl set-timezone Asia/Shanghai
         echo "✅ 时区设置成功 (使用 timedatectl)"
@@ -139,7 +148,6 @@ auto_set_timezone() {
         return
     fi
 
-    # 备用方案：替换 /etc/localtime
     if [ -f /usr/share/zoneinfo/Asia/Shanghai ]; then
         ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
         echo "✅ 时区设置成功 (使用 /etc/localtime)"
@@ -161,43 +169,37 @@ auto_config_ssh() {
         return
     fi
 
-    # 备份配置
     cp "$SSH_CONF" "$SSH_CONF.bak_$(date +%Y%m%d%H%M%S)"
 
-    # 修改配置
     sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' "$SSH_CONF"
     sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' "$SSH_CONF"
 
-    # 重启ssh服务（尝试两种服务名）
     echo "  - 正在重启SSH服务..."
     if systemctl restart sshd 2>/dev/null; then
         echo "✅ SSH配置生效 (sshd 服务)"
     elif systemctl restart ssh 2>/dev/null; then
         echo "✅ SSH配置生效 (ssh 服务)"
     else
-        echo "⚠️ SSH服务重启失败, 请手动执行 'systemctl restart ssh' 或 'systemctl restart sshd'"
+        echo "⚠️ SSH服务重启失败, 请手动执行 'systemctl restart ssh'"
     fi
     echo "-------------------------------------"
 }
 
-# ================== 5. 禁用防火墙，放通所有端口 ===================
+# ================== 5. 禁用防火墙 ===================
 auto_disable_firewall() {
     echo "5/7 禁用系统防火墙..."
 
-    # ufw禁用
     if command -v ufw &>/dev/null; then
         ufw --force disable >/dev/null 2>&1
         echo "✅ UFW已禁用"
     fi
 
-    # firewalld禁用 (通常在CentOS/RHEL, 但也检查一下)
     if systemctl list-unit-files | grep -q firewalld.service; then
         systemctl stop firewalld.service
         systemctl disable firewalld.service
         echo "✅ firewalld已禁用"
     fi
 
-    # 清空iptables规则
     if command -v iptables &>/dev/null; then
         iptables -F
         iptables -X
@@ -210,11 +212,10 @@ auto_disable_firewall() {
     echo "-------------------------------------"
 }
 
-# ================== 6. 字体安装和配置 ===================
+# ================== 6. 安装中文字体 ===================
 auto_set_fonts() {
     echo "6/7 安装中文字体并配置环境..."
 
-    # 安装常见的中文字体
     local FONT_PKGS="fonts-wqy-zenhei fonts-wqy-microhei"
     echo "  - 准备安装字体包: $FONT_PKGS"
     if apt-get install -y $FONT_PKGS -qq; then
@@ -223,7 +224,11 @@ auto_set_fonts() {
         echo "⚠️ 字体安装失败, 可能影响中文显示。"
     fi
 
-    # 设置系统级中文环境
+    if grep -qi 'ubuntu' /etc/os-release; then
+        echo "  - 安装中文语言包..."
+        apt-get install -y -qq language-pack-zh-hans language-pack-gnome-zh-hans || echo "⚠️ 中文语言包安装失败"
+    fi
+
     if ! grep -q "LANG=zh_CN.UTF-8" /etc/default/locale 2>/dev/null; then
         echo "  - 设置系统默认locale为 zh_CN.UTF-8"
         echo "LANG=zh_CN.UTF-8" > /etc/default/locale
@@ -235,26 +240,15 @@ auto_set_fonts() {
     echo "-------------------------------------"
 }
 
-
-# ================== 7. 交互式静态IP设置 ===================
+# ================== 7. 静态IP交互配置 ===================
 interactive_set_static_ip() {
     echo "7/7 交互式静态IP设置"
-
-    # --- IP合法性校验函数 ---
     is_valid_ip() {
         local ip=$1
-        if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-            OIFS=$IFS
-            IFS='.'
-            ip=($ip)
-            IFS=$OIFS
-            [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
-            return $?
-        fi
+        [[ $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && return 0
         return 1
     }
 
-    # --- 自动检测网络信息 ---
     local IFACE
     IFACE=$(ip -o -4 route show to default | awk '{print $5}')
     if [[ -z "$IFACE" ]]; then
@@ -266,37 +260,31 @@ interactive_set_static_ip() {
     local IP_CIDR
     IP_CIDR=$(ip -4 addr show "$IFACE" | grep -oP '(?<=inet\s)\d+(\.\d+){3}/\d+' | head -1)
     if [[ -z "$IP_CIDR" ]]; then
-        echo "⚠️ 无法在接口 $IFACE 上检测到当前IP, 跳过静态IP设置。"
+        echo "⚠️ 无法检测到当前IP, 跳过静态IP设置。"
         return
     fi
 
     local CURRENT_IP=${IP_CIDR%/*}
     local CIDR=${IP_CIDR#*/}
-    local GATEWAY
-    GATEWAY=$(ip route | awk '/default/ {print $3}')
-    local DNS_SERVERS
-    DNS_SERVERS=$(grep "nameserver" /etc/resolv.conf | awk '{print $2}' | tr '\n' ' ')
+    local GATEWAY=$(ip route | awk '/default/ {print $3}')
+    local DNS_SERVERS=$(grep "nameserver" /etc/resolv.conf | awk '{print $2}' | tr '\n' ' ')
 
     echo ""
     echo "--- 请输入新的网络配置 (直接回车使用括号内的当前值) ---"
 
-    # --- 交互式获取用户输入 ---
-    local NEW_IP NEW_CIDR NEW_GATEWAY NEW_DNS
     read -p "IP地址 [${CURRENT_IP}]: " NEW_IP
     NEW_IP=${NEW_IP:-$CURRENT_IP}
     if ! is_valid_ip "$NEW_IP"; then echo "❌ IP地址格式错误, 跳过设置。"; return; fi
 
     read -p "子网掩码 (CIDR格式) [${CIDR}]: " NEW_CIDR
     NEW_CIDR=${NEW_CIDR:-$CIDR}
-    if ! [[ "$NEW_CIDR" =~ ^[0-9]+$ ]] || [ "$NEW_CIDR" -lt 1 ] || [ "$NEW_CIDR" -gt 32 ]; then
-        echo "❌ CIDR格式错误 (应为1-32之间的数字), 跳过设置。"; return;
-    fi
+    [[ "$NEW_CIDR" -ge 1 && "$NEW_CIDR" -le 32 ]] || { echo "❌ CIDR格式错误, 跳过设置。"; return; }
 
     read -p "网关 [${GATEWAY}]: " NEW_GATEWAY
     NEW_GATEWAY=${NEW_GATEWAY:-$GATEWAY}
     if ! is_valid_ip "$NEW_GATEWAY"; then echo "❌ 网关地址格式错误, 跳过设置。"; return; fi
 
-    read -p "DNS服务器 (多个用空格隔开) [${DNS_SERVERS:-223.5.5.5 114.114.114.114}]: " NEW_DNS
+    read -p "DNS服务器 [${DNS_SERVERS:-223.5.5.5 114.114.114.114}]: " NEW_DNS
     NEW_DNS=${NEW_DNS:-${DNS_SERVERS:-"223.5.5.5 114.114.114.114"}}
 
     echo "-------------------------------------"
@@ -305,27 +293,26 @@ interactive_set_static_ip() {
     echo "  - DNS:        $NEW_DNS"
     echo "-------------------------------------"
     read -p "确认以上信息并应用? (y/N): " confirm
-    if [[ ! "$confirm" =~ ^[yY]([eE][sS])?$ ]]; then
-        echo "  - 操作已取消。"
-        return
-    fi
+    [[ ! "$confirm" =~ ^[yY]([eE][sS])?$ ]] && { echo "  - 操作已取消。"; return; }
 
-    # --- 根据系统类型生成配置 ---
-    # 优先检测Netplan (Ubuntu 18.04+)
     if command -v netplan &>/dev/null; then
-        echo "  - 检测到 Netplan, 将生成 Netplan 配置..."
-        local NETPLAN_FILE
-        NETPLAN_FILE=$(find /etc/netplan -name "*.yaml" | head -n 1)
-        if [ -z "$NETPLAN_FILE" ]; then
-            NETPLAN_FILE="/etc/netplan/01-custom-init.yaml"
-            echo "  - 未找到现有Netplan配置文件, 将创建于: $NETPLAN_FILE"
+        echo "  - 使用 Netplan 配置..."
+        # 改进点：更稳妥的 Netplan 文件处理，如果不存在则创建新文件
+        local NETPLAN_FILE=$(find /etc/netplan -name "*.yaml" | head -n 1)
+        if [[ -z "$NETPLAN_FILE" ]]; then
+            NETPLAN_FILE="/etc/netplan/99-static-config.yaml"
+            echo "  - 未找到现有 Netplan 配置，将创建新文件: $NETPLAN_FILE"
+        else
+            echo "  - 找到现有 Netplan 配置: $NETPLAN_FILE"
+            cp "$NETPLAN_FILE" "$NETPLAN_FILE.bak_$(date +%Y%m%d%H%M%S)"
         fi
 
-        cp "$NETPLAN_FILE" "$NETPLAN_FILE.bak_$(date +%Y%m%d%H%M%S)"
-        
-        # 将空格分隔的DNS转换为YAML列表格式
-        local DNS_YAML
-        DNS_YAML=$(echo "$NEW_DNS" | sed "s/ /', '/g")
+        # 改进点：只有当 NEW_DNS 不为空时才生成 nameservers 配置
+        local DNS_CONFIG=""
+        if [[ -n "$NEW_DNS" ]]; then
+            local DNS_YAML=$(echo "$NEW_DNS" | awk '{ for(i=1;i<=NF;i++) printf "'\''%s'\''%s", $i, (i<NF?", ":"") }')
+            DNS_CONFIG="      nameservers:\n        addresses: [$DNS_YAML]"
+        fi
 
         cat > "$NETPLAN_FILE" <<EOF
 network:
@@ -334,51 +321,28 @@ network:
   ethernets:
     $IFACE:
       dhcp4: no
-      addresses:
-        - $NEW_IP/$NEW_CIDR
+      addresses: [$NEW_IP/$NEW_CIDR]
       routes:
         - to: default
           via: $NEW_GATEWAY
-      nameservers:
-        addresses: ['$DNS_YAML']
+$DNS_CONFIG
 EOF
-        echo "  - Netplan配置文件已生成: $NETPLAN_FILE"
-        echo "  - 正在应用配置 (netplan apply)..."
-        if netplan apply; then
-            echo "✅ 静态IP配置已通过 Netplan 应用成功！"
-        else
-            echo "❌ Netplan 应用失败! 请手动检查 $NETPLAN_FILE 文件并运行 'netplan apply'。"
-        fi
-    # 备用方案: /etc/network/interfaces (Debian/旧版Ubuntu)
+        netplan apply && echo "✅ 静态IP配置已应用" || echo "❌ 应用失败，请检查配置"
     elif [ -f /etc/network/interfaces ]; then
-        echo "  - 未找到 Netplan, 将修改 /etc/network/interfaces..."
         local INTERFACES_FILE="/etc/network/interfaces"
         cp "$INTERFACES_FILE" "$INTERFACES_FILE.bak_$(date +%Y%m%d%H%M%S)"
 
-        # 计算网络地址和广播地址需要 bc 命令
         ensure_command "bc" "bc" >/dev/null
-
-        # 将CIDR转换为子网掩码
-        local i mask
-        mask=0
-        for ((i=0; i<$NEW_CIDR; i++)); do
-            mask=$(( (mask << 1) | 1 ))
-        done
+        local i mask=0
+        for ((i=0; i<$NEW_CIDR; i++)); do mask=$(( (mask << 1) | 1 )); done
         mask=$(( mask << (32 - NEW_CIDR) ))
-        local NETMASK
-        NETMASK="$(( (mask >> 24) & 255 )).$(( (mask >> 16) & 255 )).$(( (mask >> 8) & 255 )).$(( mask & 255 ))"
+        local NETMASK="$(( (mask >> 24) & 255 )).$(( (mask >> 16) & 255 )).$(( (mask >> 8) & 255 )).$(( mask & 255 ))"
 
         cat > "$INTERFACES_FILE" <<EOF
-# This file describes the network interfaces available on your system
-# and how to activate them. For more information, see interfaces(5).
-
 source /etc/network/interfaces.d/*
-
-# The loopback network interface
 auto lo
 iface lo inet loopback
 
-# The primary network interface
 auto $IFACE
 iface $IFACE inet static
     address $NEW_IP
@@ -386,15 +350,14 @@ iface $IFACE inet static
     gateway $NEW_GATEWAY
     dns-nameservers $NEW_DNS
 EOF
-        echo "✅ /etc/network/interfaces 文件已更新。"
-        echo "⚠️ 注意: 您需要重启系统或手动执行 'ifdown $IFACE && ifup $IFACE' 来使新IP生效。"
-        echo "   为防止SSH中断, 脚本不会自动重启网络。"
+        echo "✅ /etc/network/interfaces 文件已更新，请手动 ifdown/ifup 或重启生效"
+        # 考虑在此处添加尝试重启网络服务的代码，但请注意可能导致SSH连接中断
+        systemctl restart networking || echo "⚠️ 自动重启网络服务失败，请手动重启。"
     else
-        echo "❌ 无法找到 Netplan 或 /etc/network/interfaces, 无法自动配置静态IP。"
+        echo "❌ 未找到支持的网络配置方式"
     fi
     echo "-------------------------------------"
 }
-
 
 # =========================================================
 #                   主执行逻辑
@@ -402,15 +365,14 @@ EOF
 main() {
     echo "✅ 权限检查通过，开始执行初始化..."
     echo "========================================================="
-    
+
     auto_set_apt_sources
     auto_install_dependencies
     auto_set_timezone
     auto_config_ssh
     auto_disable_firewall
     auto_set_fonts
-    
-    # 交互式部分最后执行
+
     read -p "是否需要进行交互式静态IP设置? (y/N): " setup_ip
     if [[ "$setup_ip" =~ ^[yY]([eE][sS])?$ ]]; then
         interactive_set_static_ip
@@ -423,5 +385,4 @@ main() {
     echo "建议重启系统以确保所有配置完全生效: reboot"
 }
 
-# --- 脚本执行入口 ---
 main
