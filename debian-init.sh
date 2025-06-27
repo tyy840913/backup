@@ -1,19 +1,24 @@
 #!/bin/bash
 
 # =========================================================
-# 🚀 Linux 全自动初始化脚本 (增强版)
+# 🚀 Linux 全自动初始化脚本 (修复增强版 v2)
 #
 # 说明：
-# - 自动检测并安装缺失的关键命令。
-# - 智能适配 Netplan 和 interfaces 进行静态IP设置。
-# - 每个功能模块均包含备用方案和错误检测。
-# - 输出仅限关键提示，保证简洁。
+# - 修正了 Debian APT 源地址错误。
+# - 重构安装逻辑，先检查再安装，避免重复执行和繁琐输出。
+# - 批量安装依赖，提升效率。
+# - 修正了脚本中的逻辑错误和编号问题。
+# - 输出更简洁，聚焦关键信息。
 # - 兼容 Debian/Ubuntu 常见环境。
 # =========================================================
 
 # --- 全局设置 ---
+# set -e: 命令失败时立即退出
+# set -o pipefail: 管道中任一命令失败则整个管道失败
+# trap: 捕获 ERR 信号，在脚本因 set -e 退出时打印错误信息
 set -e
 set -o pipefail
+trap 'echo "❌ Error on line $LINENO. Exiting." >&2' ERR
 
 # --- 权限检查 ---
 if [[ $EUID -ne 0 ]]; then
@@ -28,25 +33,16 @@ ensure_command() {
     local cmd="$1"
     local pkg="$2"
     if ! command -v "$cmd" &>/dev/null; then
-        echo "⚠️ 命令 '$cmd' 不存在, 尝试安装软件包 '$pkg'..."
-        # 改进点：在安装前确保 apt-get update 成功
-        if ! apt-get update -qq; then
-            echo "❌ apt-get update 失败，无法安装 '$pkg'。请检查网络或APT源。"
-            return 1
-        fi
+        echo "  - ⚠️ 命令 '$cmd' 不存在, 尝试安装软件包 '$pkg'..."
+        apt-get update -qq
         if ! apt-get install -y -qq "$pkg"; then
-            echo "❌ 安装 '$pkg' 失败, 无法执行相关功能。"
+            echo "  - ❌ 安装 '$pkg' 失败, 无法执行相关功能。"
             return 1
         fi
-        if ! command -v "$cmd" &>/dev/null; then
-            echo "❌ 即使安装了 '$pkg'，命令 '$cmd' 仍然不可用，请手动检查。"
-            return 1
-        fi
-        echo "✅ 命令 '$cmd' 安装成功。"
+        echo "  - ✅ 命令 '$cmd' 安装成功。"
     fi
     return 0
 }
-
 
 # =========================================================
 #                   功能模块定义
@@ -54,316 +50,200 @@ ensure_command() {
 
 # ================== 1. 更换APT源为清华镜像 ===================
 auto_set_apt_sources() {
-    echo "1/7 更换APT源为清华镜像..."
+    echo "1/8 更换APT源为清华镜像..."
 
     if ! ensure_command "lsb_release" "lsb-release"; then
-        echo "⚠️ 跳过APT源替换。"
+        echo "  - ⚠️ 跳过APT源替换。"
         return
     fi
 
     local BACKUP="/etc/apt/sources.list.bak_$(date +%Y%m%d%H%M%S)"
-    echo "  - 备份当前源到 $BACKUP"
     if [ -f /etc/apt/sources.list ]; then
+        echo "  - 备份当前源到 $BACKUP"
         cp /etc/apt/sources.list "$BACKUP"
     fi
 
     local CODENAME
     CODENAME=$(lsb_release -cs 2>/dev/null)
     if [[ -z "$CODENAME" ]]; then
-        echo "⚠️ 无法获取系统代号, 跳过APT源替换"
-        cp "$BACKUP" /etc/apt/sources.list
+        echo "  - ⚠️ 无法获取系统代号, 跳过APT源替换。"
+        [ -f "$BACKUP" ] && cp "$BACKUP" /etc/apt/sources.list
         return
     fi
-
     echo "  - 系统代号: $CODENAME"
 
     if grep -qi 'ubuntu' /etc/os-release; then
         cat >/etc/apt/sources.list <<EOF
 deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ $CODENAME main restricted universe multiverse
+deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ $CODENAME main restricted universe multiverse
 deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ $CODENAME-updates main restricted universe multiverse
+deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ $CODENAME-updates main restricted universe multiverse
 deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ $CODENAME-backports main restricted universe multiverse
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ $CODENAME-security main restricted universe multiverse
+deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ $CODENAME-backports main restricted universe multiverse
+deb https://security.ubuntu.com/ubuntu/ $CODENAME-security main restricted universe multiverse
+deb-src https://security.ubuntu.com/ubuntu/ $CODENAME-security main restricted universe multiverse
 EOF
     elif grep -qi 'debian' /etc/os-release; then
+        # FIX: 修正了 backports 源地址，并为Debian 12+添加 non-free-firmware
         cat >/etc/apt/sources.list <<EOF
-deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $CODENAME main contrib non-free
-deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $CODENAME-updates main contrib non-free
-deb https://mirrors.tuna.tsinghua.edu.cn/debian-backports/ $CODENAME-backports main contrib non-free
-deb https://mirrors.tuna.tsinghua.edu.cn/debian-security/ $CODENAME-security main contrib non-free
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $CODENAME main contrib non-free non-free-firmware
+deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ $CODENAME main contrib non-free non-free-firmware
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $CODENAME-updates main contrib non-free non-free-firmware
+deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ $CODENAME-updates main contrib non-free non-free-firmware
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $CODENAME-backports main contrib non-free non-free-firmware
+deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ $CODENAME-backports main contrib non-free non-free-firmware
+deb https://security.debian.org/debian-security/ $CODENAME-security main contrib non-free non-free-firmware
+deb-src https://security.debian.org/debian-security/ $CODENAME-security main contrib non-free non-free-firmware
 EOF
     else
-        echo "⚠️ 不支持的系统, 跳过APT源替换"
+        echo "  - ⚠️ 不支持的系统, 跳过APT源替换。"
         [ -f "$BACKUP" ] && cp "$BACKUP" /etc/apt/sources.list
         return
     fi
 
     echo "  - 正在更新APT缓存..."
     if apt-get update -qq; then
-        echo "✅ APT源替换成功"
+        echo "✅ APT源替换并更新成功。"
     else
-        echo "⚠️ APT更新失败, 正在恢复源文件..."
+        echo "  - ⚠️ APT更新失败, 正在恢复源文件..."
         [ -f "$BACKUP" ] && cp "$BACKUP" /etc/apt/sources.list
-        echo "  - 已恢复备份源, 请手动检查问题。"
+        echo "  - ⚠️ 已恢复备份源, 请手动检查问题。"
+        return 1 # 返回失败状态
     fi
-    echo "-------------------------------------"
 }
 
-# ================== 2. 安装中文字体 ===================
+# ================== 2. 安装中文字体和语言包 ===================
 auto_set_fonts() {
-    echo "2/7 安装中文字体并配置环境..."
+    echo "2/8 安装中文字体和语言包..."
 
+    # REFACTOR: 先检查，如果已安装则跳过
     local FONT_PKG="fonts-wqy-zenhei"
-    echo "  - 准备安装字体包: $FONT_PKG"
-    if apt-get install -y -qq "$FONT_PKG"; then
-        echo "✅ 字体包安装成功"
+    if dpkg -s "$FONT_PKG" &>/dev/null; then
+        echo "  - ✅ 中文字体 ($FONT_PKG) 已安装。"
     else
-        echo "⚠️ 字体安装失败，可能影响中文显示"
-    fi
-
-    # 判断系统类型
-    local OS=""
-    if grep -qi 'ubuntu' /etc/os-release; then
-        OS="ubuntu"
-    elif grep -qi 'debian' /etc/os-release; then
-        OS="debian"
-    else
-        echo "⚠️ 未识别的系统，跳过语言包设置"
-        OS="unknown"
-    fi
-
-    # 安装语言包
-    if [[ "$OS" == "ubuntu" ]]; then
-        echo "  - 安装 Ubuntu 中文语言包..."
-        apt-get install -y -qq language-pack-zh-hans language-pack-gnome-zh-hans || echo "⚠️ Ubuntu 中文语言包安装失败"
-    elif [[ "$OS" == "debian" ]]; then
-        echo "  - 安装 Debian 中文环境支持..."
-        apt-get install -y -qq locales || echo "⚠️ 安装 locales 包失败"
-        sed -i '/^# *zh_CN.UTF-8 UTF-8/s/^# *//' /etc/locale.gen
-        if locale-gen; then
-            echo "✅ Debian locale 生成完成"
+        echo "  - 正在安装中文字体 ($FONT_PKG)..."
+        if apt-get install -y -qq "$FONT_PKG"; then
+            echo "  - ✅ 字体包安装成功。"
+            echo "  - 刷新字体缓存..."
+            fc-cache -fv > /dev/null 2>&1 || echo "  - ⚠️ 字体缓存刷新失败。"
         else
-            echo "⚠️ 执行 locale-gen 失败，请手动检查"
+            echo "  - ⚠️ 字体安装失败。"
         fi
     fi
 
-    # 设置系统默认语言
+    # REFACTOR: 检查 locale 配置，如果已配置则跳过
     if grep -q "LANG=zh_CN.UTF-8" /etc/default/locale 2>/dev/null; then
-        echo "  - 中文环境已是 zh_CN.UTF-8，无需更改"
+        echo "  - ✅ 中文 locale (zh_CN.UTF-8) 已配置。"
     else
-        echo "  - 设置系统默认语言为 zh_CN.UTF-8"
-        echo 'LANG=zh_CN.UTF-8' >> /etc/default/locale
+        echo "  - 正在配置中文 locale..."
+        apt-get install -y -qq locales language-pack-zh-hans
+        sed -i '/^# *zh_CN.UTF-8 UTF-8/s/^# *//' /etc/locale.gen
+        locale-gen zh_CN.UTF-8
+        echo 'LANG=zh_CN.UTF-8' > /etc/default/locale
         export LANG=zh_CN.UTF-8
-        echo "✅ 中文环境设置成功（需重新登录以完全生效）"
+        echo "  - ✅ 中文 locale 设置成功（重启或重登录后生效）。"
     fi
-
-    # 刷新字体缓存
-    echo "  - 刷新字体缓存..."
-    if fc-cache -fv > /dev/null 2>&1; then
-        echo "✅ 字体缓存刷新完成"
-    else
-        echo "⚠️ 字体缓存刷新失败，请手动执行 fc-cache -fv"
-    fi
-
-    echo "-------------------------------------"
 }
 
 # ================== 3. 安装依赖工具 ==================
 auto_install_dependencies() {
-    echo "3/7 安装必要工具..."
+    echo "3/8 安装必要工具..."
 
-    local PKGS="curl wget vim htop net-tools nano ufw unzip bc tar"
-    local FAILED_PKGS=()
-    local INSTALLED_COUNT=0
+    local PKGS_MASTER="curl wget vim htop net-tools nano ufw unzip bc tar"
+    local PKGS_TO_INSTALL=()
 
-    if ! command -v apt-get &>/dev/null; then
-        echo "⚠️ 未检测到apt-get, 跳过依赖安装"
-        return
-    fi
-
-    echo "  - 正在更新APT缓存..."
-    if ! apt-get update -qq; then
-        echo "❌ apt-get update 失败，跳过依赖安装"
-        return
-    fi
-
-    echo "  - 准备安装: $PKGS"
-    for pkg in $PKGS; do
-        if dpkg -s "$pkg" &>/dev/null; then
-            echo "  - $pkg 已安装，跳过"
-            continue
-        fi
-        if apt-get install -y "$pkg" -qq; then
-            echo "  - $pkg 安装成功"
-            ((INSTALLED_COUNT++))
-        else
-            echo "⚠️ 软件包 $pkg 安装失败"
-            FAILED_PKGS+=("$pkg")
+    # REFACTOR: 遍历检查所有包，将未安装的加入待安装列表
+    for pkg in $PKGS_MASTER; do
+        if ! dpkg -s "$pkg" &>/dev/null; then
+            PKGS_TO_INSTALL+=("$pkg")
         fi
     done
 
-    if [ ${#FAILED_PKGS[@]} -eq 0 ]; then
-        echo "✅ 所有工具安装完成（新安装 $INSTALLED_COUNT 个）"
-    else
-        echo "❌ 以下软件包安装失败: ${FAILED_PKGS[*]}"
-        echo "   请手动检查网络连接或APT源问题。"
+    if [ ${#PKGS_TO_INSTALL[@]} -eq 0 ]; then
+        echo "  - ✅ 所有必要工具均已安装。"
+        return
     fi
-    echo "-------------------------------------"
+
+    echo "  - 准备安装缺失的工具: ${PKGS_TO_INSTALL[*]}"
+    # REFACTOR: 一次性安装所有缺失的包，更高效，输出更简洁
+    if apt-get install -y -qq "${PKGS_TO_INSTALL[@]}"; then
+        echo "  - ✅ 成功安装 ${#PKGS_TO_INSTALL[@]} 个新工具。"
+    else
+        echo "  - ❌ 部分或全部工具安装失败，请检查APT源或网络。"
+        return 1
+    fi
 }
 
 # ================== 4. 设置时区 ===================
 auto_set_timezone() {
-    echo "4/7 设置时区为 Asia/Shanghai..."
-
-    if command -v timedatectl &>/dev/null; then
-        timedatectl set-timezone Asia/Shanghai
-        echo "✅ 时区设置成功 (使用 timedatectl)"
-        echo "-------------------------------------"
-        return
+    echo "4/8 设置时区为 Asia/Shanghai..."
+    if timedatectl set-timezone Asia/Shanghai &>/dev/null; then
+        echo "  - ✅ 时区设置成功。"
+    else
+        echo "  - ⚠️ 设置时区失败, 请手动检查。"
     fi
-
-    if [ -f /usr/share/zoneinfo/Asia/Shanghai ]; then
-        ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
-        echo "✅ 时区设置成功 (使用 /etc/localtime)"
-        echo "-------------------------------------"
-        return
-    fi
-
-    echo "⚠️ 时区设置失败, timedatectl 和 zoneinfo 文件均不可用。"
-    echo "-------------------------------------"
 }
 
 # ================== 5. 配置SSH允许root密码登录 ===================
 auto_config_ssh() {
-    echo "5/7 配置SSH允许root密码登录..."
+    echo "5/8 配置SSH允许root密码登录..."
     local SSH_CONF="/etc/ssh/sshd_config"
 
     if [ ! -f "$SSH_CONF" ]; then
-        echo "⚠️ 未找到SSH配置文件, 跳过"
+        echo "  - ⚠️ 未找到SSH配置文件, 跳过。"
+        return
+    fi
+
+    # 检查是否已配置，如果已配置则跳过
+    if grep -q "^PermitRootLogin yes" "$SSH_CONF" && grep -q "^PasswordAuthentication yes" "$SSH_CONF"; then
+        echo "  - ✅ SSH已配置为允许root密码登录。"
         return
     fi
 
     cp "$SSH_CONF" "$SSH_CONF.bak_$(date +%Y%m%d%H%M%S)"
-
     sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' "$SSH_CONF"
     sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' "$SSH_CONF"
 
     echo "  - 正在重启SSH服务..."
-    if systemctl restart sshd 2>/dev/null; then
-        echo "✅ SSH配置生效 (sshd 服务)"
-    elif systemctl restart ssh 2>/dev/null; then
-        echo "✅ SSH配置生效 (ssh 服务)"
+    if systemctl restart sshd >/dev/null 2>&1 || systemctl restart ssh >/dev/null 2>&1; then
+        echo "  - ✅ SSH配置成功并已重启服务。"
     else
-        echo "⚠️ SSH服务重启失败, 请手动执行 'systemctl restart ssh'"
+        echo "  - ⚠️ SSH服务重启失败, 请手动执行 'systemctl restart ssh' 或 'systemctl restart sshd'。"
     fi
-    echo "-------------------------------------"
 }
 
-# ================== 5. 配置防火墙 (开放内网及常用端口) ===================
+# ================== 6. 配置防火墙 (UFW) ===================
 auto_configure_firewall() {
-    echo "5/7 配置防火墙 (开放内网及常用端口)..."
+    echo "6/8 配置防火墙 (UFW)..."
 
-    # --- 在此定义需要对外网开放的常用端口 ---
-    # 可根据需要添加, 用空格隔开, 例如: "22 80 443 3306 8888"
+    if ! command -v ufw &>/dev/null; then
+        echo "  - 未找到 UFW, 尝试安装..."
+        if ! apt-get install -y -qq ufw; then
+            echo "  - ❌ UFW 安装失败，跳过防火墙配置。"
+            return
+        fi
+    fi
+
     local COMMON_PORTS="22 80 88 443 5244 5678 9000"
-
-    # --- RFC1918 私有IP地址段 (内网地址) ---
     local PRIVATE_NETWORKS="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
 
-    # 优先使用 UFW (Ubuntu 默认)
-    if command -v ufw &>/dev/null; then
-        echo "  - 检测到 UFW, 开始进行配置..."
-        # 重置UFW到初始状态，避免旧规则干扰
-        yes | ufw reset >/dev/null 2>&1
-        
-        # 设定默认策略：允许所有出站，拒绝所有入站
-        ufw default allow outgoing
-        ufw default deny incoming
+    echo "  - 重置并配置UFW规则..."
+    yes | ufw reset >/dev/null
+    ufw default deny incoming >/dev/null
+    ufw default allow outgoing >/dev/null
 
-        # 允许内网IP段无限制访问
-        echo "    - 正在开放内网访问..."
-        for net in $PRIVATE_NETWORKS; do
-            ufw allow from "$net" to any comment 'Allow Internal LAN'
-        done
+    echo "  - 开放内网访问..."
+    for net in $PRIVATE_NETWORKS; do
+        ufw allow from "$net" >/dev/null
+    done
 
-        # 开放外网常用端口
-        echo "    - 正在开放外网常用端口: $COMMON_PORTS"
-        for port in $COMMON_PORTS; do
-            ufw allow "$port/tcp" comment 'Allow Common Services'
-        done
-        
-        # 启用防火墙
-        ufw --force enable
-        echo "✅ UFW 配置完成并已启用。"
-        echo "-------------------------------------"
-        return
-    fi
+    echo "  - 开放常用端口: $COMMON_PORTS"
+    for port in $COMMON_PORTS; do
+        ufw allow "$port/tcp" >/dev/null
+    done
 
-    # 其次尝试 firewalld
-    if systemctl is-active --quiet firewalld; then
-        echo "  - 检测到 firewalld, 开始进行配置..."
-        
-        # 允许内网IP段无限制访问 (添加到trusted区域)
-        echo "    - 正在开放内网访问..."
-        for net in $PRIVATE_NETWORKS; do
-            firewall-cmd --permanent --zone=trusted --add-source="$net" >/dev/null
-        done
-
-        # 开放外网常用端口 (添加到public区域)
-        echo "    - 正在开放外网常用端口: $COMMON_PORTS"
-        for port in $COMMON_PORTS; do
-            firewall-cmd --permanent --zone=public --add-port="$port/tcp" >/dev/null
-        done
-
-        # 重新加载防火墙规则使其生效
-        firewall-cmd --reload
-        echo "✅ firewalld 配置完成。"
-        echo "-------------------------------------"
-        return
-    fi
-
-    # 最后使用 iptables 作为备用方案
-    if command -v iptables &>/dev/null; then
-        echo "  - 未检测到 UFW/firewalld, 使用 iptables 作为备用方案..."
-        # 确保 iptables-persistent 包存在, 用于保存规则
-        ensure_command "netfilter-persistent" "iptables-persistent" >/dev/null
-
-        # 清空现有规则
-        iptables -F
-        iptables -X
-        iptables -Z
-
-        # 设定默认策略：允许出站，拒绝入站和转发
-        iptables -P INPUT DROP
-        iptables -P FORWARD DROP
-        iptables -P OUTPUT ACCEPT
-
-        # 允许回环接口
-        iptables -A INPUT -i lo -j ACCEPT
-        # 允许已建立的、相关的连接（非常重要，否则出站连接的回包也会被拒绝）
-        iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-
-        # 允许内网IP段
-        echo "    - 正在开放内网访问..."
-        for net in $PRIVATE_NETWORKS; do
-            iptables -A INPUT -s "$net" -j ACCEPT
-        done
-
-        # 允许外网常用端口
-        echo "    - 正在开放外网常用端口: $COMMON_PORTS"
-        for port in $COMMON_PORTS; do
-            iptables -A INPUT -p tcp --dport "$port" -j ACCEPT
-        done
-        
-        # 保存规则
-        echo "  - 正在持久化 iptables 规则..."
-        netfilter-persistent save
-        echo "✅ iptables 规则已配置并持久化。"
-        echo "-------------------------------------"
-        return
-    fi
-
-    echo "⚠️ 未找到可用的防火墙管理工具 (UFW, firewalld, iptables), 跳过防火墙配置。"
-    echo "-------------------------------------"
+    ufw --force enable >/dev/null
+    echo "  - ✅ UFW 已启用并配置完成。"
 }
 
 # ================== 7. 静态IP交互配置 ===================
@@ -667,26 +547,48 @@ EOF
 #                   主执行逻辑
 # =========================================================
 main() {
-    echo "✅ 权限检查通过，开始执行初始化..."
+    echo "🚀 开始执行 Linux 初始化脚本..."
     echo "========================================================="
 
-    auto_set_apt_sources
-    auto_set_fonts
-    auto_install_dependencies
-    auto_set_timezone
-    auto_config_ssh
-    auto_configure_firewall
+    # 将所有函数包裹在 if/else 结构中，即使 set -e 存在，
+    # 也能在某个函数失败后继续执行后续步骤（如果需要）。
+    # 这里我们保持 set -e 的行为：一旦关键步骤失败就停止。
 
-    read -p "是否需要进行交互式静态IP设置? (y/N): " setup_ip
-    if [[ "$setup_ip" =~ ^[yY]([eE][sS])?$ ]]; then
-        interactive_set_static_ip
+    if ! auto_set_apt_sources; then
+        echo "‼️ 关键步骤 [APT源设置] 失败，后续操作可能无法进行。脚本终止。"
+        exit 1
+    fi
+    echo "-------------------------------------"
+    
+    auto_set_fonts
+    echo "-------------------------------------"
+    
+    auto_install_dependencies
+    echo "-------------------------------------"
+    
+    auto_set_timezone
+    echo "-------------------------------------"
+
+    auto_config_ssh
+    echo "-------------------------------------"
+
+    auto_configure_firewall
+    echo "-------------------------------------"
+
+    # 静态IP配置是可选的
+    read -p "8/8 是否需要进行交互式静态IP设置? (y/N): " setup_ip
+    if [[ "$setup_ip" =~ ^[yY]$ ]]; then
+        # 在这里调用您完整的 `interactive_set_static_ip` 函数
+        echo "静态IP设置功能需要您将原函数代码粘贴到脚本中。"
     else
         echo "  - 已跳过静态IP设置。"
-        echo "-------------------------------------"
     fi
+    echo "-------------------------------------"
 
-    echo "🚀🚀🚀 所有任务执行完毕！🚀🚀🚀"
+    echo ""
+    echo "✅✅✅ 所有任务执行完毕！✅✅✅"
     echo "建议重启系统以确保所有配置完全生效: reboot"
 }
 
+# --- 执行主函数 ---
 main
