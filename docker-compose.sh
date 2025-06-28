@@ -31,17 +31,6 @@ if ! docker-compose -f "$TEMP_FILE" up -d; then
     exit 1
 fi
 
-# 检查容器运行状态
-echo "正在检查容器运行状态..."
-# 获取所有容器的状态，并过滤出非运行状态的容器
-FAILED_CONTAINERS=$(docker-compose -f "$TEMP_FILE" ps | awk 'NR>2 {if ($NF != "Up") print $1 " (" $NF ")"}')
-
-if [ -z "$FAILED_CONTAINERS" ]; then
-    echo "🎉 所有容器运行成功！"
-else
-    echo "⚠️ 部分容器启动失败或状态异常："
-    echo "$FAILED_CONTAINERS"
-    echo "请检查以上容器的状态。"
-fi
+echo "🎉 容器服务启动命令已执行！"
 
 # 临时文件会在脚本退出时自动删除。
