@@ -49,6 +49,27 @@ check_root() {
     fi
 }
 
+# 执行清理操作的主函数
+perform_cleanup() {
+    echo "系统清理脚本开始运行..."
+    clean_tmp
+    clean_logs
+    clean_user_cache
+
+    # 系统维护命令
+    echo "正在执行系统维护命令..."
+    apt autoremove -y >/dev/null 2>&1
+
+    # 判断 updatedb 是否存在后再执行
+    if command -v updatedb &>/dev/null; then
+        updatedb >/dev/null 2>&1
+    fi
+
+    sync >/dev/null 2>&1
+    echo "系统维护命令执行完成。"
+    echo "系统清理脚本运行完毕。"
+}
+
 # 清理临时文件
 clean_tmp() {
     echo "正在清理临时文件..."
@@ -68,7 +89,7 @@ clean_logs() {
     echo "正在清理旧日志文件..."
     for log_glob in "${LOG_PATHS[@]}"; do
         # 查找并删除超过指定天数的日志文件
-        find $log_glob -type f -mtime +$LOG_RETENTION_DAYS -delete 2>/dev/null
+        find "$log_glob" -type f -mtime +$LOG_RETENTION_DAYS -delete 2>/dev/null
     done
 
     # 清理 dpkg 日志归档文件
@@ -198,7 +219,7 @@ show_help() {
     echo "  --install-cron   安装每周自动运行的定时任务 (需要脚本已存在于 $INSTALL_PATH)"
     echo "  --help           显示此帮助信息"
     echo ""
-    echo "不带任何选项运行时，脚本将立即执行系统清理。"
+    echo "不带任何选项运行时，脚本将立即执行系统清理，且不会提示安装定时任务。"
     echo "如果脚本通过管道直接执行，在清理完成后会提示是否安装定时任务。"
 }
 
@@ -206,8 +227,6 @@ show_help() {
 check_root # 确保脚本以root权限运行
 
 # 判断脚本是否通过管道方式运行
-# /proc/self/fd/0 是当前进程的标准输入
-# 如果 /proc/self/fd/0 指向的是管道 (pipe)，则说明是通过管道运行
 if [[ -p /dev/stdin ]]; then
     IS_PIPED=true
 else
@@ -218,59 +237,16 @@ fi
 case "$1" in
     --install-cron)
         # 如果是直接运行并带 --install-cron 参数
-        if [[ ! "$IS_PIPED" = true ]]; then
-            install_cron_job
-            exit 0 # 执行完定时任务安装后退出
-        else
-            echo "WARN: 在管道模式下 '--install-cron' 参数通常不直接使用。"
-            echo "脚本会在清理完成后自动提示是否安装定时任务。"
-            # 继续执行清理流程
-            echo "系统清理脚本开始运行..."
-            clean_tmp
-            clean_logs
-            clean_user_cache
-
-            # 系统维护命令
-            echo "正在执行系统维护命令..."
-            apt autoremove -y >/dev/null 2>&1
-
-            # 判断 updatedb 是否存在后再执行
-            if command -v updatedb &>/dev/null; then
-                updatedb >/dev/null 2>&1
-            fi
-
-            sync >/dev/null 2>&1
-            echo "系统维护命令执行完成。"
-            echo "系统清理脚本运行完毕。"
-            
-            prompt_install_and_cron # 提示安装定时任务
-            exit 0
-        fi
+        install_cron_job # 直接安装定时任务
+        exit 0 # 执行完定时任务安装后退出
         ;;
     --help)
         show_help
         exit 0
         ;;
     "")
-        # 不带参数，执行清理逻辑
-        echo "系统清理脚本开始运行..."
-        clean_tmp
-        clean_logs
-        clean_user_cache
-
-        # 系统维护命令
-        echo "正在执行系统维护命令..."
-        apt autoremove -y >/dev/null 2>&1
-
-        # 判断 updatedb 是否存在后再执行
-        if command -v updatedb &>/dev/null; then
-            updatedb >/dev/null 2>&1
-        fi
-
-        sync >/dev/null 2>&1
-        echo "系统维护命令执行完成。"
-        echo "系统清理脚本运行完毕。"
-        
+        # 不带参数，只执行清理逻辑
+        perform_cleanup
         # 如果是通过管道运行，提示安装定时任务
         if [[ "$IS_PIPED" = true ]]; then
             prompt_install_and_cron
