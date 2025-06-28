@@ -2,41 +2,46 @@
 
 # 配置参数
 DOWNLOAD_URL="https://add.woskee.dpdns.org/raw.githubusercontent.com/tyy840913/backup/main/docker-compose.yml"
-TARGET_DIR="/data/docker"
-TARGET_FILE="$TARGET_DIR/docker-compose.yml"
 
-# 创建目标目录（如果不存在）
-mkdir -p "$TARGET_DIR"
+# 创建临时文件在 /dev/shm (内存文件系统)
+TEMP_FILE=$(mktemp /dev/shm/docker-compose-XXXXXX.yml)
+
+# 确保脚本退出时删除临时文件
+trap 'rm -f "$TEMP_FILE"' EXIT
 
 # 下载文件
-echo "正在从 $DOWNLOAD_URL 下载 docker-compose.yml..."
-if ! curl -sSL "$DOWNLOAD_URL" -o "$TARGET_FILE"; then
-    echo "❌ 文件下载失败！请检查："
-    echo "1. URL是否正确 ($DOWNLOAD_URL)"
-    echo "2. 网络连接是否正常"
-    echo "3. 目标目录是否可写 ($TARGET_DIR)"
+echo "正在下载 docker-compose.yml 到临时文件 $TEMP_FILE..."
+if ! curl -sSL "$DOWNLOAD_URL" -o "$TEMP_FILE"; then
+    echo "❌ 文件下载失败！"
     exit 1
 fi
 
 # 验证文件
-if [ ! -f "$TARGET_FILE" ]; then
-    echo "❌ 文件下载后验证失败：$TARGET_FILE 不存在"
+if [ ! -f "$TEMP_FILE" ]; then
+    echo "❌ 文件下载后验证失败：$TEMP_FILE 不存在"
     exit 1
 fi
 
 # 执行docker-compose
-echo "✅ 文件已保存到 $TARGET_FILE"
+echo "✅ 文件已下载到 $TEMP_FILE"
 echo "正在启动容器服务..."
-cd "$TARGET_DIR" || { echo "❌ 无法进入目录 $TARGET_DIR"; exit 1; }
 
-if ! docker-compose -f "$TARGET_FILE" up -d; then
-    echo "❌ docker-compose 执行失败！请检查："
-    echo "1. Docker服务是否运行"
-    echo "2. YAML文件格式是否正确"
-    echo "3. 是否有足够的权限"
+if ! docker-compose -f "$TEMP_FILE" up -d; then
+    echo "❌ docker-compose 执行失败！请检查Docker服务是否运行或YAML文件格式是否正确。"
     exit 1
 fi
 
-echo "🎉 容器服务已成功启动！"
-echo "可以使用以下命令查看状态："
-echo "  docker-compose -f $TARGET_FILE ps"
+# 检查容器运行状态
+echo "正在检查容器运行状态..."
+# 获取所有容器的状态，并过滤出非运行状态的容器
+FAILED_CONTAINERS=$(docker-compose -f "$TEMP_FILE" ps | awk 'NR>2 {if ($NF != "Up") print $1 " (" $NF ")"}')
+
+if [ -z "$FAILED_CONTAINERS" ]; then
+    echo "🎉 所有容器运行成功！"
+else
+    echo "⚠️ 部分容器启动失败或状态异常："
+    echo "$FAILED_CONTAINERS"
+    echo "请检查以上容器的状态。"
+fi
+
+# 临时文件会在脚本退出时自动删除。
