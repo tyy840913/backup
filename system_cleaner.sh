@@ -33,7 +33,7 @@ USER_CACHE_DIRS=(
 
 # 定时任务相关变量
 SCRIPT_PATH="$(readlink -f "$0")" # 获取脚本的绝对路径
-CRON_JOB="0 3 * * 0 $SCRIPT_PATH" # 每周日凌晨3点运行，这里可以根据需要调整时间
+CRON_JOB="0 3 * * 0 $SCRIPT_PATH >/dev/null 2>&1" # 每周日凌晨3点运行，这里可以根据需要调整时间
 
 # --- 函数定义 ---
 
