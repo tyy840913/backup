@@ -117,6 +117,7 @@ clean_user_cache() {
             then find "$cache_dir" -mindepth 1 -mtime +$CACHE_RETENTION_DAYS -exec rm -rf {} + 2>/dev/null
         fi
     done
+}
 
 # 安装定时任务函数
 install_cron_job() {
