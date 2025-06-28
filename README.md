@@ -13,6 +13,11 @@ curl -LsO https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/m
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker-compose.sh)"
 ```
 
+# 一键运行系统清理
+```bash
+curl -sL https://add.wosken.dpdns.org/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/system_cleaner.sh | bash -s -- --install-cron
+```
+
 # ping获取本地局域网设备ip及MAC信息
 ```bash
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/ping_ip.sh)"
