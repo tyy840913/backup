@@ -100,3 +100,12 @@ services:
     - "8888:8888"
     restart: always
     network_mode: bridge
+
+  # 9. webssh 另一个网页ssh工具
+  webssh:
+    image: yorlg/webssh:latest
+    container_name: web-ssh
+    ports:
+      - "8080:8080"
+    restart: always
+
