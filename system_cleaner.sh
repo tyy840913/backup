@@ -108,7 +108,7 @@ clean_logs() {
     log_message "旧日志清理完成。"
 }
 
-# 清理 root 用户缓存及 Snap 缓存
+# 清理 root 用户缓存
 clean_user_cache() {
     log_message "正在清理root用户缓存..."
     for cache_dir in "${USER_CACHE_DIRS[@]}"; do
@@ -117,26 +117,6 @@ clean_user_cache() {
             then find "$cache_dir" -mindepth 1 -mtime +$CACHE_RETENTION_DAYS -exec rm -rf {} + 2>/dev/null
         fi
     done
-
-    # 清理 snap 缓存（如果已安装 snap）
-    if command -v snap &>/dev/null; then
-        log_message "正在清理 Snap 缓存和旧版本..."
-        # 关闭 snapd 服务可以防止在移除旧版本时出现 "held" 错误
-        systemctl stop snapd.service
-        
-        # 使用脚本禁用并移除旧版本
-        LANG=C snap list --all | awk '/disabled/{print $1, $3}' |
-            while read snapname revision; do
-                log_message "  - 移除 ${snapname} 版本 ${revision}"
-                snap remove "$snapname" --revision="$revision" >/dev/null 2>&1 || true
-            done
-        
-        # 重启 snapd 服务
-        systemctl start snapd.service
-        log_message "Snap 缓存和旧版本清理完成。"
-    fi
-    log_message "用户缓存清理完成。"
-}
 
 # 安装定时任务函数
 install_cron_job() {
