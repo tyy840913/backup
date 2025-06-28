@@ -39,7 +39,7 @@ INSTALL_PATH="/usr/local/bin/$SCRIPT_NAME" # 建议安装路径
 # 定时任务将带 --cron 参数运行，以区分手动执行
 CRON_JOB="0 3 * * 0 $INSTALL_PATH --cron >/dev/null 2>&1" # 每周日凌晨3点运行
 
-# 内部标志，指示是否为完全静默模式（仅用于 --cron 参数或手动运行时检测到已安装定时任务）
+# 内部标志，指示是否为完全静默模式（仅用于 --cron 参数）
 IS_FULLY_SILENT_MODE=false
 
 # --- 函数定义 ---
@@ -47,7 +47,7 @@ IS_FULLY_SILENT_MODE=false
 # 检查是否以 root 权限运行
 check_root() {
     if [[ $EUID -ne 0 ]]; then
-        echo "ERROR: 此脚本需要以 root 权限运行。请使用 sudo 或切换到 root 用户。" >&2
+        echo "ERROR: 此脚本需要以 root 权限运行。请使用 root 用户或使用 sudo 运行。" >&2
         exit 1
     fi
 }
@@ -194,26 +194,28 @@ prompt_install_and_cron() {
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "正在安装脚本到 $INSTALL_PATH ..."
-        # *** 关键修正点：直接使用当前运行的脚本内容保存 ***
-        # 这种方式最可靠，无论是通过文件路径执行还是通过管道执行
-        # 使用 cat "$0" 可以读取当前脚本的内容，即使它是一个内存中的临时文件描述符
-        # 或者 /proc/$$/fd/管道号。更通用的方式是使用 /proc/self/fd/
         
-        # 尝试通过 /proc/self/fd/ 获取自身内容，如果失败则回退到 cat "$0"
-        # 这种方式能够处理脚本通过管道传输执行的情况
+        # *** 关键修正点：更可靠的自保存逻辑 ***
+        # 优先使用 /proc/self/fd/255 来获取脚本自身内容 (Bash 内部文件描述符)，
+        # 如果不可用，则回退到 "$0" (脚本路径)
         local script_content=""
-        if [ -f /proc/self/fd/0 ] && readlink /proc/self/fd/0 | grep -q 'pipe'; then
-            # 如果是从管道读取，则可能需要特殊处理，通常主脚本会确保文件存在或直接执行
-            # 这里简单回退到从 `$0` 读取，如果主脚本确保是文件，则可以
-            script_content=$(cat "$0")
-        elif [ -f "$0" ]; then
+        if [[ -r /proc/self/fd/255 ]] && [[ -s /proc/self/fd/255 ]]; then
+            # Bash usually opens the script file itself on FD 255 (if not reading from stdin)
+            script_content=$(cat /proc/self/fd/255)
+        elif [[ -r "$0" ]] && [[ -s "$0" ]]; then
+            # Fallback to reading from $0, which works if script is a regular file
             script_content=$(cat "$0")
         else
             echo "ERROR: 无法获取当前脚本内容进行安装。请确保脚本已保存到文件或从管道正确传递。" >&2
             return 1
         fi
 
-        echo "$script_content" > "$INSTALL_PATH"
+        if [[ -n "$script_content" ]]; then # 确保获取到了内容
+            echo "$script_content" > "$INSTALL_PATH"
+        else
+            echo "ERROR: 获取到的脚本内容为空，无法进行安装。" >&2
+            return 1
+        fi
         
         if [[ $? -eq 0 ]]; then
             chmod +x "$INSTALL_PATH"
@@ -263,12 +265,14 @@ case "$1" in
         ;;
     "")
         # 不带参数运行：手动执行，根据是否存在定时任务来决定是否询问安装
+        perform_cleanup # 总是先执行清理，并显示常规输出
+
         if check_existing_cron_job; then
-            echo "检测到相同的定时任务已存在，直接执行清理。"
-            perform_cleanup # 已存在，直接清理，不提示安装
+            # 如果存在定时任务，不提示安装
+            echo "检测到相同的定时任务已存在，本次运行不提示安装。"
         else
-            perform_cleanup # 先执行清理
-            prompt_install_and_cron # 清理完后提示用户安装
+            # 如果不存在定时任务，提示安装
+            prompt_install_and_cron 
         fi
         ;;
     *)
