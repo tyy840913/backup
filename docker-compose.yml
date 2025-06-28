@@ -91,3 +91,12 @@ services:
     restart: always
     tty: true
     network_mode: bridge
+
+  # 8. webssh 网页SSH工具
+  webssh:
+    container_name: webssh
+    image: cmliu/webssh:latest
+    ports:
+    - "8888:8888"
+    restart: always
+    network_mode: bridge
