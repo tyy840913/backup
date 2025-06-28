@@ -106,7 +106,7 @@ clean_logs() {
     log_message "旧日志清理完成。"
 }
 
-# 【已修正】清理 root 用户缓存
+# 清理 root 用户缓存
 clean_user_cache() {
     log_message "正在清理root用户缓存..."
     for cache_dir in "${USER_CACHE_DIRS[@]}"; do
