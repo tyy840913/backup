@@ -196,30 +196,14 @@ prompt_install_and_cron() {
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "正在安装脚本到 $INSTALL_PATH ..."
         
-        # *** 最关键的自保存逻辑：直接从标准输入或当前文件复制自身 ***
-        # 这段代码尝试以最兼容的方式复制自身。
-        # 如果脚本是通过管道执行 (e.g., curl | bash)，Bash 会将 stdin 连接到脚本内容。
-        # 否则，它会是文件。
-        if [ -p /dev/stdin ]; then
-            # If stdin is a pipe, read from it and save
-            # However, stdin might be consumed. A safer way if it's pipe-executed
-            # is to assume Bash might expose it through /proc/self/fd
-            # or rely on the fact that the initial execution often keeps a reference.
-            # Forcing a re-read of stdin is problematic if already read.
-            # Best is to tell user they need to ensure the script is a file.
-            echo "WARN: 脚本可能通过管道执行，无法可靠地自保存。请尝试将脚本保存为文件后执行安装。" >&2
-            # Attempt to copy if it's a temp file, e.g., /dev/fd/63
-            # This is complex and unreliable for generic pipe execution without prior saving.
-            if [[ -f "$0" ]]; then # Check if $0 points to a file, even a temp one
-                cp "$0" "$INSTALL_PATH"
-            else
-                echo "ERROR: 无法获取脚本文件路径进行自保存。自保存功能需要脚本已存在于文件系统。" >&2
-                echo "请手动将脚本内容保存到 '$INSTALL_PATH' 并赋予执行权限，然后执行 'sudo $INSTALL_PATH --install-cron' 来安装定时任务。"
-                return 1
-            fi
-        else
-            # If not piped, assume $0 is a file path and copy it
+        # *** 自保存逻辑：直接从当前文件复制自身 ***
+        # 这种方式最可靠，前提是 $0 指向一个实际文件。
+        if [[ -f "$0" ]]; then # 检查 $0 是否指向一个常规文件或链接
             cp "$0" "$INSTALL_PATH"
+        else
+            echo "ERROR: 无法获取脚本文件路径进行自保存。自保存功能需要脚本已存在于文件系统。" >&2
+            echo "如果脚本是通过 'curl | bash' 直接运行，则无法自保存。请先手动保存脚本到文件，再执行该文件进行安装。"
+            return 1
         fi
         
         if [[ $? -eq 0 ]]; then
@@ -242,14 +226,33 @@ check_existing_cron_job() {
     local current_crontab_jobs
     current_crontab_jobs=$(crontab -l 2>/dev/null)
 
-    # 检查 $current_crontab_jobs 是否为空。如果为空，说明没有定时任务
+    log_message "--- 调试信息：检查定时任务 ---"
+    log_message "定义的定时任务字符串 (CRON_JOB): $CRON_JOB"
+    
     if [[ -z "$current_crontab_jobs" ]]; then
+        log_message "当前 crontab 为空或无定时任务。"
+        log_message "--- 调试信息结束 ---"
         return 1 # 不存在定时任务
     fi
 
-    # 如果不为空，则检查是否包含精确的 CRON_JOB 字符串
+    log_message "当前 crontab 内容如下:"
+    log_message "--------------------"
+    log_message "$current_crontab_jobs"
+    log_message "--------------------"
+
+    # 检查是否包含精确的 CRON_JOB 字符串
     echo "$current_crontab_jobs" | grep -Fq "$CRON_JOB"
-    return $? # grep 的退出码即为结果
+    local grep_status=$? # 保存 grep 的退出码
+
+    if [[ $grep_status -eq 0 ]]; then
+        log_message "定时任务已存在！"
+        log_message "--- 调试信息结束 ---"
+        return 0 # 存在定时任务
+    else
+        log_message "定时任务不存在或不匹配。"
+        log_message "--- 调试信息结束 ---"
+        return 1 # 不存在定时任务或不匹配
+    fi
 }
 
 # 显示帮助信息
