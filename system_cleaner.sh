@@ -166,6 +166,7 @@ install_cron_job() {
     # 检查脚本是否已存在于安装路径
     if [[ ! -f "$INSTALL_PATH" ]]; then
         echo "ERROR: 脚本 '$SCRIPT_NAME' 未安装到 '$INSTALL_PATH'。无法设置定时任务。" >&2
+        echo "请确保脚本已成功保存到 $INSTALL_PATH。"
         return 1
     fi
 
@@ -195,26 +196,30 @@ prompt_install_and_cron() {
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "正在安装脚本到 $INSTALL_PATH ..."
         
-        # *** 关键修正点：更可靠的自保存逻辑 ***
-        # 优先使用 /proc/self/fd/255 来获取脚本自身内容 (Bash 内部文件描述符)，
-        # 如果不可用，则回退到 "$0" (脚本路径)
-        local script_content=""
-        if [[ -r /proc/self/fd/255 ]] && [[ -s /proc/self/fd/255 ]]; then
-            # Bash usually opens the script file itself on FD 255 (if not reading from stdin)
-            script_content=$(cat /proc/self/fd/255)
-        elif [[ -r "$0" ]] && [[ -s "$0" ]]; then
-            # Fallback to reading from $0, which works if script is a regular file
-            script_content=$(cat "$0")
+        # *** 最关键的自保存逻辑：直接从标准输入或当前文件复制自身 ***
+        # 这段代码尝试以最兼容的方式复制自身。
+        # 如果脚本是通过管道执行 (e.g., curl | bash)，Bash 会将 stdin 连接到脚本内容。
+        # 否则，它会是文件。
+        if [ -p /dev/stdin ]; then
+            # If stdin is a pipe, read from it and save
+            # However, stdin might be consumed. A safer way if it's pipe-executed
+            # is to assume Bash might expose it through /proc/self/fd
+            # or rely on the fact that the initial execution often keeps a reference.
+            # Forcing a re-read of stdin is problematic if already read.
+            # Best is to tell user they need to ensure the script is a file.
+            echo "WARN: 脚本可能通过管道执行，无法可靠地自保存。请尝试将脚本保存为文件后执行安装。" >&2
+            # Attempt to copy if it's a temp file, e.g., /dev/fd/63
+            # This is complex and unreliable for generic pipe execution without prior saving.
+            if [[ -f "$0" ]]; then # Check if $0 points to a file, even a temp one
+                cp "$0" "$INSTALL_PATH"
+            else
+                echo "ERROR: 无法获取脚本文件路径进行自保存。自保存功能需要脚本已存在于文件系统。" >&2
+                echo "请手动将脚本内容保存到 '$INSTALL_PATH' 并赋予执行权限，然后执行 'sudo $INSTALL_PATH --install-cron' 来安装定时任务。"
+                return 1
+            fi
         else
-            echo "ERROR: 无法获取当前脚本内容进行安装。请确保脚本已保存到文件或从管道正确传递。" >&2
-            return 1
-        fi
-
-        if [[ -n "$script_content" ]]; then # 确保获取到了内容
-            echo "$script_content" > "$INSTALL_PATH"
-        else
-            echo "ERROR: 获取到的脚本内容为空，无法进行安装。" >&2
-            return 1
+            # If not piped, assume $0 is a file path and copy it
+            cp "$0" "$INSTALL_PATH"
         fi
         
         if [[ $? -eq 0 ]]; then
@@ -233,7 +238,18 @@ prompt_install_and_cron() {
 
 # 检查是否存在相同的定时任务（只检查精确匹配的 CRON_JOB 字符串）
 check_existing_cron_job() {
-    crontab -l 2>/dev/null | grep -Fq "$CRON_JOB"
+    # 捕获 crontab -l 的输出，以便进行更可靠的检查
+    local current_crontab_jobs
+    current_crontab_jobs=$(crontab -l 2>/dev/null)
+
+    # 检查 $current_crontab_jobs 是否为空。如果为空，说明没有定时任务
+    if [[ -z "$current_crontab_jobs" ]]; then
+        return 1 # 不存在定时任务
+    fi
+
+    # 如果不为空，则检查是否包含精确的 CRON_JOB 字符串
+    echo "$current_crontab_jobs" | grep -Fq "$CRON_JOB"
+    return $? # grep 的退出码即为结果
 }
 
 # 显示帮助信息
