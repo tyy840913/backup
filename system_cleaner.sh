@@ -68,7 +68,8 @@ perform_cleanup() {
 
     # 系统维护命令
     log_message "正在执行系统维护命令..."
-    apt autoremove -y >/dev/null 2>&1
+    apt-get autoremove -y >/dev/null 2>&1
+    apt-get clean >/dev/null 2>&1
 
     # 判断 updatedb 是否存在后再执行
     if command -v updatedb &>/dev/null; then
@@ -85,10 +86,8 @@ clean_tmp() {
     log_message "正在清理临时文件..."
     for dir in "${TMP_DIRS[@]}"; do
         if [[ -d "$dir" ]]; then
-            # 删除超过1天的文件
-            find "$dir" -mindepth 1 -maxdepth 1 -type f -mtime +1 -delete 2>/dev/null
-            # 删除空目录
-            find "$dir" -mindepth 1 -maxdepth 1 -type d -empty -delete 2>/dev/null
+            # 删除超过1天的文件和目录
+            find "$dir" -mindepth 1 -mtime +1 -exec rm -rf {} + 2>/dev/null
         fi
     done
     log_message "临时文件清理完成。"
@@ -99,62 +98,41 @@ clean_logs() {
     log_message "正在清理旧日志文件..."
     for log_glob in "${LOG_PATHS[@]}"; do
         # 查找并删除超过指定天数的日志文件
-        find "$log_glob" -type f -mtime +$LOG_RETENTION_DAYS -delete 2>/dev/null
+        find $(dirname "$log_glob") -name "$(basename "$log_glob")" -type f -mtime +$LOG_RETENTION_DAYS -delete 2>/dev/null
     done
 
     # 清理 dpkg 日志归档文件
     if [[ -f "/var/log/dpkg.log" ]]; then
-        find /var/log/dpkg.log.* -type f -mtime +$LOG_RETENTION_DAYS -delete 2>/dev/null
+        find /var/log/ -name "dpkg.log.*" -type f -mtime +$LOG_RETENTION_DAYS -delete 2>/dev/null
     fi
-
-    # 清理 APT 缓存
-    log_message "正在清理 APT 缓存..."
-    apt clean >/dev/null 2>&1
-    log_message "旧日志和APT缓存清理完成。"
+    log_message "旧日志清理完成。"
 }
 
 # 清理 root 用户缓存及 Snap 缓存
 clean_user_cache() {
     log_message "正在清理root用户缓存..."
     for cache_dir in "${USER_CACHE_DIRS[@]}"; do
-        if [[ -d "$cache_dir" ]]; then
-            # 删除超过指定天数的文件
-            find "$cache_dir" -mindepth 1 -maxdepth 1 -type f -mtime +$CACHE_RETENTION_DAYS -delete 2>/dev/null
-            # 删除空目录
-            find "$cache_dir" -mindepth 1 -maxdepth 1 -type d -empty -delete 2>/dev/null
+        if [[ -d "$cache_dir" ]];
+            # 删除超过指定天数的文件和目录
+            then find "$cache_dir" -mindepth 1 -mtime +$CACHE_RETENTION_DAYS -exec rm -rf {} + 2>/dev/null
         fi
     done
 
     # 清理 snap 缓存（如果已安装 snap）
     if command -v snap &>/dev/null; then
         log_message "正在清理 Snap 缓存和旧版本..."
-        set -eu # 开启严格模式，遇到未设置的变量或错误时退出
+        # 关闭 snapd 服务可以防止在移除旧版本时出现 "held" 错误
+        systemctl stop snapd.service
         
-        # 刷新所有snap应用，确保获取最新版本信息
-        for snap_name in $(snap list | awk 'NR > 1 {print $1}'); do
-            snap refresh "$snap_name" >/dev/null 2>&1 || true # 刷新失败不退出
-        done
-
-        # 清理旧版本的snap应用
-        LANG=C snap list --all | awk 'NR>1 && NF>=5 {print $1, $3, $5}' | while read snapname revision cohort; do
-            # 排除核心snap，避免误删
-            if [[ "$snapname" = "core" ]] || [[ "$snapname" = "snapd" ]]; then
-                continue
-            fi
-            
-            # 获取指定snap的所有版本并按版本号降序排序
-            snap_versions=$(snap list --all "$snapname" | awk 'NR>1 {print $5}' | sort -nr)
-            count=0
-            for snap_version in $snap_versions; do
-                ((count++))
-                # 保留最新的2个版本，删除更旧的
-                if [[ $count -gt 2 ]]; then
-                    log_message "  - 移除 ${snapname} 版本 ${snap_version}"
-                    snap remove "$snap_name" --revision="$snap_version" >/dev/null 2>&1 || true # 移除失败不退出
-                fi
+        # 使用脚本禁用并移除旧版本
+        LANG=C snap list --all | awk '/disabled/{print $1, $3}' |
+            while read snapname revision; do
+                log_message "  - 移除 ${snapname} 版本 ${revision}"
+                snap remove "$snapname" --revision="$revision" >/dev/null 2>&1 || true
             done
-        done
-        set +eu # 关闭严格模式
+        
+        # 重启 snapd 服务
+        systemctl start snapd.service
         log_message "Snap 缓存和旧版本清理完成。"
     fi
     log_message "用户缓存清理完成。"
@@ -163,18 +141,15 @@ clean_user_cache() {
 # 安装定时任务函数
 install_cron_job() {
     echo "正在尝试安装定时任务..."
-    # 检查脚本是否已存在于安装路径
     if [[ ! -f "$INSTALL_PATH" ]]; then
         echo "ERROR: 脚本 '$SCRIPT_NAME' 未安装到 '$INSTALL_PATH'。无法设置定时任务。" >&2
         echo "请确保脚本已成功保存到 $INSTALL_PATH。"
         return 1
     fi
 
-    # 检查是否已存在相同的定时任务
     if crontab -l 2>/dev/null | grep -Fq "$CRON_JOB"; then
         echo "WARN: 相同的定时任务已存在，无需重复添加。"
     else
-        # 添加定时任务
         (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
         if [[ $? -eq 0 ]]; then
             echo "定时任务已成功添加：$CRON_JOB"
@@ -187,22 +162,18 @@ install_cron_job() {
     return 0
 }
 
-# 提示用户是否安装脚本并设置定时任务 (仅在非静默模式下调用)
+# 提示用户是否安装脚本并设置定时任务
 prompt_install_and_cron() {
     echo ""
     read -p "是否要将此清理脚本安装为系统服务并设置每周自动运行的定时任务？(y/N): " -n 1 -r
-    echo "" # 换行
+    echo ""
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "正在安装脚本到 $INSTALL_PATH ..."
-        
-        # *** 自保存逻辑：直接从当前文件复制自身 ***
-        # 这种方式最可靠，前提是 $0 指向一个实际文件。
-        if [[ -f "$0" ]]; then # 检查 $0 是否指向一个常规文件或链接
+        if [[ -f "$0" ]]; then
             cp "$0" "$INSTALL_PATH"
         else
-            echo "ERROR: 无法获取脚本文件路径进行自保存。自保存功能需要脚本已存在于文件系统。" >&2
-            echo "如果脚本是通过 'curl | bash' 直接运行，则无法自保存。请先手动保存脚本到文件，再执行该文件进行安装。"
+            echo "ERROR: 无法获取脚本文件路径进行自保存。请先手动保存脚本到文件，再执行安装。" >&2
             return 1
         fi
         
@@ -220,38 +191,20 @@ prompt_install_and_cron() {
     return 0
 }
 
-# 检查是否存在相同的定时任务（只检查精确匹配的 CRON_JOB 字符串）
+# 【已修正】检查是否存在相同的定时任务（只检查有效的、未被注释的行）
 check_existing_cron_job() {
-    # 捕获 crontab -l 的输出，以便进行更可靠的检查
     local current_crontab_jobs
     current_crontab_jobs=$(crontab -l 2>/dev/null)
 
-    log_message "--- 调试信息：检查定时任务 ---"
-    log_message "定义的定时任务字符串 (CRON_JOB): $CRON_JOB"
-    
     if [[ -z "$current_crontab_jobs" ]]; then
-        log_message "当前 crontab 为空或无定时任务。"
-        log_message "--- 调试信息结束 ---"
-        return 1 # 不存在定时任务
+        return 1 # crontab 为空，任务肯定不存在
     fi
 
-    log_message "当前 crontab 内容如下:"
-    log_message "--------------------"
-    log_message "$current_crontab_jobs"
-    log_message "--------------------"
-
-    # 检查是否包含精确的 CRON_JOB 字符串
-    echo "$current_crontab_jobs" | grep -Fq "$CRON_JOB"
-    local grep_status=$? # 保存 grep 的退出码
-
-    if [[ $grep_status -eq 0 ]]; then
-        log_message "定时任务已存在！"
-        log_message "--- 调试信息结束 ---"
-        return 0 # 存在定时任务
+    # 关键改进：过滤掉注释行再进行精确匹配
+    if echo "$current_crontab_jobs" | grep -v '^[[:space:]]*#' | grep -Fq "$CRON_JOB"; then
+        return 0 # 存在有效的、匹配的定时任务
     else
-        log_message "定时任务不存在或不匹配。"
-        log_message "--- 调试信息结束 ---"
-        return 1 # 不存在定时任务或不匹配
+        return 1 # 不存在匹配的定时任务
     fi
 }
 
@@ -263,39 +216,31 @@ show_help() {
     echo "  --cron   作为定时任务运行 (完全静默执行清理，不输出任何信息)"
     echo "  --help   显示此帮助信息"
     echo ""
-    echo "不带任何选项运行时，脚本将立即执行系统清理。清理过程中会显示常规输出。"
-    echo "如果检测到相同的定时任务已存在，脚本将直接执行清理，不提示安装。"
-    echo "如果未检测到定时任务，脚本将执行清理后提示是否安装。"
+    echo "不带任何选项运行时，脚本将立即执行系统清理。清理完成后，如果未检测到已安装的定时任务，则会提示安装。"
 }
 
 # --- 主逻辑执行区 ---
-check_root # 确保脚本以root权限运行
+check_root
 
-# 解析命令行参数
 case "$1" in
     --cron)
-        IS_FULLY_SILENT_MODE=true # 设定为完全静默模式
-        perform_cleanup            # 执行清理
-        exit 0                     # 退出，不进行其他操作
+        IS_FULLY_SILENT_MODE=true
+        perform_cleanup
+        exit 0
         ;;
     --help)
         show_help
         exit 0
         ;;
     "")
-        # 不带参数运行：手动执行，根据是否存在定时任务来决定是否询问安装
-        perform_cleanup # 总是先执行清理，并显示常规输出
-
+        perform_cleanup
         if check_existing_cron_job; then
-            # 如果存在定时任务，不提示安装
             echo "检测到相同的定时任务已存在，本次运行不提示安装。"
         else
-            # 如果不存在定时任务，提示安装
             prompt_install_and_cron 
         fi
         ;;
     *)
-        # 任何其他参数：视为无效参数，显示帮助信息并退出
         echo "ERROR: 未知或不支持的选项 '$1'。" >&2
         show_help
         exit 1
