@@ -1,6 +1,6 @@
 自动备份Docker容器数据 auto_backup.sh
 
-安装SSH服务，修改时区 init.sh
+设置SSH 时区 清华源 init.sh
 
 修改系统支持中文显示 ziti.sh
 
