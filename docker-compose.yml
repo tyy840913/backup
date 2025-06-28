@@ -93,7 +93,7 @@ services:
     network_mode: bridge
 
   # 8. webssh 网页SSH工具
-  webssh:
+  cmliu-webssh:
     container_name: webssh
     image: cmliu/webssh:latest
     ports:
@@ -102,10 +102,11 @@ services:
     network_mode: bridge
 
   # 9. webssh 另一个网页ssh工具
-  webssh:
+  yorlg-webssh:
     image: yorlg/webssh:latest
     container_name: web-ssh
     ports:
       - "8080:8080"
     restart: always
+    network_mode: bridge
 
