@@ -102,21 +102,20 @@ clean_logs() {
     done
 
     # 清理 dpkg 日志归档文件
-    if [[ -f "/var/log/dpkg.log" ]]; then
-        find /var/log/ -name "dpkg.log.*" -type f -mtime +$LOG_RETENTION_DAYS -delete 2>/dev/null
-    fi
+    find /var/log/ -name "dpkg.log.*" -type f -mtime +$LOG_RETENTION_DAYS -delete 2>/dev/null
     log_message "旧日志清理完成。"
 }
 
-# 清理 root 用户缓存
+# 【已修正】清理 root 用户缓存
 clean_user_cache() {
     log_message "正在清理root用户缓存..."
     for cache_dir in "${USER_CACHE_DIRS[@]}"; do
-        if [[ -d "$cache_dir" ]];
+        if [[ -d "$cache_dir" ]]; then
             # 删除超过指定天数的文件和目录
-            then find "$cache_dir" -mindepth 1 -mtime +$CACHE_RETENTION_DAYS -exec rm -rf {} + 2>/dev/null
+            find "$cache_dir" -mindepth 1 -mtime +$CACHE_RETENTION_DAYS -exec rm -rf {} + 2>/dev/null
         fi
     done
+    log_message "root用户缓存清理完成。"
 }
 
 # 安装定时任务函数
@@ -128,9 +127,8 @@ install_cron_job() {
         return 1
     fi
 
-    if crontab -l 2>/dev/null | grep -Fq "$CRON_JOB"; then
-        echo "WARN: 相同的定时任务已存在，无需重复添加。"
-    else
+    # 使用修正后的 check_existing_cron_job 的逻辑来避免重复添加
+    if ! crontab -l 2>/dev/null | grep -v '^[[:space:]]*#' | grep -Fq "$CRON_JOB"; then
         (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
         if [[ $? -eq 0 ]]; then
             echo "定时任务已成功添加：$CRON_JOB"
@@ -139,6 +137,8 @@ install_cron_job() {
             echo "ERROR: 添加定时任务失败。" >&2
             return 1
         fi
+    else
+        echo "WARN: 相同的有效定时任务已存在，无需重复添加。"
     fi
     return 0
 }
@@ -172,7 +172,7 @@ prompt_install_and_cron() {
     return 0
 }
 
-# 【已修正】检查是否存在相同的定时任务（只检查有效的、未被注释的行）
+# 检查是否存在相同的定时任务（只检查有效的、未被注释的行）
 check_existing_cron_job() {
     local current_crontab_jobs
     current_crontab_jobs=$(crontab -l 2>/dev/null)
@@ -194,10 +194,10 @@ show_help() {
     echo "使用方法: $0 [选项]"
     echo ""
     echo "选项:"
-    echo "  --cron   作为定时任务运行 (完全静默执行清理，不输出任何信息)"
+    echo "  --cron   作为定时任务运行 (完全静默执行清理)"
     echo "  --help   显示此帮助信息"
     echo ""
-    echo "不带任何选项运行时，脚本将立即执行系统清理。清理完成后，如果未检测到已安装的定时任务，则会提示安装。"
+    echo "不带任何选项运行时，脚本将立即执行清理。清理后，若无有效定时任务，则提示安装。"
 }
 
 # --- 主逻辑执行区 ---
@@ -216,7 +216,7 @@ case "$1" in
     "")
         perform_cleanup
         if check_existing_cron_job; then
-            echo "检测到相同的定时任务已存在，本次运行不提示安装。"
+            echo "检测到相同的有效定时任务已存在，本次运行不提示安装。"
         else
             prompt_install_and_cron 
         fi
