@@ -39,8 +39,8 @@ INSTALL_PATH="/usr/local/bin/$SCRIPT_NAME" # 建议安装路径
 # 定时任务将带 --cron 参数运行，以区分手动执行
 CRON_JOB="0 3 * * 0 $INSTALL_PATH --cron >/dev/null 2>&1" # 每周日凌晨3点运行
 
-# 内部标志，指示是否为静默模式运行 (例如：cron任务或检测到已安装定时任务)
-IS_SILENT_MODE=false
+# 内部标志，指示是否为完全静默模式（仅用于 --cron 参数）
+IS_FULLY_SILENT_MODE=false
 
 # --- 函数定义 ---
 
@@ -52,19 +52,22 @@ check_root() {
     fi
 }
 
+# 辅助输出函数，根据静默模式决定是否打印
+log_message() {
+    if [[ "$IS_FULLY_SILENT_MODE" = false ]]; then
+        echo "$@"
+    fi
+}
+
 # 执行清理操作的主函数
 perform_cleanup() {
-    if [[ "$IS_SILENT_MODE" = false ]]; then
-        echo "系统清理脚本开始运行..."
-    fi
+    log_message "系统清理脚本开始运行..."
     clean_tmp
     clean_logs
     clean_user_cache
 
     # 系统维护命令
-    if [[ "$IS_SILENT_MODE" = false ]]; then
-        echo "正在执行系统维护命令..."
-    fi
+    log_message "正在执行系统维护命令..."
     apt autoremove -y >/dev/null 2>&1
 
     # 判断 updatedb 是否存在后再执行
@@ -73,17 +76,13 @@ perform_cleanup() {
     fi
 
     sync >/dev/null 2>&1
-    if [[ "$IS_SILENT_MODE" = false ]]; then
-        echo "系统维护命令执行完成。"
-        echo "系统清理脚本运行完毕。"
-    fi
+    log_message "系统维护命令执行完成。"
+    log_message "系统清理脚本运行完毕。"
 }
 
 # 清理临时文件
 clean_tmp() {
-    if [[ "$IS_SILENT_MODE" = false ]]; then
-        echo "正在清理临时文件..."
-    fi
+    log_message "正在清理临时文件..."
     for dir in "${TMP_DIRS[@]}"; do
         if [[ -d "$dir" ]]; then
             # 删除超过1天的文件
@@ -92,16 +91,12 @@ clean_tmp() {
             find "$dir" -mindepth 1 -maxdepth 1 -type d -empty -delete 2>/dev/null
         fi
     done
-    if [[ "$IS_SILENT_MODE" = false ]]; then
-        echo "临时文件清理完成。"
-    fi
+    log_message "临时文件清理完成。"
 }
 
 # 清理旧日志文件
 clean_logs() {
-    if [[ "$IS_SILENT_MODE" = false ]]; then
-        echo "正在清理旧日志文件..."
-    fi
+    log_message "正在清理旧日志文件..."
     for log_glob in "${LOG_PATHS[@]}"; do
         # 查找并删除超过指定天数的日志文件
         find "$log_glob" -type f -mtime +$LOG_RETENTION_DAYS -delete 2>/dev/null
@@ -113,20 +108,14 @@ clean_logs() {
     fi
 
     # 清理 APT 缓存
-    if [[ "$IS_SILENT_MODE" = false ]]; then
-        echo "正在清理 APT 缓存..."
-    fi
+    log_message "正在清理 APT 缓存..."
     apt clean >/dev/null 2>&1
-    if [[ "$IS_SILENT_MODE" = false ]]; then
-        echo "旧日志和APT缓存清理完成。"
-    fi
+    log_message "旧日志和APT缓存清理完成。"
 }
 
 # 清理 root 用户缓存及 Snap 缓存
 clean_user_cache() {
-    if [[ "$IS_SILENT_MODE" = false ]]; then
-        echo "正在清理root用户缓存..."
-    fi
+    log_message "正在清理root用户缓存..."
     for cache_dir in "${USER_CACHE_DIRS[@]}"; do
         if [[ -d "$cache_dir" ]]; then
             # 删除超过指定天数的文件
@@ -138,9 +127,7 @@ clean_user_cache() {
 
     # 清理 snap 缓存（如果已安装 snap）
     if command -v snap &>/dev/null; then
-        if [[ "$IS_SILENT_MODE" = false ]]; then
-            echo "正在清理 Snap 缓存和旧版本..."
-        fi
+        log_message "正在清理 Snap 缓存和旧版本..."
         set -eu # 开启严格模式，遇到未设置的变量或错误时退出
         
         # 刷新所有snap应用，确保获取最新版本信息
@@ -162,21 +149,15 @@ clean_user_cache() {
                 ((count++))
                 # 保留最新的2个版本，删除更旧的
                 if [[ $count -gt 2 ]]; then
-                    if [[ "$IS_SILENT_MODE" = false ]]; then
-                        echo "  - 移除 ${snapname} 版本 ${snap_version}"
-                    fi
+                    log_message "  - 移除 ${snapname} 版本 ${snap_version}"
                     snap remove "$snap_name" --revision="$snap_version" >/dev/null 2>&1 || true # 移除失败不退出
                 fi
             done
         done
         set +eu # 关闭严格模式
-        if [[ "$IS_SILENT_MODE" = false ]]; then
-            echo "Snap 缓存和旧版本清理完成。"
-        fi
+        log_message "Snap 缓存和旧版本清理完成。"
     fi
-    if [[ "$IS_SILENT_MODE" = false ]]; then
-        echo "用户缓存清理完成。"
-    fi
+    log_message "用户缓存清理完成。"
 }
 
 # 安装定时任务函数
@@ -246,10 +227,10 @@ show_help() {
     echo "使用方法: $0 [选项]"
     echo ""
     echo "选项:"
-    echo "  --cron   作为定时任务运行 (静默执行清理，不输出额外信息)"
+    echo "  --cron   作为定时任务运行 (完全静默执行清理，不输出任何信息)"
     echo "  --help   显示此帮助信息"
     echo ""
-    echo "不带任何选项运行时，脚本将立即执行系统清理。"
+    echo "不带任何选项运行时，脚本将立即执行系统清理。清理过程中会显示常规输出。"
     echo "如果检测到相同的定时任务已存在，脚本将直接执行清理，不提示安装。"
     echo "如果未检测到定时任务，脚本将执行清理后提示是否安装。"
 }
@@ -260,9 +241,9 @@ check_root # 确保脚本以root权限运行
 # 解析命令行参数
 case "$1" in
     --cron)
-        IS_SILENT_MODE=true # 设定为静默模式，只执行清理，不输出其他提示
-        perform_cleanup     # 执行清理
-        exit 0              # 退出，不进行其他操作
+        IS_FULLY_SILENT_MODE=true # 设定为完全静默模式
+        perform_cleanup            # 执行清理
+        exit 0                     # 退出，不进行其他操作
         ;;
     --help)
         show_help
@@ -271,7 +252,6 @@ case "$1" in
     "")
         # 不带参数运行：手动执行，根据是否存在定时任务来决定是否询问安装
         if check_existing_cron_job; then
-            IS_SILENT_MODE=true # 存在定时任务，则本次运行视为静默，不询问安装
             echo "检测到相同的定时任务已存在，直接执行清理。"
             perform_cleanup # 已存在，直接清理，不提示安装
         else
