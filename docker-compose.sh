@@ -31,6 +31,6 @@ if ! docker-compose -f "$TEMP_FILE" up -d; then
     exit 1
 fi
 
-echo "🎉 容器服务启动命令已执行！"
+echo "🎉 容器服务启动命令已执行完成！"
 
 # 临时文件会在脚本退出时自动删除。
