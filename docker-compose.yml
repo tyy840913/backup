@@ -95,7 +95,7 @@ services:
   # 8. webssh 网页SSH工具
   cmliu-webssh:
     container_name: webssh
-    image: cmliu/webssh:latest
+    image: docker.woskee.nyc.mn/cmliu/webssh:latest
     ports:
     - "8888:8888"
     restart: always
@@ -103,7 +103,7 @@ services:
 
   # 9. webssh 另一个网页ssh工具
   yorlg-webssh:
-    image: yorlg/webssh:latest
+    image: docker.luxxk.dpdns.org/yorlg/webssh:latest
     container_name: web-ssh
     ports:
       - "8080:8080"
