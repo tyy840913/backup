@@ -15,7 +15,7 @@ bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy8409
 
 # 一键运行系统清理
 ```bash
-curl -o /root/system_cleaner.sh -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/system_cleaner.sh && chmod +x /root/system_cleaner.sh && /root/system_cleaner.sh --install-cron
+curl -o /root/system_cleaner.sh -sL https://add.wosken.dpdns.org/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/system_cleaner.sh && chmod +x /root/system_cleaner.sh && /root/system_cleaner.sh --install-cron
 ```
 
 # ping获取本地局域网设备ip及MAC信息
