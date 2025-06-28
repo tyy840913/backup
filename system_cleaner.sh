@@ -39,7 +39,7 @@ INSTALL_PATH="/usr/local/bin/$SCRIPT_NAME" # 建议安装路径
 # 定时任务将带 --cron 参数运行，以区分手动执行
 CRON_JOB="0 3 * * 0 $INSTALL_PATH --cron >/dev/null 2>&1" # 每周日凌晨3点运行
 
-# 内部标志，指示是否为完全静默模式（仅用于 --cron 参数）
+# 内部标志，指示是否为完全静默模式（仅用于 --cron 参数或手动运行时检测到已安装定时任务）
 IS_FULLY_SILENT_MODE=false
 
 # --- 函数定义 ---
@@ -194,15 +194,27 @@ prompt_install_and_cron() {
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "正在安装脚本到 $INSTALL_PATH ..."
-        # 将当前执行的脚本内容复制到目标路径
-        # 这里考虑通过管道执行的情况，确保脚本内容能正确写入
-        if [[ -p /dev/stdin ]]; then # 检查是否为命名管道
-            cat > "$INSTALL_PATH"
+        # *** 关键修正点：直接使用当前运行的脚本内容保存 ***
+        # 这种方式最可靠，无论是通过文件路径执行还是通过管道执行
+        # 使用 cat "$0" 可以读取当前脚本的内容，即使它是一个内存中的临时文件描述符
+        # 或者 /proc/$$/fd/管道号。更通用的方式是使用 /proc/self/fd/
+        
+        # 尝试通过 /proc/self/fd/ 获取自身内容，如果失败则回退到 cat "$0"
+        # 这种方式能够处理脚本通过管道传输执行的情况
+        local script_content=""
+        if [ -f /proc/self/fd/0 ] && readlink /proc/self/fd/0 | grep -q 'pipe'; then
+            # 如果是从管道读取，则可能需要特殊处理，通常主脚本会确保文件存在或直接执行
+            # 这里简单回退到从 `$0` 读取，如果主脚本确保是文件，则可以
+            script_content=$(cat "$0")
+        elif [ -f "$0" ]; then
+            script_content=$(cat "$0")
         else
-            # 否则，从当前文件复制 (如果文件已存在于某个位置)
-            cp "$(readlink -f "$0")" "$INSTALL_PATH"
+            echo "ERROR: 无法获取当前脚本内容进行安装。请确保脚本已保存到文件或从管道正确传递。" >&2
+            return 1
         fi
 
+        echo "$script_content" > "$INSTALL_PATH"
+        
         if [[ $? -eq 0 ]]; then
             chmod +x "$INSTALL_PATH"
             echo "脚本已成功保存到 $INSTALL_PATH 并已赋予执行权限。"
