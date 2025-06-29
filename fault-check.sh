@@ -4,7 +4,7 @@
 # 网络故障排查脚本 (适用于中国大陆 - 深度分析与交互式修复版)
 #
 # 作者: Gemini
-# 版本: 4.2 (颜色修正与输出精简版)
+# 版本: 4.3 (颜色修正与输出精简版)
 # 描述: 此脚本系统地诊断网络问题，检查 IPv4 和 IPv6 协议栈。
 #              它会检查本地配置、DNS、路由、防火墙和外部连接，
 #              使用在中国大陆地区可靠的服务进行测试。
@@ -39,6 +39,7 @@ declare -A core_issues_map
 TEMP_BACKUP_LIST=$(mktemp)
 
 # 全局标志，用于记录 IPv6 HTTPS 访问是否成功
+# 注意：在脚本的全局作用域声明，不要使用 local
 IPV6_HTTPS_SUCCESS_FLAG=false
 
 # --- 辅助函数 ---
@@ -75,8 +76,9 @@ print_info() { # 用于非核心问题或提示
 }
 
 check_command() {
-    if ! command -v "$1" &> /dev/null; then
-        echo -e "[ ${COLOR_RED}关键缺失${COLOR_RESET} ] 关键命令 '$1' 未安装。请先安装后再运行此脚本。例如: sudo apt install $1 或 sudo yum install $1"
+    local cmd_name=$1
+    if ! command -v "$cmd_name" &> /dev/null; then
+        echo -e "[ ${COLOR_RED}关键缺失${COLOR_RESET} ] 关键命令 '$cmd_name' 未安装。请先安装后再运行此脚本。例如: sudo apt install $cmd_name 或 sudo yum install $cmd_name"
         exit 1
     fi
 }
@@ -399,14 +401,14 @@ deep_analyze_http_https_connectivity() {
     fi
     curl_cmd+=" $protocol://$domain"
 
-    CURL_OUTPUT=$(mktemp)
+    local CURL_OUTPUT=$(mktemp)
     if eval "$curl_cmd" -o /dev/null &> "$CURL_OUTPUT"; then
         print_success "Curl 命令执行成功，请查看以下详细输出以分析问题（如 HTTP 状态码、TLS 握手信息等）。"
         cat "$CURL_OUTPUT"
     else
         print_error "Curl 命令执行失败。请查看以下详细输出中的错误信息。"
         cat "$CURL_OUTPUT"
-        CURL_EXIT_CODE=$?
+        local CURL_EXIT_CODE=$?
         case $CURL_EXIT_CODE in
             6) print_error "无法解析主机名 ($domain)。请检查 DNS 配置或主机名拼写。" ;;
             7) print_error "无法连接到服务器 ($domain:$port)。连接被拒绝或超时。可能防火墙阻止或服务器不在线。" ;;
@@ -667,8 +669,8 @@ if [ -z "$interfaces" ]; then
     print_error "未找到任何网络接口。请检查硬件连接或虚拟网卡配置。"
 else
     print_success "发现网络接口: $interfaces"
-    active_ipv4=$(ip -4 addr show | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | xargs)
-    active_ipv6=$(ip -6 addr show | grep -oP 'inet6 \K[0-9a-f:]+' | grep -v '::1' | xargs)
+    local active_ipv4=$(ip -4 addr show | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | xargs)
+    local active_ipv6=$(ip -6 addr show | grep -oP 'inet6 \K[0-9a-f:]+' | grep -v '::1' | xargs)
 
     if [ -n "$active_ipv4" ]; then
         print_success "检测到活动的 IPv4 地址: $active_ipv4"
@@ -685,10 +687,10 @@ else
 fi
 
 # --- 检查默认网关 ---
-gateway_ipv4=$(ip -4 route show default | awk '/default/ {print $3}' | head -n 1)
+local gateway_ipv4=$(ip -4 route show default | awk '/default/ {print $3}' | head -n 1)
 # 获取 IPv6 默认网关和其对应的接口，用于链路本地地址 Ping
-gateway_ipv6=$(ip -6 route show default | awk '/default/ {print $3}' | head -n 1)
-gateway_ipv6_dev=$(ip -6 route show default | awk '/default/ {print $5}' | head -n 1)
+local gateway_ipv6=$(ip -6 route show default | awk '/default/ {print $3}' | head -n 1)
+local gateway_ipv6_dev=$(ip -6 route show default | awk '/default/ {print $5}' | head -n 1)
 
 
 if [ -n "$gateway_ipv4" ]; then
@@ -746,7 +748,7 @@ print_header "2. 检查 DNS 配置与 Hosts 文件"
 
 # --- 检查 /etc/resolv.conf ---
 if [ -f /etc/resolv.conf ]; then
-    dns_servers=$(grep -v '^#' /etc/resolv.conf | grep 'nameserver' | awk '{print $2}' | xargs)
+    local dns_servers=$(grep -v '^#' /etc/resolv.conf | grep 'nameserver' | awk '{print $2}' | xargs)
     if [ -n "$dns_servers" ]; then
         print_success "在 /etc/resolv.conf 中找到 DNS 服务器: $dns_servers"
     else
@@ -761,8 +763,8 @@ fi
 # --- 检查 DNS 解析 ---
 print_info "正在测试域名解析: $DOMAIN_TARGET"
 # 检查 IPv4 和 IPv6 DNS 解析，如果任一失败，则进行深度分析
-ipv4_dns_ok=$(dig A "$DOMAIN_TARGET" +short +time=3 | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.' &> /dev/null; echo $?)
-ipv6_dns_ok=$(dig AAAA "$DOMAIN_TARGET" +short +time=3 | grep -E '^[0-9a-fA-F:]+' &> /dev/null; echo $?)
+local ipv4_dns_ok=$(dig A "$DOMAIN_TARGET" +short +time=3 | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.' &> /dev/null; echo $?)
+local ipv6_dns_ok=$(dig AAAA "$DOMAIN_TARGET" +short +time=3 | grep -E '^[0-9a-fA-F:]+' &> /dev/null; echo $?)
 
 if [ "$ipv4_dns_ok" -ne 0 ] || [ "$ipv6_dns_ok" -ne 0 ]; then
     print_error "DNS 解析 ($DOMAIN_TARGET) 失败（IPv4 或 IPv6）。"
@@ -774,7 +776,7 @@ fi
 
 # --- 检查 /etc/hosts 文件是否存在潜在劫持 ---
 if [ -f /etc/hosts ]; then
-    hijacked_entries=$(grep "$DOMAIN_TARGET" /etc/hosts | grep -v '^#')
+    local hijacked_entries=$(grep "$DOMAIN_TARGET" /etc/hosts | grep -v '^#')
     if [ -n "$hijacked_entries" ]; then
         print_warning "/etc/hosts 文件中发现可能影响网络访问的条目:\n$hijacked_entries"
         echo "建议: 检查这些条目是否是您有意为之，否则请删除或注释掉它们。"
@@ -831,12 +833,12 @@ fi
 if [ -n "$gateway_ipv6" ]; then
     local curl_ipv6_cmd="curl -6 --connect-timeout $CURL_TIMEOUT -s -o /dev/null -w \"%{http_code}\" \"https://$DOMAIN_TARGET\""
     if [[ "$gateway_ipv6" == fe80:* && -n "$gateway_ipv6_dev" ]]; then
-        # For link-local gateway, try to force the interface for curl if possible (though curl doesn't always support %dev)
-        # For simplicity, we'll rely on the default routing table for curl, but note the discrepancy.
         print_info "IPv6 网关为链路本地地址，curl 将尝试通过默认路由表连接。"
     fi
 
-    if eval "$curl_ipv6_cmd" | grep -E '200|30[12]' &> /dev/null; then
+    # 捕获 curl 的输出，以便判断是否成功
+    local curl_status_code=$(eval "$curl_ipv6_cmd")
+    if echo "$curl_status_code" | grep -E '200|30[12]' &> /dev/null; then
         print_success "通过 IPv6 访问 HTTPS (443端口) 成功。"
         IPV6_HTTPS_SUCCESS_FLAG=true # 设置全局标志
     else
@@ -869,14 +871,14 @@ fi
 # --- 检查防火墙 ---
 # 由于脚本已强制要求 sudo 运行，此处不再进行权限警告，而是直接执行检查。
 print_info "正在检查防火墙规则 (需要 root 权限)..."
-firewall_checked=false
+local firewall_checked=false
 
 # 检查 UFW
 if command -v ufw &> /dev/null; then
     firewall_checked=true
     if ufw status | grep -q "Status: active"; then
         print_success "检测到 UFW 防火墙处于活动状态。"
-        ufw_default_outgoing=$(ufw status | grep "Default: outgoing" | awk '{print $NF}')
+        local ufw_default_outgoing=$(ufw status | grep "Default: outgoing" | awk '{print $NF}')
         if [ "$ufw_default_outgoing" == "deny" ]; then
             print_error "UFW 防火墙默认策略为 '拒绝所有出站流量'。这会阻止大部分网络访问，除非有明确的允许规则。"
             echo "建议: 检查 UFW 规则 ('sudo ufw status verbose')，确保允许必要的出站流量（例如 80, 443, 53 端口）。"
@@ -903,7 +905,7 @@ fi
 if command -v iptables &> /dev/null && ! $firewall_checked; then
     firewall_checked=true
     print_info "正在检查 iptables 规则..."
-    ipv4_output_policy=$(iptables -L OUTPUT -n | grep "Chain OUTPUT (policy" | awk '{print $4}' | sed 's/[()]//g')
+    local ipv4_output_policy=$(iptables -L OUTPUT -n | grep "Chain OUTPUT (policy" | awk '{print $4}' | sed 's/[()]//g')
     if [ "$ipv4_output_policy" == "DROP" ] || [ "$ipv4_output_policy" == "REJECT" ]; then
         print_error "iptables 的 IPv4 OUTPUT 链默认策略为 $ipv4_output_policy，这会阻止出站流量。"
         echo "建议: 检查 iptables 规则 ('sudo iptables -L -n')，确保允许必要的出站流量。"
@@ -912,7 +914,7 @@ if command -v iptables &> /dev/null && ! $firewall_checked; then
     fi
 
     if command -v ip6tables &> /dev/null; then
-        ipv6_output_policy=$(ip6tables -L OUTPUT -n | grep "Chain OUTPUT (policy" | awk '{print $4}' | sed 's/[()]//g')
+        local ipv6_output_policy=$(ip6tables -L OUTPUT -n | grep "Chain OUTPUT (policy" | awk '{print $4}' | sed 's/[()]//g')
         if [ "$ipv6_output_policy" == "DROP" ] || [ "$ipv6_output_policy" == "REJECT" ]; then
             print_error "ip6tables 的 IPv6 OUTPUT 链默认策略为 $ipv6_output_policy，这会阻止 IPv6 出站流量。"
             echo "建议: 检查 ip6tables 规则 ('sudo ip6tables -L -n')，确保允许必要的 IPv6 出站流量。"
@@ -937,29 +939,44 @@ print_header "5. 排查结果摘要"
 declare -a final_summary_issues
 for msg in "${!core_issues_map[@]}"; do
     local severity=${core_issues_map["$msg"]}
-    # 特殊处理 IPv6 网关问题：如果外部 HTTPS 访问成功，则降级为警告
-    if [[ "$msg" =~ "无法访问 IPv6 网关" || "$msg" =~ "多次尝试后网关" ]] && "$IPV6_HTTPS_SUCCESS_FLAG" == true; then
-        # 检查是否是 fe80:: 开头的链路本地地址
-        local gw_ip_in_msg=$(echo "$msg" | grep -oP '\((fe80::[0-9a-fA-F:]+)\)' | sed 's/[()]//g')
-        if [[ "$gw_ip_in_msg" == fe80:* ]]; then
-            final_summary_issues+=("警告: IPv6 链路本地网关 ($gw_ip_in_msg) 无法 Ping 通，但外部 IPv6 HTTPS 访问正常。这可能由于网关限制 ICMPv6 或存在其他出站路由。")
-        else
-            final_summary_issues+=("警告: IPv6 网关 ($gw_ip_in_msg) 无法 Ping 通，但外部 IPv6 HTTPS 访问正常。这可能由于网关限制 ICMPv6 或存在其他出站路由。")
+    local processed_msg=""
+
+    # 特殊处理 IPv6 连通性矛盾：如果外部 HTTPS 访问成功，则降级相关故障为警告
+    if [[ "$IPV6_HTTPS_SUCCESS_FLAG" == true ]]; then
+        if [[ "$msg" =~ "无法访问 IPv6 网关" || "$msg" =~ "多次尝试后网关" ]]; then
+            # 检查是否是 fe80:: 开头的链路本地地址
+            local gw_ip_in_msg=$(echo "$msg" | grep -oP '\((fe80::[0-9a-fA-F:]+)\)' | head -n 1 | sed 's/[()]//g')
+            if [[ "$gw_ip_in_msg" == fe80:* ]]; then
+                processed_msg="警告: IPv6 链路本地网关 ($gw_ip_in_msg) 无法 Ping 通，但外部 IPv6 HTTPS 访问正常。这可能由于网关限制 ICMPv6 或存在其他出站路由。"
+            else
+                processed_msg="警告: IPv6 默认网关 ($gw_ip_in_msg) 无法 Ping 通，但外部 IPv6 HTTPS 访问正常。这可能由于网关限制 ICMPv6 或存在其他出站路由。"
+            fi
+            severity="警告" # 强制设为警告
+        elif [[ "$msg" =~ "Ping 外部 IPv6 地址" ]]; then
+            processed_msg="警告: 外部 IPv6 地址 ($IPV6_DNS_TARGET) Ping 失败，但外部 IPv6 HTTPS 访问正常。这可能由于目标服务器限制 ICMPv6 或网络路由偏好 HTTP/HTTPS 流量。"
+            severity="警告" # 强制设为警告
+        elif [[ "$msg" =~ "通过 IPv6 访问 HTTPS .*失败" ]]; then
+            # 如果 HTTPS 最终是成功的，那么之前的失败警告不应出现在最终摘要中
+            continue # 跳过此项，因为它最终被解决了
+        elif [[ "$msg" =~ "IPv6 网关自动修复失败" ]]; then
+            processed_msg="警告: IPv6 网关自动修复失败，但外部 IPv6 HTTPS 访问正常。"
+            severity="警告" # 强制设为警告
         fi
-    elif [[ "$msg" =~ "IPv6 网关自动修复失败" ]] && "$IPV6_HTTPS_SUCCESS_FLAG" == true; then
-        # 如果自动修复失败，但外部HTTPS成功，则这个修复失败的故障也进行解释
-        final_summary_issues+=("警告: IPv6 网关自动修复失败，但外部 IPv6 HTTPS 访问正常。")
-    else
-        # 其他故障和警告照常加入
-        final_summary_issues+=("$severity: $msg")
     fi
+
+    # 如果没有特殊处理，则使用原始消息
+    if [ -z "$processed_msg" ]; then
+        processed_msg="$msg"
+    fi
+    
+    final_summary_issues+=("$severity: $processed_msg")
 done
 
 # 对最终的摘要列表进行去重处理
 declare -A temp_unique_summary
 declare -a deduped_summary_issues
 for item in "${final_summary_issues[@]}"; do
-    if [[ -z "${temp_unique_summary[$item]}" ]]; then
+    if [[ -z "${temp_unique_summary["$item"]}" ]]; then
         temp_unique_summary["$item"]=1
         deduped_summary_issues+=("$item")
     fi
@@ -999,3 +1016,4 @@ rm -f "$TEMP_BACKUP_LIST"
 echo -e "\n${COLOR_BLUE}======================================================================${COLOR_RESET}"
 echo -e "${COLOR_BLUE} ═══════════════ 操作完成 ═══════════════${COLOR_RESET}"
 echo -e "${COLOR_BLUE}======================================================================${COLOR_RESET}\n"
+
