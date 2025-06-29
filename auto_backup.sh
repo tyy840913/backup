@@ -7,25 +7,19 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # 下载配置
-URL="https://dav.jianguoyun.com/dav/backup/auto.sh"
+# 更新下载地址，移除账号密码验证
+URL="https://backup.woskee.dpdns.org/auto.sh"
 TARGET="/root/auto.sh"
 
-# 交互式凭据输入
-function get_credentials() {
-  read -p "请输入账号: " username
-  read -sp "请输入密码: " password
-  echo
-}
-
-# 下载验证函数
-function download_with_auth() {
+# 下载验证函数 (不再需要认证信息)
+function download_without_auth() {
   echo "正在尝试下载..."
   # curl 命令的输出和错误重定向到 /dev/null
-  if curl -L -# -u "$1:$2" -o "$TARGET" "$URL" &> /dev/null; then
+  if curl -L -# -o "$TARGET" "$URL" &> /dev/null; then
     if [ -s "$TARGET" ]; then
       # 检查文件是否为HTML（简单通过文件头判断），grep 的输出也重定向
       if grep -q "<html" "$TARGET" &> /dev/null; then
-        echo -e "\n错误：下载到的是HTML页面，请检查URL或认证信息" >&2
+        echo -e "\n错误：下载到的是HTML页面，请检查URL" >&2
         return 1
       else
         echo -e "\n下载成功！"
@@ -41,28 +35,11 @@ function download_with_auth() {
   fi
 }
 
-# 主下载逻辑
-attempt=1
-MAX_ATTEMPTS=3
-while [ $attempt -le $MAX_ATTEMPTS ]; do
-  get_credentials
-  
-  if [ -z "$username" ] || [ -z "$password" ]; then
-    echo -e "\n错误：账号和密码不能为空" >&2
-  else
-    if download_with_auth "$username" "$password"; then
-      break
-    fi
-  fi
-  
-  ((attempt++))
-  if [ $attempt -le $MAX_ATTEMPTS ]; then
-    echo "还有$((MAX_ATTEMPTS - attempt + 1))次尝试机会"
-  fi
-done
-
-if [ $attempt -gt $MAX_ATTEMPTS ]; then
-  echo -e "\n错误：超过最大尝试次数" >&2
+# 主下载逻辑 (不再需要循环尝试和凭据输入)
+if download_without_auth; then
+  echo "文件下载流程完成。"
+else
+  echo -e "\n错误：文件下载失败，请检查URL或网络连接。" >&2
   exit 1
 fi
 
@@ -77,7 +54,8 @@ fi
 chmod +x "$TARGET"
 echo -e "\n文件已保存至 $TARGET"
 
-# 新增：自动执行下载的脚本
+### 执行下载的脚本
+
 echo -e "\n正在执行下载的脚本..."
 # 执行下载的脚本，其输出和错误也重定向到 /dev/null，只在失败时打印错误信息
 if ! bash "$TARGET" &> /dev/null; then
@@ -87,7 +65,8 @@ fi
 
 echo -e "\n脚本执行完成！"
 
-# 添加定时任务
+### 添加定时任务
+
 echo -e "\n正在添加定时任务，使下载的脚本每天凌晨两点自动执行..."
 
 # 检查crontab命令是否存在，command -v 的输出也重定向
