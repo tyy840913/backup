@@ -1,14 +1,15 @@
 #!/bin/bash
 
 # ==============================================================================
-# 网络故障排查脚本 (适用于中国大陆)
+# 网络故障排查脚本 (适用于中国大陆 - 深度分析增强版)
 #
 # 作者: Gemini
-# 版本: 2.0 (增强版)
+# 版本: 3.0 (深度分析增强版)
 # 描述: 此脚本系统地诊断网络问题，检查 IPv4 和 IPv6 协议栈。
 #              它会检查本地配置、DNS、路由、防火墙和外部连接，
 #              使用在中国大陆地区可靠的服务进行测试。
-#              在发现问题时，会尝试进行深入检查以定位具体原因。
+#              在发现问题时，会尝试从多个维度和替代方法进行深入分析，
+#              以更全面地定位故障根源。
 #
 # 用法: 运行 'bash network_check.sh'。
 #        建议使用 sudo 运行 ('sudo bash network_check.sh')，
@@ -20,7 +21,9 @@
 IPV4_DNS_TARGET="223.5.5.5"    # 阿里DNS
 IPV6_DNS_TARGET="2400:3200::1" # 阿里DNS IPv6
 DOMAIN_TARGET="www.baidu.com"  # 百度，用于 HTTP/HTTPS 检查
-PING_COUNT=3                   # 发送的 ping 次数
+PING_COUNT=3                   # 发送的 ping 次数，用于初步测试
+PING_DEEP_COUNT=5              # 深入检查时发送的 ping 次数
+CURL_TIMEOUT=10                # Curl 连接超时时间 (秒)
 
 # --- 颜色定义 ---
 COLOR_GREEN='\033[0;32m'
@@ -29,7 +32,7 @@ COLOR_YELLOW='\033[0;33m'
 COLOR_BLUE='\033[0;34m'
 COLOR_RESET='\033[0m'
 
-# --- 存储已识别的问题 ---
+# --- 存储已识别的问题和建议 ---
 issues_found=()
 
 # --- 辅助函数 ---
@@ -37,6 +40,10 @@ print_header() {
     echo -e "${COLOR_BLUE}======================================================================${COLOR_RESET}"
     echo -e "${COLOR_BLUE} $1 ${COLOR_RESET}"
     echo -e "${COLOR_BLUE}======================================================================${COLOR_RESET}"
+}
+
+print_section_header() {
+    echo -e "${COLOR_YELLOW}--- $1 ---${COLOR_RESET}"
 }
 
 print_success() {
@@ -60,68 +67,150 @@ check_command() {
     fi
 }
 
-# --- 深入检查函数 ---
+# --- 深入分析函数 ---
 
-# 深入检查网关可达性
-deep_check_gateway() {
-    local ip_version=$1
+# 深入分析网关可达性
+deep_analyze_gateway() {
+    local ip_version=$1 # "ipv4" 或 "ipv6"
     local gateway_ip=$2
-    print_header "深入检查: 网关 ($gateway_ip) 可达性问题"
-    echo "尝试使用不同的包大小和计数再次 ping 网关..."
+    print_header "深入分析: 网关 ($gateway_ip) 可达性问题"
+
+    print_section_header "1. 使用不同包大小和计数再次 Ping"
+    echo "尝试使用更多次数和不同包大小再次 ping 网关..."
     if [ "$ip_version" == "ipv4" ]; then
-        ping -c 5 -s 64 -W 2 "$gateway_ip"
+        ping -c "$PING_DEEP_COUNT" -s 64 -W 2 "$gateway_ip"
     else
-        ping -6 -c 5 -s 64 -W 2 "$gateway_ip"
+        ping -6 -c "$PING_DEEP_COUNT" -s 64 -W 2 "$gateway_ip"
     fi
     if [ $? -ne 0 ]; then
-        print_error "多次尝试后网关 ($gateway_ip) 仍无法访问。请检查网线连接、本地网络配置（IP地址、子网掩码）以及路由器状态。"
-        echo "建议: 检查路由器的指示灯，尝试重启路由器。如果虚拟机，请检查虚拟网络设置。"
+        print_error "多次尝试后网关 ($gateway_ip) 仍无法访问。这通常指示物理连接或本地网络配置问题。"
     else
         print_success "网关 ($gateway_ip) 已恢复可达或间歇性问题。"
     fi
+
+    print_section_header "2. 检查 ARP/邻居表 (仅限 IPv4/IPv6)"
+    echo "检查网关的 MAC 地址是否在 ARP/邻居表中..."
+    if [ "$ip_version" == "ipv4" ]; then
+        # `arp -n` 或 `ip neighbor`
+        if command -v arp &> /dev/null; then
+            arp -n "$gateway_ip" | grep -q "$gateway_ip"
+        else
+            ip neighbor show "$gateway_ip" | grep -q "$gateway_ip"
+        fi
+        if [ $? -eq 0 ]; then
+            print_success "IPv4 网关 ($gateway_ip) 的 MAC 地址已解析。"
+        else
+            print_error "无法解析 IPv4 网关 ($gateway_ip) 的 MAC 地址 (ARP 问题)。这可能意味着网关不在线或本地网络问题。"
+            issues_found+=("故障: IPv4 ARP 解析失败。")
+            echo "建议: 检查网线连接，确保网卡驱动正常，重启网关或路由器。"
+        fi
+    else # IPv6
+        ip -6 neighbor show "$gateway_ip" | grep -q "$gateway_ip"
+        if [ $? -eq 0 ]; then
+            print_success "IPv6 网关 ($gateway_ip) 的邻居条目已解析。"
+        else
+            print_error "无法解析 IPv6 网关 ($gateway_ip) 的邻居条目。这可能意味着网关不在线或本地 IPv6 网络问题。"
+            issues_found+=("故障: IPv6 邻居发现失败。")
+            echo "建议: 检查网线连接，确保 IPv6 已正确启用，重启网关或路由器。"
+        fi
+    fi
+
+    print_section_header "3. 路由表详细检查"
+    echo "显示到网关的详细路由信息..."
+    if [ "$ip_version" == "ipv4" ]; then
+        ip -4 route get "$gateway_ip"
+    else
+        ip -6 route get "$gateway_ip"
+    fi
+    echo "建议: 确保路由表中的下一跳是正确的本地接口。"
+
+    echo -e "${COLOR_YELLOW}总结建议: 检查物理连接 (网线/Wi-Fi)、本地 IP 地址和子网掩码配置，以及路由器/网关设备状态。尝试重启您的路由器。${COLOR_RESET}"
     echo ""
 }
 
-# 深入检查 DNS 解析
-deep_check_dns() {
+# 深入分析 DNS 解析
+deep_analyze_dns() {
     local domain=$1
     local dns_servers=$(grep -v '^#' /etc/resolv.conf | grep 'nameserver' | awk '{print $2}' | xargs)
 
-    print_header "深入检查: DNS 解析 ($domain) 问题"
-    echo "尝试使用系统配置的 DNS 服务器解析 $domain..."
+    print_header "深入分析: DNS 解析 ($domain) 问题"
+
+    print_section_header "1. 逐个测试已配置的 DNS 服务器"
     if [ -n "$dns_servers" ]; then
         for ns in $dns_servers; do
-            echo "尝试使用 $ns 解析 $domain..."
-            dig "$domain" @$ns +short +time=5
-            if [ $? -eq 0 ]; then
-                print_success "使用 DNS 服务器 $ns 成功解析 $domain。"
-                break
+            echo "尝试使用系统配置的 DNS 服务器 ${ns} 解析 ${domain}..."
+            if ! dig "$domain" @$ns +short +time=5 | grep -E '^[0-9a-fA-F.:]+$' &> /dev/null; then
+                print_error "使用配置的 DNS 服务器 ${ns} 解析 ${domain} 失败。"
+                issues_found+=("故障: DNS 服务器 ${ns} 无法解析 ${domain}。")
+                # 检查 DNS 服务器本身是否可达
+                echo "  -> 尝试 Ping DNS 服务器 ${ns}..."
+                if ping -c 1 -W 2 "$ns" &> /dev/null; then
+                    print_success "    DNS 服务器 ${ns} 可达。"
+                    echo "建议: DNS 服务器可达但解析失败，可能是 DNS 服务器本身故障，或出站 UDP/TCP 53 端口被阻止。"
+                    issues_found+=("故障: DNS服务器 ${ns} 可达但解析功能异常。")
+                else
+                    print_error "    DNS 服务器 ${ns} 不可达。请检查到此 DNS 服务器的网络连接或防火墙设置。"
+                    issues_found+=("故障: DNS 服务器 ${ns} 不可达。")
+                fi
             else
-                print_warning "使用 DNS 服务器 $ns 解析 $domain 失败。"
+                print_success "使用 DNS 服务器 ${ns} 成功解析 ${domain}。"
             fi
         done
     else
         print_error "未在 /etc/resolv.conf 中找到 DNS 服务器，无法测试。"
+        echo "建议: 编辑 /etc/resolv.conf 添加公共 DNS 服务器，例如 'nameserver 223.5.5.5' 和 'nameserver 114.114.114.114'。"
     fi
 
-    echo "尝试使用公共 DNS 服务器 (阿里云DNS: $IPV4_DNS_TARGET) 解析 $domain..."
-    dig "$domain" @$IPV4_DNS_TARGET +short +time=5
-    if [ $? -eq 0 ]; then
-        print_success "使用公共 DNS ($IPV4_DNS_TARGET) 成功解析 $domain。您的本地 DNS 配置可能存在问题。"
-        echo "建议: 检查 /etc/resolv.conf 配置，或尝试更换为公共 DNS (如 223.5.5.5, 114.114.114.114)。"
+    print_section_header "2. 使用公共 DNS 服务器测试 (兼容性测试)"
+    echo "尝试使用公共 DNS 服务器 (阿里云DNS IPv4: $IPV4_DNS_TARGET) 解析 $domain..."
+    if ! dig "$domain" @$IPV4_DNS_TARGET +short +time=5 | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.' &> /dev/null; then
+        print_error "使用公共 DNS ($IPV4_DNS_TARGET) 也无法解析 $domain。这强烈指示出站 UDP 53 端口可能被防火墙阻止，或存在更深层次的网络问题。"
+        issues_found+=("故障: 公共 DNS 无法解析域名。")
+        echo "建议: 检查防火墙规则是否允许出站 UDP/TCP 53 端口。尝试使用 'telnet $IPV4_DNS_TARGET 53' (如果已安装 telnet) 检查端口连通性。"
     else
-        print_error "使用公共 DNS ($IPV4_DNS_TARGET) 也无法解析 $domain。可能存在更深层次的网络问题（如出站UDP 53端口被防火墙阻止，或上游网络问题）。"
-        echo "建议: 检查防火墙是否阻止了 UDP 53 端口的出站流量。"
+        print_success "使用公共 DNS ($IPV4_DNS_TARGET) 成功解析 $domain。您的本地 DNS 配置（/etc/resolv.conf）可能存在问题或本地 DNS 服务器故障。"
+        echo "建议: 更改 /etc/resolv.conf 为可靠的公共 DNS 服务器。"
     fi
+
+    # 尝试使用 Google DNS IPv6 (若有IPv6网关且命令可用)
+    if [ -n "$gateway_ipv6" ]; then
+        echo "尝试使用公共 DNS 服务器 (阿里云DNS IPv6: $IPV6_DNS_TARGET) 解析 $domain..."
+        if ! dig AAAA "$domain" @$IPV6_DNS_TARGET +short +time=5 | grep -E '^[0-9a-fA-F:]+' &> /dev/null; then
+            print_warning "使用公共 IPv6 DNS ($IPV6_DNS_TARGET) 解析 $domain 失败。可能 IPv6 网络本身有问题或出站 UDP 53 端口被阻止。"
+            issues_found+=("警告: 公共 IPv6 DNS 解析失败。")
+        else
+            print_success "使用公共 IPv6 DNS ($IPV6_DNS_TARGET) 成功解析 $domain。"
+        fi
+    fi
+
+    print_section_header "3. 检查 DNS 客户端服务状态 (Systemd)"
+    if command -v systemctl &> /dev/null; then
+        echo "检查 systemd-resolved 服务状态..."
+        if systemctl is-active --quiet systemd-resolved; then
+            print_success "systemd-resolved 服务正在运行。"
+            # 进一步检查 systemd-resolved 的 DNS 配置
+            resolvectl status | grep "Current DNS Server"
+            resolvectl status | grep "DNS Servers"
+            echo "建议: 确认 systemd-resolved 配置的 DNS 服务器与 /etc/resolv.conf 或网络管理工具一致。"
+        else
+            print_warning "systemd-resolved 服务未运行或不活跃。如果系统依赖此服务，可能导致 DNS 问题。"
+            issues_found+=("警告: systemd-resolved 服务不活跃。")
+            echo "建议: 尝试 'sudo systemctl start systemd-resolved' 或 'sudo systemctl enable systemd-resolved'。"
+        fi
+    fi
+
+    echo -e "${COLOR_YELLOW}总结建议: 确认 /etc/resolv.conf 配置正确；检查到 DNS 服务器的连通性；验证防火墙是否阻止 UDP/TCP 53 端口。${COLOR_RESET}"
     echo ""
 }
 
-# 深入检查外部连通性 (Ping)
-deep_check_ping_connectivity() {
+# 深入分析外部连通性 (Ping)
+deep_analyze_ping_connectivity() {
     local ip_target=$1
     local ip_version_flag=$2 # -4 或 -6
-    print_header "深入检查: 外部 IP ($ip_target) Ping 连通性问题"
-    echo "尝试使用 traceroute 跟踪到 $ip_target 的路径..."
+    print_header "深入分析: 外部 IP ($ip_target) Ping 连通性问题"
+
+    print_section_header "1. Traceroute 路径跟踪 (路由分析)"
+    echo "尝试使用 traceroute 跟踪到 $ip_target 的路径，以定位网络中断的位置..."
     if command -v traceroute &> /dev/null; then
         if [ -z "$ip_version_flag" ]; then # For IPv4
              traceroute -n "$ip_target"
@@ -129,39 +218,117 @@ deep_check_ping_connectivity() {
             traceroute -n "$ip_version_flag" "$ip_target"
         fi
         if [ $? -ne 0 ]; then
-            print_error "traceroute 到 $ip_target 失败。路由可能存在问题或被阻止。"
-            echo "建议: 分析 traceroute 输出，查看在哪个跳数中断，这可能指向中间路由器故障或 ISP 路由问题。"
+            print_error "traceroute 到 $ip_target 失败或超时。路由可能存在问题或被中间设备阻止。"
+            issues_found+=("故障: Traceroute 路径中断。")
+            echo "建议: 分析 traceroute 输出，查看在哪个跳数中断，这可能指向中间路由器故障或 ISP 路由问题。联系您的 ISP。"
         else
-            print_success "traceroute 到 $ip_target 成功完成。"
+            print_success "traceroute 到 $ip_target 成功完成。请检查输出是否有不寻常的延迟或星号。"
         fi
     else
-        print_warning "traceroute 命令未安装，无法进行路径跟踪。请安装 traceroute 进行更详细检查。"
+        print_warning "traceroute 命令未安装。安装 (如: sudo apt install traceroute) 以获取更详细的路径信息。"
+        issues_found+=("警告: traceroute 命令未安装。")
     fi
+
+    print_section_header "2. 链路层检查 (Ping 网关)"
+    echo "确认网关是否可达，以排除局域网问题..."
+    local gateway_ip=""
+    if [ -z "$ip_version_flag" ]; then # IPv4
+        gateway_ip=$(ip -4 route show default | awk '/default/ {print $3}')
+    else # IPv6
+        gateway_ip=$(ip -6 route show default | awk '/default/ {print $3}')
+    fi
+
+    if [ -n "$gateway_ip" ]; then
+        if ping $ip_version_flag -c 2 -W 2 "$gateway_ip" &> /dev/null; then
+            print_success "网关 ($gateway_ip) 可达。问题可能在网关之外。"
+        else
+            print_error "网关 ($gateway_ip) 不可达。问题可能出在本地局域网或网关本身。"
+            issues_found+=("故障: 网关不可达。")
+            echo "建议: 请参考 '深入分析: 网关可达性问题' 部分进行排查。"
+        fi
+    else
+        print_warning "未找到对应 IP 版本的默认网关，无法检查网关连通性。"
+    fi
+
+    echo -e "${COLOR_YELLOW}总结建议: 使用 traceroute 定位路由中断点；确认网关可达性；检查防火墙是否阻止 ICMP 协议的出站流量。${COLOR_RESET}"
     echo ""
 }
 
-# 深入检查 HTTP/HTTPS 连通性
-deep_check_http_https_connectivity() {
+# 深入分析 HTTP/HTTPS 连通性
+deep_analyze_http_https_connectivity() {
     local domain=$1
     local ip_version_flag=$2 # -4 或 -6
     local protocol=$3 # http 或 https
     local port=$4 # 80 或 443
-    print_header "深入检查: $protocol://$domain (端口 $port) 访问问题"
+    print_header "深入分析: $protocol://$domain (端口 $port) 访问问题"
 
-    echo "尝试使用 curl 详细模式访问 $protocol://$domain:$port..."
-    if [ "$protocol" == "http" ]; then
-        curl $ip_version_flag -v --connect-timeout 10 "$protocol://$domain"
-    else
-        curl $ip_version_flag -v --connect-timeout 10 "$protocol://$domain"
+    print_section_header "1. Curl 详细模式诊断"
+    echo "尝试使用 curl 详细模式 ($protocol://$domain:$port) 诊断连接过程..."
+    # 使用 -k 允许不安全的 SSL 连接，以排除证书问题导致连接失败
+    # 使用 --resolve 强制解析到特定IP，排除DNS问题，直接测试IP连通性 (需要先成功解析)
+    local resolved_ip=""
+    if [ -z "$ip_version_flag" ]; then # IPv4
+        resolved_ip=$(dig A "$domain" +short +time=3 | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.' | head -n 1)
+    else # IPv6
+        resolved_ip=$(dig AAAA "$domain" +short +time=3 | grep -E '^[0-9a-fA-F:]+' | head -n 1)
     fi
 
-    if [ $? -ne 0 ]; then
-        print_error "curl 详细模式显示 $protocol://$domain 访问失败。检查输出中的错误信息。"
-        echo "常见原因: 防火墙阻止端口 $port，代理问题，TLS/SSL 握手失败 (HTTPS)，服务器无响应。"
-        echo "建议: 检查本地防火墙规则是否允许出站到 $port 端口。如果是 HTTPS，检查系统时间是否准确。"
-    else
-        print_success "$protocol://$domain 详细访问成功，但可能返回了非 200/30x 状态码。请检查 curl 输出。"
+    local curl_cmd="curl $ip_version_flag -v --connect-timeout $CURL_TIMEOUT"
+    if [ -n "$resolved_ip" ]; then
+        echo "尝试强制解析到 IP: $resolved_ip"
+        curl_cmd+=" --resolve $domain:$port:$resolved_ip"
     fi
+    curl_cmd+=" $protocol://$domain"
+
+    # 执行命令并捕获输出到临时文件
+    CURL_OUTPUT=$(mktemp)
+    if eval "$curl_cmd" -o /dev/null &> "$CURL_OUTPUT"; then
+        print_success "Curl 命令执行成功，请查看以下详细输出以分析问题（如 HTTP 状态码、TLS 握手信息等）。"
+        cat "$CURL_OUTPUT"
+    else
+        print_error "Curl 命令执行失败。请查看以下详细输出中的错误信息。"
+        cat "$CURL_OUTPUT"
+        # 根据 curl 错误码进行更具体判断
+        CURL_EXIT_CODE=$?
+        case $CURL_EXIT_CODE in
+            6) print_error "无法解析主机名 ($domain)。请检查 DNS 配置或主机名拼写。" ;;
+            7) print_error "无法连接到服务器 ($domain:$port)。连接被拒绝或超时。可能防火墙阻止或服务器不在线。" ;;
+            22) print_error "HTTP 返回错误代码（非 2xx/3xx）。服务器响应异常，但连接建立成功。" ;;
+            28) print_error "操作超时。连接或数据传输超时。网络延迟高或服务器响应慢。" ;;
+            35) print_error "SSL/TLS 握手失败。可能证书问题、不兼容的加密套件或系统时间不准确。" ;;
+            *) print_error "Curl 返回未知错误码: $CURL_EXIT_CODE。请查阅 curl 错误码文档。" ;;
+        esac
+        issues_found+=("故障: HTTP/HTTPS 访问失败 ($protocol://$domain)。")
+    fi
+    rm "$CURL_OUTPUT"
+
+    print_section_header "2. 端口扫描 (兼容性测试)"
+    echo "尝试使用 'nc' 或 'telnet' 检查目标端口 ($port) 是否开放..."
+    if command -v nc &> /dev/null; then
+        echo "使用 nc 检查端口..."
+        # nc -z 扫描端口但不发送数据
+        if nc -z -w 3 "$domain" "$port" &> /dev/null; then
+            print_success "目标 $domain 的 $port 端口开放。"
+        else
+            print_error "目标 $domain 的 $port 端口未开放或无法连接。可能被防火墙阻止或服务未运行。"
+            issues_found+=("故障: 目标端口 $port 不可达。")
+            echo "建议: 检查本地防火墙 (OUTPUT 链) 和远程服务器防火墙 (INPUT 链)。"
+        fi
+    elif command -v telnet &> /dev/null; then
+        echo "使用 telnet 检查端口 (telnet 命令可能会挂起，需要手动中断)..."
+        if telnet "$domain" "$port" &> /dev/null; then
+            print_success "目标 $domain 的 $port 端口开放 (请手动 Ctrl+C 退出 telnet)。"
+        else
+            print_error "目标 $domain 的 $port 端口未开放或无法连接。可能被防火墙阻止或服务未运行。"
+            issues_found+=("故障: 目标端口 $port 不可达。")
+            echo "建议: 检查本地防火墙 (OUTPUT 链) 和远程服务器防火墙 (INPUT 链)。"
+        fi
+    else
+        print_warning "未安装 nc 或 telnet，无法进行端口连通性检查。请安装其中一个工具以获得更详细检查。"
+        issues_found+=("警告: 无法进行端口连通性检查。")
+    fi
+
+    echo -e "${COLOR_YELLOW}总结建议: 分析 Curl 详细输出中的错误信息；检查本地防火墙是否阻止出站到 $port 端口；确认目标服务器的 $port 端口是否开放且服务正常运行。${COLOR_RESET}"
     echo ""
 }
 
@@ -173,6 +340,18 @@ check_command dig
 check_command curl
 check_command grep
 check_command awk
+
+# 可选命令检查，如果缺失不会退出，但在需要时会给出警告
+if ! command -v traceroute &> /dev/null; then
+    print_warning "traceroute 命令未安装。部分路由分析功能将受限。"
+fi
+if ! command -v nc &> /dev/null && ! command -v telnet &> /dev/null; then
+    print_warning "nc 或 telnet 命令均未安装。部分端口连通性检查将受限。"
+fi
+if ! command -v systemctl &> /dev/null; then
+    print_warning "systemctl 命令未安装。DNS 客户端服务状态检查将受限。"
+fi
+
 
 if [[ $EUID -ne 0 ]]; then
    print_warning "脚本未使用 root/sudo 权限运行。防火墙等部分系统策略可能无法完全检查，某些深入检查可能受限。"
@@ -191,7 +370,6 @@ if [ -z "$interfaces" ]; then
     print_error "未找到任何网络接口。请检查硬件连接或虚拟网卡配置。"
 else
     print_success "发现网络接口: $interfaces"
-    # 检查具有 IP 地址的活动接口
     active_ipv4=$(ip -4 addr show | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | xargs)
     active_ipv6=$(ip -6 addr show | grep -oP 'inet6 \K[0-9a-f:]+' | grep -v '::1' | xargs)
 
@@ -215,12 +393,9 @@ gateway_ipv6=$(ip -6 route show default | awk '/default/ {print $3}')
 
 if [ -n "$gateway_ipv4" ]; then
     print_success "IPv4 默认网关: $gateway_ipv4"
-    ping -c 1 -W 2 "$gateway_ipv4" &> /dev/null
-    if [ $? -eq 0 ]; then
-        print_success "IPv4 网关 ($gateway_ipv4) 可访问。"
-    else
+    if ! ping -c 1 -W 2 "$gateway_ipv4" &> /dev/null; then
         print_error "无法访问 IPv4 网关 ($gateway_ipv4)。内部网络可能存在问题。"
-        deep_check_gateway "ipv4" "$gateway_ipv4"
+        deep_analyze_gateway "ipv4" "$gateway_ipv4"
     fi
 else
     print_error "未找到 IPv4 默认网关。这是导致无法访问外部网络的主要原因。"
@@ -230,12 +405,9 @@ fi
 
 if [ -n "$gateway_ipv6" ]; then
     print_success "IPv6 默认网关: $gateway_ipv6"
-    ping -6 -c 1 -W 2 "$gateway_ipv6" &> /dev/null
-    if [ $? -eq 0 ]; then
-        print_success "IPv6 网关 ($gateway_ipv6) 可访问。"
-    else
+    if ! ping -6 -c 1 -W 2 "$gateway_ipv6" &> /dev/null; then
         print_error "无法访问 IPv6 网关 ($gateway_ipv6)。内部网络可能存在问题。"
-        deep_check_gateway "ipv6" "$gateway_ipv6"
+        deep_analyze_gateway "ipv6" "$gateway_ipv6"
     fi
 else
     print_warning "未找到 IPv6 默认网关。IPv6 网络将无法访问外网。"
@@ -267,21 +439,12 @@ fi
 
 # --- 检查 DNS 解析 ---
 print_success "正在测试域名解析: $DOMAIN_TARGET"
-# 测试 A 记录 (IPv4)
-if ! dig A "$DOMAIN_TARGET" +short +time=3 | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.' &> /dev/null; then
-    print_error "IPv4 DNS 解析 ($DOMAIN_TARGET) 失败。请检查 DNS 服务器设置或网络连接。"
-    deep_check_dns "$DOMAIN_TARGET"
-fi
-
-# 测试 AAAA 记录 (IPv6)
-if ! dig AAAA "$DOMAIN_TARGET" +short +time=3 | grep -E '^[0-9a-fA-F:]+' &> /dev/null; then
-    print_warning "IPv6 DNS 解析 ($DOMAIN_TARGET) 失败。可能无 IPv6 DNS 服务器或目标无 IPv6 地址。"
-    issues_found+=("警告: IPv6 DNS 解析失败。")
-    if [ -n "$gateway_ipv6" ]; then # 只有有 IPv6 网关才深入检查
-        deep_check_dns "$DOMAIN_TARGET"
-    fi
+if ! dig A "$DOMAIN_TARGET" +short +time=3 | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.' &> /dev/null || \
+   ! dig AAAA "$DOMAIN_TARGET" +short +time=3 | grep -E '^[0-9a-fA-F:]+' &> /dev/null; then
+    print_error "DNS 解析 ($DOMAIN_TARGET) 失败（IPv4 或 IPv6）。"
+    deep_analyze_dns "$DOMAIN_TARGET"
 else
-    print_success "IPv6 DNS 解析 ($DOMAIN_TARGET) 成功。"
+    print_success "IPv4/IPv6 DNS 解析 ($DOMAIN_TARGET) 成功。"
 fi
 
 
@@ -309,18 +472,16 @@ print_header "3. 检查外部网络连通性"
 
 # --- Ping 外部 IP ---
 print_success "正在 Ping 外部 IPv4 地址: $IPV4_DNS_TARGET"
-ping -c "$PING_COUNT" -W 3 "$IPV4_DNS_TARGET" &> /dev/null
-if [ $? -ne 0 ]; then
+if ! ping -c "$PING_COUNT" -W 3 "$IPV4_DNS_TARGET" &> /dev/null; then
     print_error "Ping 外部 IPv4 地址 ($IPV4_DNS_TARGET) 失败。出站连接可能被阻止或路由不通。"
-    deep_check_ping_connectivity "$IPV4_DNS_TARGET" "" # 空字符串表示 IPv4
+    deep_analyze_ping_connectivity "$IPV4_DNS_TARGET" "" # 空字符串表示 IPv4
 fi
 
 if [ -n "$gateway_ipv6" ]; then
     print_success "正在 Ping 外部 IPv6 地址: $IPV6_DNS_TARGET"
-    ping -6 -c "$PING_COUNT" -W 3 "$IPV6_DNS_TARGET" &> /dev/null
-    if [ $? -ne 0 ]; then
+    if ! ping -6 -c "$PING_COUNT" -W 3 "$IPV6_DNS_TARGET" &> /dev/null; then
         print_error "Ping 外部 IPv6 地址 ($IPV6_DNS_TARGET) 失败。IPv6 出站连接可能被阻止。"
-        deep_check_ping_connectivity "$IPV6_DNS_TARGET" "-6"
+        deep_analyze_ping_connectivity "$IPV6_DNS_TARGET" "-6"
     fi
 else
     print_success "无 IPv6 网关，跳过外部 IPv6 Ping 测试。"
@@ -328,22 +489,23 @@ fi
 
 # --- 检查 HTTP/HTTPS 连通性 ---
 print_success "正在测试对 $DOMAIN_TARGET 的 HTTP/HTTPS 访问"
-# 测试 IPv4
-if ! curl -4 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" "http://$DOMAIN_TARGET" | grep -E '200|30[12]' &> /dev/null; then
+# 测试 IPv4 HTTP
+if ! curl -4 --connect-timeout $CURL_TIMEOUT -s -o /dev/null -w "%{http_code}" "http://$DOMAIN_TARGET" | grep -E '200|30[12]' &> /dev/null; then
     print_error "通过 IPv4 访问 HTTP (80端口) 失败。端口可能被防火墙阻止或目标服务不可达。"
-    deep_check_http_https_connectivity "$DOMAIN_TARGET" "-4" "http" "80"
+    deep_analyze_http_https_connectivity "$DOMAIN_TARGET" "-4" "http" "80"
 fi
-if ! curl -4 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" "https://$DOMAIN_TARGET" | grep -E '200|30[12]' &> /dev/null; then
+# 测试 IPv4 HTTPS
+if ! curl -4 --connect-timeout $CURL_TIMEOUT -s -o /dev/null -w "%{http_code}" "https://$DOMAIN_TARGET" | grep -E '200|30[12]' &> /dev/null; then
     print_error "通过 IPv4 访问 HTTPS (443端口) 失败。端口可能被防火墙阻止或目标服务不可达。"
-    deep_check_http_https_connectivity "$DOMAIN_TARGET" "-4" "https" "443"
+    deep_analyze_http_https_connectivity "$DOMAIN_TARGET" "-4" "https" "443"
 fi
 
-# 测试 IPv6
+# 测试 IPv6 HTTPS
 if [ -n "$gateway_ipv6" ]; then
-    if ! curl -6 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" "https://$DOMAIN_TARGET" | grep -E '200|30[12]' &> /dev/null; then
+    if ! curl -6 --connect-timeout $CURL_TIMEOUT -s -o /dev/null -w "%{http_code}" "https://$DOMAIN_TARGET" | grep -E '200|30[12]' &> /dev/null; then
         print_warning "通过 IPv6 访问 HTTPS (443端口) 失败。IPv6 流量可能被阻止或目标服务无 IPv6 支持。"
         issues_found+=("警告: IPv6 HTTPS 访问失败。")
-        deep_check_http_https_connectivity "$DOMAIN_TARGET" "-6" "https" "443"
+        deep_analyze_http_https_connectivity "$DOMAIN_TARGET" "-6" "https" "443"
     else
         print_success "通过 IPv6 访问 HTTPS (443端口) 成功。"
     fi
@@ -399,11 +561,10 @@ else
     fi
 
     # 检查 firewalld
-    if command -v firewall-cmd &> /dev/null && ! $firewall_checked; then # 避免重复检查，如果 UFW 没启用再检查 firewalld
+    if command -v firewall-cmd &> /dev/null && ! $firewall_checked; then
         firewall_checked=true
         if systemctl is-active --quiet firewalld; then
             print_success "检测到 firewalld 防火墙处于活动状态。"
-            # firewalld 默认是拒绝不匹配规则的流量
             print_warning "firewalld 处于活动状态，其规则可能阻止网络流量。请手动检查 firewalld 规则 ('sudo firewall-cmd --list-all') 以确认没有阻止所需流量。"
             issues_found+=("警告: firewalld 处于活动状态，请手动检查规则。")
         else
@@ -415,7 +576,6 @@ else
     if command -v iptables &> /dev/null && ! $firewall_checked; then
         firewall_checked=true
         print_success "正在检查 iptables 规则..."
-        # 检查 IPv4 OUTPUT 链的默认策略
         ipv4_output_policy=$(iptables -L OUTPUT -n | grep "Chain OUTPUT (policy" | awk '{print $4}' | sed 's/[()]//g')
         if [ "$ipv4_output_policy" == "DROP" ] || [ "$ipv4_output_policy" == "REJECT" ]; then
             print_error "iptables 的 IPv4 OUTPUT 链默认策略为 $ipv4_output_policy，这会阻止出站流量。"
@@ -425,7 +585,6 @@ else
             print_success "iptables IPv4 OUTPUT 链策略正常 (当前为 $ipv4_output_policy)。"
         fi
 
-        # 检查 IPv6 OUTPUT 链的默认策略
         if command -v ip6tables &> /dev/null; then
             ipv6_output_policy=$(ip6tables -L OUTPUT -n | grep "Chain OUTPUT (policy" | awk '{print $4}' | sed 's/[()]//g')
             if [ "$ipv6_output_policy" == "DROP" ] || [ "$ipv6_output_policy" == "REJECT" ]; then
@@ -451,7 +610,7 @@ echo ""
 print_header "5. 排查结果摘要"
 
 if [ ${#issues_found[@]} -eq 0 ]; then
-    print_success "恭喜！初步检查和深入排查未发现明显的网络配置故障点。"
+    print_success "恭喜！初步检查和深度分析均未发现明显的网络配置故障点。"
     echo "如果网络依然存在问题，可能由以下更深层原因导致："
     echo "  - ${COLOR_YELLOW}上游网络设备（路由器、交换机）故障${COLOR_RESET}：尝试重启您的路由器/光猫。"
     echo "  - ${COLOR_YELLOW}ISP (网络服务提供商) 方面的问题${COLOR_RESET}：联系您的网络服务提供商报告故障。"
