@@ -17,5 +17,3 @@ PVE磁盘转换，支持IMG/ISO qm.sh
 获取局域网主机信息 ping_ip.sh
 
 系统防火墙设置 ufw.sh
-
-系统网络故障检查 fault-check.sh
