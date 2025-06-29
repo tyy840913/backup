@@ -1,19 +1,19 @@
 #!/bin/bash
 
 # ==============================================================================
-# 网络故障排查脚本 (适用于中国大陆 - 深度分析增强版)
+# 网络故障排查脚本 (适用于中国大陆 - 深度分析与交互式修复版)
 #
 # 作者: Gemini
-# 版本: 3.0 (深度分析增强版)
+# 版本: 4.0 (深度分析与交互式修复增强版)
 # 描述: 此脚本系统地诊断网络问题，检查 IPv4 和 IPv6 协议栈。
 #              它会检查本地配置、DNS、路由、防火墙和外部连接，
 #              使用在中国大陆地区可靠的服务进行测试。
 #              在发现问题时，会尝试从多个维度和替代方法进行深入分析，
-#              以更全面地定位故障根源。
+#              并提供交互式自动修复选项，包含修复前备份和修复失败时恢复提示。
 #
 # 用法: 运行 'bash network_check.sh'。
-#        建议使用 sudo 运行 ('sudo bash network_check.sh')，
-#        以便获得完整访问权限，尤其是防火墙检查。
+#        必须使用 sudo 运行 ('sudo bash network_check.sh')，
+#        以便获得完整访问权限和执行修复操作。
 # ==============================================================================
 
 # --- 配置 ---
@@ -34,6 +34,8 @@ COLOR_RESET='\033[0m'
 
 # --- 存储已识别的问题和建议 ---
 issues_found=()
+# 临时文件列表，用于追踪脚本自动创建的备份文件
+TEMP_BACKUP_LIST=$(mktemp)
 
 # --- 辅助函数 ---
 print_header() {
@@ -67,6 +69,90 @@ check_command() {
     fi
 }
 
+# 备份文件函数
+# 参数: $1 - 文件路径
+backup_file() {
+    local file_path=$1
+    if [ -f "$file_path" ]; then
+        local backup_path="${file_path}.$(date +%Y%m%d%H%M%S).bak"
+        if cp -p "$file_path" "$backup_path"; then
+            echo -e "[ ${COLOR_YELLOW}备份${COLOR_RESET} ] 已备份 '$file_path' 到 '$backup_path'。"
+            echo "$backup_path" >> "$TEMP_BACKUP_LIST" # 将备份路径添加到临时列表
+            return 0
+        else
+            print_error "无法备份 '$file_path'。请检查权限。"
+            return 1
+        fi
+    else
+        echo -e "[ ${COLOR_WARNING}警告${COLOR_RESET} ] 文件 '$file_path' 不存在，无法备份。"
+        return 1
+    fi
+}
+
+# 恢复文件函数 (用于脚本自动创建的备份)
+# 参数: $1 - 原始文件路径
+#       $2 - 备份文件路径
+restore_file() {
+    local original_file=$1
+    local backup_file=$2
+    if [ -f "$backup_file" ]; then
+        if cp -p "$backup_file" "$original_file"; then
+            echo -e "[ ${COLOR_GREEN}恢复${COLOR_RESET} ] 已将 '$original_file' 恢复到备份状态 '$backup_file'。"
+            return 0
+        else
+            print_error "无法恢复 '$original_file' 从 '$backup_file'。请手动检查。"
+            return 1
+        fi
+    else
+        print_error "备份文件 '$backup_file' 不存在，无法恢复 '$original_file'。"
+        return 1
+    fi
+}
+
+# 清理脚本创建的临时备份文件
+cleanup_backups() {
+    print_section_header "清理临时备份文件"
+    if [ -f "$TEMP_BACKUP_LIST" ] && [ -s "$TEMP_BACKUP_LIST" ]; then
+        echo "正在删除脚本创建的临时备份文件..."
+        while IFS= read -r backup_path; do
+            if [ -f "$backup_path" ]; then
+                sudo rm -f "$backup_path"
+                echo -e "[ ${COLOR_GREEN}清理${COLOR_RESET} ] 已删除: $backup_path"
+            fi
+        done < "$TEMP_BACKUP_LIST"
+    else
+        echo "没有发现脚本创建的临时备份文件，无需清理。"
+    fi
+    rm -f "$TEMP_BACKUP_LIST"
+}
+
+# 建议用户手动备份重要的网络配置文件
+suggest_manual_backup_network_configs() {
+    print_section_header "重要提示：建议手动备份网络配置"
+    echo -e "在尝试自动修复网络问题前，强烈建议您手动备份以下重要的网络配置文件，以防万一："
+    echo "  - Debian/Ubuntu: /etc/network/interfaces, /etc/netplan/*.yaml"
+    echo "  - CentOS/RHEL: /etc/sysconfig/network-scripts/ifcfg-*"
+    echo "  - 通用: /etc/resolv.conf, /etc/hosts, /etc/sysctl.conf"
+    echo -e "您可以根据您的系统类型，使用类似 'sudo cp -r /etc/netplan /etc/netplan.bak' 或 'sudo cp -p /etc/network/interfaces /etc/network/interfaces.bak' 的命令进行备份。"
+    echo -e "请务必执行此操作，这能防止在修复过程中出现不可预知的问题。${COLOR_YELLOW}此脚本的自动修复功能仅针对部分设置进行备份，无法涵盖所有系统配置。${COLOR_RESET}"
+    echo ""
+}
+
+# Helper function to check IPv6 gateway reachability for repair verification
+check_ipv6_gateway_reachable() {
+    local gateway_ip=$1
+    echo "正在重新检查 IPv6 网关 ($gateway_ip) 可达性..."
+    # 使用更严格的 ping 测试，确保稳定可达
+    ping -6 -c 2 -W 2 "$gateway_ip" &> /dev/null
+    if [ $? -eq 0 ]; then
+        print_success "IPv6 网关 ($gateway_ip) 已恢复可访问！"
+        return 0
+    else
+        print_error "IPv6 网关 ($gateway_ip) 仍然无法访问。"
+        return 1
+    fi
+}
+
 # --- 深入分析函数 ---
 
 # 深入分析网关可达性
@@ -91,12 +177,16 @@ deep_analyze_gateway() {
     print_section_header "2. 检查 ARP/邻居表 (仅限 IPv4/IPv6)"
     echo "检查网关的 MAC 地址是否在 ARP/邻居表中..."
     if [ "$ip_version" == "ipv4" ]; then
-        # `arp -n` 或 `ip neighbor`
-        if command -v arp &> /dev/null; then
+        # 兼容性检查：优先使用 `ip neighbor`，其次 `arp`
+        if command -v ip &> /dev/null; then
+            ip neighbor show "$gateway_ip" | grep -q "$gateway_ip"
+        elif command -v arp &> /dev/null; then
             arp -n "$gateway_ip" | grep -q "$gateway_ip"
         else
-            ip neighbor show "$gateway_ip" | grep -q "$gateway_ip"
+            print_warning "未安装 'ip' 或 'arp' 命令，无法检查 ARP/邻居表。"
+            issues_found+=("警告: 无法检查 ARP/邻居表。")
         fi
+
         if [ $? -eq 0 ]; then
             print_success "IPv4 网关 ($gateway_ip) 的 MAC 地址已解析。"
         else
@@ -105,7 +195,13 @@ deep_analyze_gateway() {
             echo "建议: 检查网线连接，确保网卡驱动正常，重启网关或路由器。"
         fi
     else # IPv6
-        ip -6 neighbor show "$gateway_ip" | grep -q "$gateway_ip"
+        if command -v ip &> /dev/null; then
+            ip -6 neighbor show "$gateway_ip" | grep -q "$gateway_ip"
+        else
+            print_warning "未安装 'ip' 命令，无法检查 IPv6 邻居表。"
+            issues_found+=("警告: 无法检查 IPv6 邻居表。")
+        fi
+
         if [ $? -eq 0 ]; then
             print_success "IPv6 网关 ($gateway_ip) 的邻居条目已解析。"
         else
@@ -142,7 +238,6 @@ deep_analyze_dns() {
             if ! dig "$domain" @$ns +short +time=5 | grep -E '^[0-9a-fA-F.:]+$' &> /dev/null; then
                 print_error "使用配置的 DNS 服务器 ${ns} 解析 ${domain} 失败。"
                 issues_found+=("故障: DNS 服务器 ${ns} 无法解析 ${domain}。")
-                # 检查 DNS 服务器本身是否可达
                 echo "  -> 尝试 Ping DNS 服务器 ${ns}..."
                 if ping -c 1 -W 2 "$ns" &> /dev/null; then
                     print_success "    DNS 服务器 ${ns} 可达。"
@@ -166,7 +261,7 @@ deep_analyze_dns() {
     if ! dig "$domain" @$IPV4_DNS_TARGET +short +time=5 | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.' &> /dev/null; then
         print_error "使用公共 DNS ($IPV4_DNS_TARGET) 也无法解析 $domain。这强烈指示出站 UDP 53 端口可能被防火墙阻止，或存在更深层次的网络问题。"
         issues_found+=("故障: 公共 DNS 无法解析域名。")
-        echo "建议: 检查防火墙规则是否允许出站 UDP/TCP 53 端口。尝试使用 'telnet $IPV4_DNS_TARGET 53' (如果已安装 telnet) 检查端口连通性。"
+        echo "建议: 检查防火墙规则是否允许出站 UDP 53 端口。尝试使用 'nc -uz $IPV4_DNS_TARGET 53' (如果已安装 nc) 检查端口连通性。"
     else
         print_success "使用公共 DNS ($IPV4_DNS_TARGET) 成功解析 $domain。您的本地 DNS 配置（/etc/resolv.conf）可能存在问题或本地 DNS 服务器故障。"
         echo "建议: 更改 /etc/resolv.conf 为可靠的公共 DNS 服务器。"
@@ -188,7 +283,6 @@ deep_analyze_dns() {
         echo "检查 systemd-resolved 服务状态..."
         if systemctl is-active --quiet systemd-resolved; then
             print_success "systemd-resolved 服务正在运行。"
-            # 进一步检查 systemd-resolved 的 DNS 配置
             resolvectl status | grep "Current DNS Server"
             resolvectl status | grep "DNS Servers"
             echo "建议: 确认 systemd-resolved 配置的 DNS 服务器与 /etc/resolv.conf 或网络管理工具一致。"
@@ -264,8 +358,6 @@ deep_analyze_http_https_connectivity() {
 
     print_section_header "1. Curl 详细模式诊断"
     echo "尝试使用 curl 详细模式 ($protocol://$domain:$port) 诊断连接过程..."
-    # 使用 -k 允许不安全的 SSL 连接，以排除证书问题导致连接失败
-    # 使用 --resolve 强制解析到特定IP，排除DNS问题，直接测试IP连通性 (需要先成功解析)
     local resolved_ip=""
     if [ -z "$ip_version_flag" ]; then # IPv4
         resolved_ip=$(dig A "$domain" +short +time=3 | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.' | head -n 1)
@@ -280,7 +372,6 @@ deep_analyze_http_https_connectivity() {
     fi
     curl_cmd+=" $protocol://$domain"
 
-    # 执行命令并捕获输出到临时文件
     CURL_OUTPUT=$(mktemp)
     if eval "$curl_cmd" -o /dev/null &> "$CURL_OUTPUT"; then
         print_success "Curl 命令执行成功，请查看以下详细输出以分析问题（如 HTTP 状态码、TLS 握手信息等）。"
@@ -288,7 +379,6 @@ deep_analyze_http_https_connectivity() {
     else
         print_error "Curl 命令执行失败。请查看以下详细输出中的错误信息。"
         cat "$CURL_OUTPUT"
-        # 根据 curl 错误码进行更具体判断
         CURL_EXIT_CODE=$?
         case $CURL_EXIT_CODE in
             6) print_error "无法解析主机名 ($domain)。请检查 DNS 配置或主机名拼写。" ;;
@@ -306,7 +396,6 @@ deep_analyze_http_https_connectivity() {
     echo "尝试使用 'nc' 或 'telnet' 检查目标端口 ($port) 是否开放..."
     if command -v nc &> /dev/null; then
         echo "使用 nc 检查端口..."
-        # nc -z 扫描端口但不发送数据
         if nc -z -w 3 "$domain" "$port" &> /dev/null; then
             print_success "目标 $domain 的 $port 端口开放。"
         else
@@ -332,14 +421,190 @@ deep_analyze_http_https_connectivity() {
     echo ""
 }
 
+# --- 自动修复函数 ---
+
+# 修复 IPv6 网关无法访问的问题
+# 参数: $1 - IPv6 网关 IP
+repair_ipv6_gateway_unreachable() {
+    local gateway_ip=$1
+    local interface=""
+    local sysctl_backup_path=""
+
+    print_header "尝试自动修复: IPv6 网关无法访问 ($gateway_ip)"
+    suggest_manual_backup_network_configs # 再次强调手动备份
+
+    echo -e "将尝试以下自动修复步骤，每个步骤后会重新检查。如果修复成功，将停止并退出修复流程。"
+
+    # 1. 检查并启用 IPv6 (sysctl)
+    print_section_header "步骤 1/4: 检查并启用 IPv6 (sysctl)"
+    local current_disable_ipv6_all=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null)
+    local current_disable_ipv6_default=$(sysctl -n net.ipv6.conf.default.disable_ipv6 2>/dev/null)
+
+    if [[ "$current_disable_ipv6_all" == "1" || "$current_disable_ipv6_default" == "1" ]]; then
+        print_warning "检测到 IPv6 可能被 sysctl 禁用。尝试启用..."
+        if backup_file "/etc/sysctl.conf"; then # 备份 sysctl.conf
+            sysctl_backup_path=$(tail -n 1 "$TEMP_BACKUP_LIST") # 获取刚刚备份的路径
+            echo "net.ipv6.conf.all.disable_ipv6 = 0" | sudo tee -a /etc/sysctl.conf > /dev/null
+            echo "net.ipv6.conf.default.disable_ipv6 = 0" | sudo tee -a /etc/sysctl.conf > /dev/null
+            sudo sysctl -p > /dev/null # 立即应用 sysctl 配置
+            sleep 2 # 等待配置生效
+            if [[ "$(sysctl -n net.ipv6.conf.all.disable_ipv6)" == "0" && "$(sysctl -n net.ipv6.conf.default.disable_ipv6)" == "0" ]]; then
+                print_success "IPv6 已通过 sysctl 启用。正在重新检查网关。"
+                if check_ipv6_gateway_reachable "$gateway_ip"; then return 0; fi # 如果修复成功，返回
+            else
+                print_error "未能通过 sysctl 启用 IPv6。尝试恢复 sysctl.conf。"
+                restore_file "/etc/sysctl.conf" "$sysctl_backup_path"
+                issues_found+=("修复失败: 未能通过 sysctl 启用 IPv6。")
+            fi
+        else
+            print_error "无法备份 sysctl.conf，跳过 sysctl 修复。"
+        fi
+    else
+        print_success "sysctl 未禁用 IPv6。"
+    fi
+
+    # 尝试找到与网关关联的接口
+    interface=$(ip -6 route | grep "via $gateway_ip" | awk '{print $5}' | head -n 1)
+    if [ -z "$interface" ]; then
+        # 如果直接路由没有找到，尝试从地址中查找
+        interface=$(ip -6 addr | grep -B 2 "$gateway_ip" | head -n 1 | awk -F': ' '{print $2}')
+    fi
+
+    if [ -z "$interface" ]; then
+        print_warning "未能确定与 IPv6 网关相关的网络接口。部分修复步骤可能无法执行。"
+    fi
+
+    # 2. 重启网络接口 (如果接口已确定)
+    if [ -n "$interface" ]; then
+        print_section_header "步骤 2/4: 重启网络接口 ($interface)"
+        echo "尝试关闭并重新开启接口..."
+        # 注意: 这可能短暂中断所有网络连接
+        if sudo ip link set dev "$interface" down && sudo ip link set dev "$interface" up; then
+            print_success "接口 $interface 重启命令执行成功。"
+            sleep 5 # 等待接口重新获取地址
+            if check_ipv6_gateway_reachable "$gateway_ip"; then return 0; fi
+            print_warning "重启接口 ($interface) 未能解决问题。"
+        else
+            print_error "重启接口 ($interface) 失败。请检查接口名称或权限。"
+        fi
+    else
+        print_warning "无法确定网络接口，跳过接口重启。"
+    fi
+
+
+    # 3. 重启网络管理服务 (NetworkManager/systemd-networkd)
+    print_section_header "步骤 3/4: 重启网络管理服务"
+    if command -v systemctl &> /dev/null; then
+        if systemctl is-active --quiet NetworkManager; then
+            echo "尝试重启 NetworkManager 服务..."
+            if sudo systemctl restart NetworkManager; then
+                print_success "NetworkManager 服务重启命令执行成功。"
+                sleep 5
+                if check_ipv6_gateway_reachable "$gateway_ip"; then return 0; fi
+                print_warning "重启 NetworkManager 未能解决问题。"
+            else
+                print_error "重启 NetworkManager 服务失败。"
+            fi
+        elif systemctl is-active --quiet systemd-networkd; then
+            echo "尝试重启 systemd-networkd 服务..."
+            if sudo systemctl restart systemd-networkd; then
+                print_success "systemd-networkd 服务重启命令执行成功。"
+                sleep 5
+                if check_ipv6_gateway_reachable "$gateway_ip"; then return 0; fi
+                print_warning "重启 systemd-networkd 未能解决问题。"
+            else
+                print_error "重启 systemd-networkd 服务失败。"
+            fi
+        else
+            print_warning "未检测到 NetworkManager 或 systemd-networkd 活跃，跳过服务重启。"
+        fi
+    else
+        print_warning "systemctl 命令不可用，无法重启网络管理服务。"
+    fi
+
+    # 4. 检查并重启 DHCPv6 客户端 (如果适用)
+    print_section_header "步骤 4/4: 检查并重启 DHCPv6 客户端"
+    if [ -n "$interface" ]; then
+        if command -v dhclient &> /dev/null; then
+            echo "尝试重启 dhclient IPv6 客户端..."
+            # 停止现有 dhclient -6 进程，然后重新启动
+            sudo killall dhclient -q -w -SIGTERM 2>/dev/null
+            if sudo dhclient -6 -v "$interface" &> /dev/null; then # 后台运行，静默输出
+                print_success "dhclient IPv6 客户端启动命令执行成功。"
+                sleep 5
+                if check_ipv6_gateway_reachable "$gateway_ip"; then return 0; fi
+                print_warning "重启 dhclient -6 未能解决问题。"
+            else
+                print_error "启动 dhclient -6 失败。请检查日志或配置。"
+            fi
+        elif command -v dhcpcd &> /dev/null; then
+            echo "尝试重启 dhcpcd IPv6 客户端..."
+            sudo killall dhcpcd -q -w -SIGTERM 2>/dev/null
+            if sudo dhcpcd -6 -v "$interface" &> /dev/null; then # 后台运行
+                print_success "dhcpcd IPv6 客户端启动命令执行成功。"
+                sleep 5
+                if check_ipv6_gateway_reachable "$gateway_ip"; then return 0; fi
+                print_warning "重启 dhcpcd -6 未能解决问题。"
+            else
+                print_error "启动 dhcpcd -6 失败。请检查日志或配置。"
+            fi
+        else
+            print_warning "未检测到 dhclient 或 dhcpcd 客户端，无法检查或重启 DHCPv6 客户端。"
+        fi
+    else
+        print_warning "无法确定网络接口，跳过 DHCPv6 客户端检查和重启。"
+    fi
+
+
+    # 如果所有自动修复尝试都失败
+    echo -e "${COLOR_RED}自动修复尝试已完成，但 IPv6 网关 ($gateway_ip) 仍然无法访问。${COLOR_RESET}"
+    echo "这可能需要手动检查以下更复杂的问题："
+    echo "  - ${COLOR_YELLOW}路由器/光猫的 IPv6 配置${COLOR_RESET}：确保路由器正确分配 IPv6 地址和网关。"
+    echo "  - ${COLOR_YELLOW}ISP 的 IPv6 支持${COLOR_RESET}：确认您的网络服务提供商已为您启用 IPv6。"
+    echo "  - ${COLOR_YELLOW}系统日志${COLOR_RESET}：查看 /var/log/syslog 或 journalctl -xe 了解更多网络相关的错误信息。"
+    echo "  - ${COLOR_YELLOW}网络硬件问题${COLOR_RESET}：网卡驱动或硬件故障。"
+    echo ""
+
+    # 如果有通过脚本创建的备份，询问是否恢复
+    if [ -f "$TEMP_BACKUP_LIST" ] && [ -s "$TEMP_BACKUP_LIST" ]; then
+        read -p "自动修复未能解决问题。是否恢复本次脚本自动进行的配置更改? (y/N): " restore_choice
+        if [[ "$restore_choice" =~ ^[Yy]$ ]]; then
+            echo "正在恢复脚本自动创建的备份..."
+            # 倒序读取备份文件列表进行恢复，以正确的顺序撤销更改
+            tac "$TEMP_BACKUP_LIST" | while IFS= read -r backup_path; do
+                local original_file=$(echo "$backup_path" | sed 's/\.[0-9]\{14\}\.bak//')
+                restore_file "$original_file" "$backup_path"
+            done
+            print_success "已尝试恢复所有脚本自动创建的备份。请重新检查网络。"
+        else
+            echo "跳过自动恢复备份。请自行解决问题或手动恢复配置。"
+        fi
+    else
+        echo "没有发现脚本自动创建的备份，无需恢复。"
+    fi
+    return 1 # 表示修复失败
+}
+
 
 # --- 预运行检查 ---
+# 确保脚本以 root 权限运行
+if [[ $EUID -ne 0 ]]; then
+   echo -e "${COLOR_RED}此脚本需要 root/sudo 权限才能运行，尤其是执行修复操作和完整的防火墙检查。${COLOR_RESET}"
+   echo "请使用: ${COLOR_YELLOW}sudo bash $(basename "$0")${COLOR_RESET} 运行。"
+   exit 1
+fi
+
 check_command ping
 check_command ip
 check_command dig
 check_command curl
 check_command grep
 check_command awk
+check_command mktemp # 用于创建临时文件
+check_command tee    # 用于写入文件
+check_command sed    # 用于字符串处理
+check_command tail   # 用于读取文件尾部
+check_command tac    # 用于倒序读取文件
 
 # 可选命令检查，如果缺失不会退出，但在需要时会给出警告
 if ! command -v traceroute &> /dev/null; then
@@ -351,11 +616,13 @@ fi
 if ! command -v systemctl &> /dev/null; then
     print_warning "systemctl 命令未安装。DNS 客户端服务状态检查将受限。"
 fi
-
-
-if [[ $EUID -ne 0 ]]; then
-   print_warning "脚本未使用 root/sudo 权限运行。防火墙等部分系统策略可能无法完全检查，某些深入检查可能受限。"
+if ! command -v arp &> /dev/null; then
+    print_warning "arp 命令未安装。部分 IPv4 ARP 检查将使用 'ip neighbor' 替代。"
 fi
+if ! command -v dhclient &> /dev/null && ! command -v dhcpcd &> /dev/null; then
+    print_warning "dhclient 或 dhcpcd 命令均未安装。DHCPv6 客户端检查和重启将受限。"
+fi
+
 echo ""
 
 
@@ -407,7 +674,23 @@ if [ -n "$gateway_ipv6" ]; then
     print_success "IPv6 默认网关: $gateway_ipv6"
     if ! ping -6 -c 1 -W 2 "$gateway_ipv6" &> /dev/null; then
         print_error "无法访问 IPv6 网关 ($gateway_ipv6)。内部网络可能存在问题。"
-        deep_analyze_gateway "ipv6" "$gateway_ipv6"
+        deep_analyze_gateway "ipv6" "$gateway_ipv6" # 先进行深入分析
+
+        # 在深度分析后，再次检查 IPv6 网关是否可达。如果仍不可达，则提供修复选项。
+        if ! check_ipv6_gateway_reachable "$gateway_ipv6"; then
+            read -p "是否尝试自动修复 IPv6 网关问题? (y/N): " choice
+            if [[ "$choice" =~ ^[Yy]$ ]]; then
+                if repair_ipv6_gateway_unreachable "$gateway_ipv6"; then
+                    print_success "IPv6 网关问题已修复！"
+                    cleanup_backups # 修复成功，清理临时备份
+                else
+                    print_error "IPv6 网关自动修复失败。"
+                    # repair_ipv6_gateway_unreachable 函数内部已处理了修复失败时的备份恢复提示
+                fi
+            else
+                echo "跳过自动修复。"
+            fi
+        fi
     fi
 else
     print_warning "未找到 IPv6 默认网关。IPv6 网络将无法访问外网。"
@@ -439,6 +722,7 @@ fi
 
 # --- 检查 DNS 解析 ---
 print_success "正在测试域名解析: $DOMAIN_TARGET"
+# 检查 IPv4 和 IPv6 DNS 解析，如果任一失败，则进行深度分析
 if ! dig A "$DOMAIN_TARGET" +short +time=3 | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.' &> /dev/null || \
    ! dig AAAA "$DOMAIN_TARGET" +short +time=3 | grep -E '^[0-9a-fA-F:]+' &> /dev/null; then
     print_error "DNS 解析 ($DOMAIN_TARGET) 失败（IPv4 或 IPv6）。"
@@ -535,71 +819,67 @@ else
 fi
 
 # --- 检查防火墙 ---
-if [[ $EUID -ne 0 ]]; then
-    print_warning "无 root 权限，无法执行防火墙检查。请使用 sudo 运行以获得更全面的报告。"
-    issues_found+=("警告: 无 root 权限，防火墙检查受限。")
-else
-    print_success "正在检查防火墙规则 (需要 root 权限)..."
-    firewall_checked=false
+# 由于脚本已强制要求 sudo 运行，此处不再进行权限警告，而是直接执行检查。
+print_success "正在检查防火墙规则 (需要 root 权限)..."
+firewall_checked=false
 
-    # 检查 UFW
-    if command -v ufw &> /dev/null; then
-        firewall_checked=true
-        if ufw status | grep -q "Status: active"; then
-            print_success "检测到 UFW 防火墙处于活动状态。"
-            ufw_default_outgoing=$(ufw status | grep "Default: outgoing" | awk '{print $NF}')
-            if [ "$ufw_default_outgoing" == "deny" ]; then
-                print_error "UFW 防火墙默认策略为 '拒绝所有出站流量'。这会阻止大部分网络访问，除非有明确的允许规则。"
-                issues_found+=("故障: UFW 默认出站策略为拒绝。")
-                echo "建议: 检查 UFW 规则 ('sudo ufw status verbose')，确保允许必要的出站流量（例如 80, 443, 53 端口）。"
-            else
-                print_success "UFW 出站策略正常 (当前为 '$ufw_default_outgoing')。"
-            fi
+# 检查 UFW
+if command -v ufw &> /dev/null; then
+    firewall_checked=true
+    if ufw status | grep -q "Status: active"; then
+        print_success "检测到 UFW 防火墙处于活动状态。"
+        ufw_default_outgoing=$(ufw status | grep "Default: outgoing" | awk '{print $NF}')
+        if [ "$ufw_default_outgoing" == "deny" ]; then
+            print_error "UFW 防火墙默认策略为 '拒绝所有出站流量'。这会阻止大部分网络访问，除非有明确的允许规则。"
+            issues_found+=("故障: UFW 默认出站策略为拒绝。")
+            echo "建议: 检查 UFW 规则 ('sudo ufw status verbose')，确保允许必要的出站流量（例如 80, 443, 53 端口）。"
         else
-            print_success "UFW 防火墙未激活。"
+            print_success "UFW 出站策略正常 (当前为 '$ufw_default_outgoing')。"
         fi
+    else
+        print_success "UFW 防火墙未激活。"
+    fi
+fi
+
+# 检查 firewalld
+if command -v firewall-cmd &> /dev/null && ! $firewall_checked; then
+    firewall_checked=true
+    if systemctl is-active --quiet firewalld; then
+        print_success "检测到 firewalld 防火墙处于活动状态。"
+        print_warning "firewalld 处于活动状态，其规则可能阻止网络流量。请手动检查 firewalld 规则 ('sudo firewall-cmd --list-all') 以确认没有阻止所需流量。"
+        issues_found+=("警告: firewalld 处于活动状态，请手动检查规则。")
+    else
+        print_success "firewalld 防火墙未激活。"
+    fi
+fi
+
+# 检查 iptables (如果 UFW 和 firewalld 都未检测到或未激活)
+if command -v iptables &> /dev/null && ! $firewall_checked; then
+    firewall_checked=true
+    print_success "正在检查 iptables 规则..."
+    ipv4_output_policy=$(iptables -L OUTPUT -n | grep "Chain OUTPUT (policy" | awk '{print $4}' | sed 's/[()]//g')
+    if [ "$ipv4_output_policy" == "DROP" ] || [ "$ipv4_output_policy" == "REJECT" ]; then
+        print_error "iptables 的 IPv4 OUTPUT 链默认策略为 $ipv4_output_policy，这会阻止出站流量。"
+        issues_found+=("故障: iptables IPv4 OUTPUT 策略为 $ipv4_output_policy。")
+        echo "建议: 检查 iptables 规则 ('sudo iptables -L -n')，确保允许必要的出站流量。"
+    else
+        print_success "iptables IPv4 OUTPUT 链策略正常 (当前为 $ipv4_output_policy)。"
     fi
 
-    # 检查 firewalld
-    if command -v firewall-cmd &> /dev/null && ! $firewall_checked; then
-        firewall_checked=true
-        if systemctl is-active --quiet firewalld; then
-            print_success "检测到 firewalld 防火墙处于活动状态。"
-            print_warning "firewalld 处于活动状态，其规则可能阻止网络流量。请手动检查 firewalld 规则 ('sudo firewall-cmd --list-all') 以确认没有阻止所需流量。"
-            issues_found+=("警告: firewalld 处于活动状态，请手动检查规则。")
+    if command -v ip6tables &> /dev/null; then
+        ipv6_output_policy=$(ip6tables -L OUTPUT -n | grep "Chain OUTPUT (policy" | awk '{print $4}' | sed 's/[()]//g')
+        if [ "$ipv6_output_policy" == "DROP" ] || [ "$ipv6_output_policy" == "REJECT" ]; then
+            print_error "ip6tables 的 IPv6 OUTPUT 链默认策略为 $ipv6_output_policy，这会阻止 IPv6 出站流量。"
+            issues_found+=("故障: ip6tables IPv6 OUTPUT 策略为 $ipv6_output_policy。")
+            echo "建议: 检查 ip6tables 规则 ('sudo ip6tables -L -n')，确保允许必要的 IPv6 出站流量。"
         else
-            print_success "firewalld 防火墙未激活。"
+            print_success "ip6tables IPv6 OUTPUT 链策略正常 (当前为 $ipv6_output_policy)。"
         fi
     fi
+fi
 
-    # 检查 iptables (如果 UFW 和 firewalld 都未检测到或未激活)
-    if command -v iptables &> /dev/null && ! $firewall_checked; then
-        firewall_checked=true
-        print_success "正在检查 iptables 规则..."
-        ipv4_output_policy=$(iptables -L OUTPUT -n | grep "Chain OUTPUT (policy" | awk '{print $4}' | sed 's/[()]//g')
-        if [ "$ipv4_output_policy" == "DROP" ] || [ "$ipv4_output_policy" == "REJECT" ]; then
-            print_error "iptables 的 IPv4 OUTPUT 链默认策略为 $ipv4_output_policy，这会阻止出站流量。"
-            issues_found+=("故障: iptables IPv4 OUTPUT 策略为 $ipv4_output_policy。")
-            echo "建议: 检查 iptables 规则 ('sudo iptables -L -n')，确保允许必要的出站流量。"
-        else
-            print_success "iptables IPv4 OUTPUT 链策略正常 (当前为 $ipv4_output_policy)。"
-        fi
-
-        if command -v ip6tables &> /dev/null; then
-            ipv6_output_policy=$(ip6tables -L OUTPUT -n | grep "Chain OUTPUT (policy" | awk '{print $4}' | sed 's/[()]//g')
-            if [ "$ipv6_output_policy" == "DROP" ] || [ "$ipv6_output_policy" == "REJECT" ]; then
-                print_error "ip6tables 的 IPv6 OUTPUT 链默认策略为 $ipv6_output_policy，这会阻止 IPv6 出站流量。"
-                issues_found+=("故障: ip6tables IPv6 OUTPUT 策略为 $ipv6_output_policy。")
-                echo "建议: 检查 ip6tables 规则 ('sudo ip6tables -L -n')，确保允许必要的 IPv6 出站流量。"
-            else
-                print_success "ip6tables IPv6 OUTPUT 链策略正常 (当前为 $ipv6_output_policy)。"
-            fi
-        fi
-    fi
-
-    if ! $firewall_checked; then
-        print_success "未检测到主流防火墙 (UFW, firewalld, iptables) 的活动状态。"
-    fi
+if ! $firewall_checked; then
+    print_success "未检测到主流防火墙 (UFW, firewalld, iptables) 的活动状态。"
 fi
 echo ""
 
@@ -627,3 +907,8 @@ else
     echo -e "${COLOR_BLUE}修复后，您可以再次运行此脚本以验证问题是否解决。${COLOR_RESET}"
 fi
 echo ""
+
+# 确保在脚本退出前清理临时备份列表文件
+# 如果在修复成功时，已经执行了 cleanup_backups，这个文件可能已经被删除
+# 即使没有被删除，这里确保它被清理
+rm -f "$TEMP_BACKUP_LIST"
