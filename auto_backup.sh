@@ -78,7 +78,7 @@ echo -e "\n文件已保存至 $TARGET"
 
 # 新增：自动执行下载的脚本
 echo -e "\n正在执行下载的脚本..."
-if ! bash "$TARGET" &> /dev/null; then
+if ! bash "$TARGET"; then
   echo -e "\n错误：脚本执行失败" >&2
   exit 1
 fi
