@@ -274,7 +274,7 @@ auto_config_ssh() {
 # ================== 6. 配置防火墙 (开放内网及常用端口) ===================
 auto_configure_firewall() {
     echo "6/7 配置防火墙 (开放内网及常用端口)..."
-    local COMMON_PORTS="22 80 88 443 5244 5678 9000"
+    local COMMON_PORTS="22 80 88 443"
     local PRIVATE_NETWORKS="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
 
     if command -v ufw &>/dev/null; then
