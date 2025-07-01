@@ -38,5 +38,3 @@ if ! docker-compose -f "$TARGET_FILE" up -d; then
 fi
 
 echo "🎉 容器服务已成功启动！"
-echo "可以使用以下命令查看状态："
-echo "  docker-compose -f $TARGET_FILE ps"
