@@ -18,16 +18,17 @@ check_ufw_installed() {
   fi
 }
 
-# 函数：确保 ufw 启用 IPv6 管理
+# 函数：确保 ufw 启用 IPv6 管理 (根据Ubuntu系统特性调整为 IPV6=yes)
 ensure_ufw_ipv6_enabled() {
-  # 检查 /etc/default/ufw 中的 UFW_IPV6 设置，确保精确匹配 'UFW_IPV6=yes' 且行尾无其他非空白字符
-  if ! grep -qE "^UFW_IPV6=yes[[:space:]]*$" /etc/default/ufw; then
-    echo "在 /etc/default/ufw 中未找到精确的 UFW_IPV6=yes 设置。正在尝试启用 IPv6 管理..."
-    # 使用 sed 修改配置文件，确保 UFW_IPV6=yes
-    # 这里使用 | 作为 sed 的分隔符，以避免路径中的 / 冲突
-    sudo sed -i 's|^UFW_IPV6=.*|UFW_IPV6=yes|' /etc/default/ufw
+  # 检查 /etc/default/ufw 中的 IPV6 设置
+  # 使用更健壮的正则表达式，匹配 IPV6=yes，即使行尾有空格或注释
+  if ! grep -qE "^IPV6=yes([[:space:]]*|#.*)?$" /etc/default/ufw; then
+    echo "在 /etc/default/ufw 中未找到精确的 IPV6=yes 设置。正在尝试启用 IPv6 管理..."
+    # 使用 sed 修改配置文件，确保 IPV6=yes
+    # 这个 sed 命令会替换 IPV6=开头的整行
+    sudo sed -i 's/^\(IPV6=\).*$/IPV6=yes/' /etc/default/ufw
     if [ $? -eq 0 ]; then
-      echo "已成功设置 UFW_IPV6=yes。为了使更改生效，如果 ufw 处于活动状态，将尝试重新加载它。"
+      echo "已成功设置 IPV6=yes。为了使更改生效，如果 ufw 处于活动状态，将尝试重新加载它。"
       # 尝试重新加载 ufw 以使 IPv6 更改生效
       if ufw status | grep -q "Status: active"; then
         echo "正在重新加载 ufw 以应用 IPv6 配置更改..."
@@ -37,10 +38,10 @@ ensure_ufw_ipv6_enabled() {
         fi
       fi
     else
-      echo "!!! 警告: 自动设置 UFW_IPV6=yes 失败。请手动检查并编辑 /etc/default/ufw 文件。!!!"
+      echo "!!! 警告: 自动设置 IPV6=yes 失败。请手动检查并编辑 /etc/default/ufw 文件。!!!"
     fi
   else
-    echo "ufw 的 IPv6 管理已启用 (UFW_IPV6=yes)。"
+    echo "ufw 的 IPv6 管理已启用 (IPV6=yes)。"
   fi
 }
 
@@ -119,22 +120,37 @@ open_internal_and_common_external_ports() {
   fi
   echo "ufw 默认策略已设置。"
 
-  # 开放常用的外部端口 (TCP)
-  echo "正在开放外网常用端口 (22, 80, 443) (IPv4 和 IPv6)..."
-  ufw allow 22/tcp comment '允许 SSH (IPv4/IPv6)'
-  ufw allow 80/tcp comment '允许 HTTP (IPv4/IPv6)'
-  ufw allow 443/tcp comment '允许 HTTPS (IPv4/IPv6)'
-  if [ $? -ne 0 ]; then
-    echo "开放外网常用端口失败。请检查错误信息。"
-    return 1
-  fi
-  echo "外网常用端口已开放。"
+  # 定义常用端口列表，包括 TCP 和 UDP (如果适用)
+  local common_ports=(
+    "22/tcp" # SSH
+    "80/tcp" # HTTP
+    "443/tcp" # HTTPS
+    "88/tcp" # Kerberos
+  )
+
+  echo "正在开放外网常用端口 (22, 80, 443, 88) (IPv4 和 IPv6)..."
+  for port_proto in "${common_ports[@]}"; do
+    local port=$(echo "$port_proto" | cut -d'/' -f1)
+    local proto=$(echo "$port_proto" | cut -d'/' -f2)
+
+    # 检查端口是否已经开放，避免重复添加
+    if ufw status verbose | grep -qE "($port_proto[[:space:]]+ALLOW[[:space:]]+Anywhere)|(Anywhere[[:space:]]+$port_proto[[:space:]]+ALLOW)"; then
+      echo "  端口 ${port_proto} 已开放，跳过添加。"
+    else
+      echo "  正在开放端口 ${port_proto} (IPv4 和 IPv6)..."
+      ufw allow "${port_proto}" comment "允许 ${port} (${proto}) (IPv4/IPv6)"
+      if [ $? -ne 0 ]; then
+        echo "!!! 错误: 开放端口 ${port_proto} 失败。请检查错误信息。!!!"
+      fi
+    fi
+  done
+  echo "外网常用端口开放操作完成。"
 
   # 开放内网（RFC1918 私有地址空间 - IPv4）所有访问
   echo "正在开放内网（私有 IP 地址范围 - IPv4）所有访问..."
-  ufw allow from 10.0.0.0/8 comment '允许来自 10.0.0.0/8 的所有连接'
-  ufw allow from 172.16.0.0/12 comment '允许来自 172.16.0.0/12 的所有连接'
-  ufw allow from 192.168.0.0/16 comment '允许来自 192.168.0.0/16 的所有连接'
+  ufw allow from 10.0.0.0/8 comment '允许来自 10.0.0.0/8 的所有连接 (IPv4)'
+  ufw allow from 172.16.0.0/12 comment '允许来自 172.16.0.0/12 的所有连接 (IPv4)'
+  ufw allow from 192.168.0.0/16 comment '允许来自 192.168.0.0/16 的所有连接 (IPv4)'
   if [ $? -ne 0 ]; then
     echo "开放 IPv4 内网访问失败。请检查错误信息。"
     return 1
@@ -144,7 +160,7 @@ open_internal_and_common_external_ports() {
   # 开放内网（IPv6 ULA - Unique Local Address）所有访问
   # fc00::/7 是 IPv6 的唯一本地地址范围
   echo "正在开放内网（IPv6 ULA 地址范围 fc00::/7）所有访问..."
-  ufw allow from fc00::/7 comment '允许来自 fc00::/7 (IPv6 ULA) 的所有连接'
+  ufw allow from fc00::/7 comment '允许来自 fc00::/7 (IPv6 ULA) 的所有连接 (IPv6)'
   if [ $? -ne 0 ]; then
     echo "开放 IPv6 内网访问失败。请检查错误信息。"
     return 1
@@ -161,7 +177,7 @@ open_internal_and_common_external_ports() {
     return 1
   fi
 
-  echo "防火墙配置完成：内网开放，外网只开放 22, 80, 443 端口 (IPv4 和 IPv6)。"
+  echo "防火墙配置完成：内网开放，外网只开放 22, 80, 443, 88 端口 (IPv4 和 IPv6)。"
   echo "当前 ufw 状态:"
   ufw status verbose
   return 0
@@ -172,12 +188,17 @@ open_internal_and_common_external_ports() {
 reset_firewall_to_default() {
   echo ">>> 正在执行：重置防火墙规则为默认规则 (IPv4 和 IPv6) <<<"
 
+  # 保存重置前的 ufw 状态，以便后续检查额外端口
+  local pre_reset_status_file=$(mktemp)
+  ufw status verbose > "$pre_reset_status_file"
+
   # 禁用 ufw
   if ufw status | grep -q "Status: active"; then
     echo "正在禁用 ufw..."
     ufw disable
     if [ $? -ne 0 ]; then
       echo "禁用 ufw 失败。请检查错误信息。"
+      rm -f "$pre_reset_status_file"
       return 1
     fi
     echo "ufw 已成功禁用。"
@@ -193,12 +214,36 @@ reset_firewall_to_default() {
     echo "默认规则通常是拒绝所有传入连接，允许所有传出连接。"
   else
     echo "重置 ufw 规则失败。请检查错误信息。"
+    rm -f "$pre_reset_status_file"
     return 1
   fi
 
   echo "ufw 已重置为默认规则 (IPv4 和 IPv6)。您可以选择 'ufw enable' 来重新启用它。"
   echo "当前 ufw 状态:"
   ufw status verbose
+
+  # 检查重置前是否存在额外开放端口并输出
+  local common_ports_regex="(22|80|443|88)/(tcp|udp)" # 常用端口正则
+  echo ""
+  echo "--- 重置前发现的额外开放端口信息 ---"
+  local extra_ports_found=false
+  while IFS= read -r line; do
+    # 查找包含 ALLOW 的行，排除 IP 地址范围和常用端口
+    if echo "$line" | grep -q "ALLOW" && \
+       ! echo "$line" | grep -qE "10.0.0.0/8|172.16.0.0/12|192.168.0.0/16|fc00::/7" && \
+       ! echo "$line" | grep -qE "$common_ports_regex"; then
+      echo "  - $line"
+      extra_ports_found=true
+    fi
+  done < "$pre_reset_status_file"
+
+  if [ "$extra_ports_found" = false ]; then
+    echo "  重置前未发现额外的开放端口。"
+  else
+    echo "  请注意：这些端口在重置前是开放的，现在已随重置操作关闭。"
+  fi
+  echo "------------------------------------"
+  rm -f "$pre_reset_status_file"
   return 0
 }
 
@@ -266,15 +311,25 @@ manual_open_ports() {
     fi
 
     for proto in "${current_protocols[@]}"; do
+      # 检查手动端口是否已经开放，避免重复添加
+      local check_port_entry="${port_start}"
       if [ "$is_range" = true ]; then
-        echo "  正在开放端口范围 ${port_start}:${port_end}/${proto} (IPv4/IPv6)..."
-        ufw allow "${port_start}:${port_end}/${proto}" comment "手动开放端口范围 ${port_start}-${port_end} (${proto})"
-      else
-        echo "  正在开放端口 ${port_start}/${proto} (IPv4/IPv6)..."
-        ufw allow "${port_start}/${proto}" comment "手动开放端口 ${port_start} (${proto})"
+        check_port_entry="${port_start}:${port_end}"
       fi
-      if [ $? -ne 0 ]; then
-        echo "!!! 错误: 开放端口 '$entry' 失败 (${proto})。请检查错误信息。!!!"
+
+      if ufw status verbose | grep -qE "(^$check_port_entry/$proto[[:space:]]+ALLOW[[:space:]]+Anywhere)|(^Anywhere[[:space:]]+$check_port_entry/$proto[[:space:]]+ALLOW)"; then
+        echo "  端口或范围 ${check_port_entry}/${proto} 已开放，跳过添加。"
+      else
+        if [ "$is_range" = true ]; then
+          echo "  正在开放端口范围 ${port_start}:${port_end}/${proto} (IPv4/IPv6)..."
+          ufw allow "${port_start}:${port_end}/${proto}" comment "手动开放端口范围 ${port_start}-${port_end} (${proto})"
+        else
+          echo "  正在开放端口 ${port_start}/${proto} (IPv4/IPv6)..."
+          ufw allow "${port_start}/${proto}" comment "手动开放端口 ${port_start} (${proto})"
+        fi
+        if [ $? -ne 0 ]; then
+          echo "!!! 错误: 开放端口 '$entry' 失败 (${proto})。请检查错误信息。!!!"
+        fi
       fi
     done
   done
@@ -296,7 +351,7 @@ main_menu() {
     echo "--- 防火墙管理脚本 ---"
     echo "请选择一个防火墙配置选项："
     echo "1. 禁用防火墙并开放所有网络访问限制 (IPv4 和 IPv6 - 不安全！)"
-    echo "2. 开放内网访问及外网常用端口 (22, 80, 443) 访问 (IPv4 和 IPv6)"
+    echo "2. 开放内网访问及外网常用端口 (22, 80, 443, 88) 访问 (IPv4 和 IPv6)"
     echo "3. 重置防火墙规则为默认规则 (IPv4 和 IPv6 - 通常是拒绝传入，允许传出)"
     echo "4. 手动开放端口或端口范围 (IPv4 和 IPv6)"
     echo "5. 查看当前 ufw 状态"
