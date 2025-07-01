@@ -20,11 +20,12 @@ check_ufw_installed() {
 
 # 函数：确保 ufw 启用 IPv6 管理
 ensure_ufw_ipv6_enabled() {
-  # 检查 /etc/default/ufw 中的 UFW_IPV6 设置
-  if ! grep -q "^UFW_IPV6=yes" /etc/default/ufw; then
-    echo "在 /etc/default/ufw 中未找到 UFW_IPV6=yes。正在尝试启用 IPv6 管理..."
+  # 检查 /etc/default/ufw 中的 UFW_IPV6 设置，确保精确匹配 'UFW_IPV6=yes' 且行尾无其他非空白字符
+  if ! grep -qE "^UFW_IPV6=yes[[:space:]]*$" /etc/default/ufw; then
+    echo "在 /etc/default/ufw 中未找到精确的 UFW_IPV6=yes 设置。正在尝试启用 IPv6 管理..."
     # 使用 sed 修改配置文件，确保 UFW_IPV6=yes
-    sudo sed -i '/^UFW_IPV6=/c\UFW_IPV6=yes' /etc/default/ufw
+    # 这里使用 | 作为 sed 的分隔符，以避免路径中的 / 冲突
+    sudo sed -i 's|^UFW_IPV6=.*|UFW_IPV6=yes|' /etc/default/ufw
     if [ $? -eq 0 ]; then
       echo "已成功设置 UFW_IPV6=yes。为了使更改生效，如果 ufw 处于活动状态，将尝试重新加载它。"
       # 尝试重新加载 ufw 以使 IPv6 更改生效
@@ -43,49 +44,61 @@ ensure_ufw_ipv6_enabled() {
   fi
 }
 
-# 函数：检查并开放内网访问以及外网常用端口访问 (选项 2)
+
+# 函数：禁用防火墙并开放所有网络访问限制 (选项 1)
 # 适用于 IPv4 和 IPv6
-check_and_open_internal_and_common_external_ports() {
-  echo ">>> 正在检查并配置：开放内网访问及外网常用端口访问 (IPv4 和 IPv6) <<<"
+disable_firewall_completely() {
+  echo ">>> 正在执行：禁用防火墙并开放所有网络访问限制 (IPv4 和 IPv6) <<<"
 
-  local config_needed=false
-
-  # 检查默认策略
-  if ! ufw status verbose | grep -q "Default incoming policy: deny" || \
-     ! ufw status verbose | grep -q "Default outgoing policy: allow"; then
-    echo "默认策略不符合要求，需要配置。"
-    config_needed=true
+  # 确保 ufw 处于活动状态，以便我们可以禁用它
+  # 如果 ufw 已经禁用，这里会打印信息但不会报错，重置操作会在后面进行
+  if ufw status | grep -q "Status: inactive"; then
+    echo "ufw 当前已禁用。为了确保完全开放，我们将重置其规则并设置默认策略。"
+  else
+    echo "正在禁用 ufw..."
+    ufw disable
+    if [ $? -eq 0 ]; then
+      echo "ufw 已成功禁用。"
+    else
+      echo "禁用 ufw 失败。请检查错误信息。"
+      return 1
+    fi
   fi
 
-  # 检查常用端口规则
-  if ! ufw status verbose | grep -q "22/tcp.*ALLOW IN" || \
-     ! ufw status verbose | grep -q "80/tcp.*ALLOW IN" || \
-     ! ufw status verbose | grep -q "443/tcp.*ALLOW IN"; then
-    echo "常用外部端口规则不符合要求，需要配置。"
-    config_needed=true
+  # 重置 ufw 规则到默认状态（这将删除所有自定义规则）
+  # ufw --force reset 同时重置 IPv4 和 IPv6 规则
+  echo "正在重置 ufw 规则到默认状态 (IPv4 和 IPv6)..."
+  ufw --force reset
+  if [ $? -eq 0 ]; then
+    echo "ufw 规则已成功重置。"
+  else
+    echo "重置 ufw 规则失败。请检查错误信息。"
+    return 1
   fi
 
-  # 检查 IPv4 内网规则
-  if ! ufw status verbose | grep -q "10.0.0.0/8.*ALLOW IN" || \
-     ! ufw status verbose | grep -q "172.16.0.0/12.*ALLOW IN" || \
-     ! ufw status verbose | grep -q "192.168.0.0/16.*ALLOW IN"; then
-    echo "IPv4 内网规则不符合要求，需要配置。"
-    config_needed=true
+  # 设置默认策略为允许所有传入和传出连接
+  # ufw default allow 命令同时适用于 IPv4 和 IPv6
+  echo "正在设置 ufw 默认策略为允许所有传入和传出连接 (IPv4 和 IPv6)..."
+  ufw default allow incoming
+  ufw default allow outgoing
+  ufw default allow routed # 允许转发，如果系统作为路由器
+  if [ $? -eq 0 ]; then
+    echo "ufw 默认策略已设置为允许所有连接。"
+  else
+    echo "设置 ufw 默认策略失败。请检查错误信息。"
+    return 1
   fi
 
-  # 检查 IPv6 内网规则
-  if ! ufw status verbose | grep -q "fc00::/7.*ALLOW IN"; then
-    echo "IPv6 内网规则不符合要求，需要配置。"
-    config_needed=true
-  fi
+  echo "防火墙已禁用，并且网络访问限制已完全开放 (IPv4 和 IPv6)。"
+  echo "请记住，这会使您的系统面临安全风险，除非您明确知道其含义。"
+  ufw status verbose
+  return 0
+}
 
-  if [ "$config_needed" = false ] && ufw status | grep -q "Status: active"; then
-    echo "防火墙配置已符合要求且 ufw 已启用，无需重复配置。"
-    ufw status verbose
-    return 0
-  fi
-
-  echo "正在配置防火墙..."
+# 函数：开放内网访问以及外网常用端口访问 (选项 2)
+# 适用于 IPv4 和 IPv6
+open_internal_and_common_external_ports() {
+  echo ">>> 正在执行：开放内网访问及外网常用端口访问 (IPv4 和 IPv6) <<<"
 
   # 首先重置规则以确保干净的状态
   echo "正在重置 ufw 规则到默认状态 (IPv4 和 IPv6)..."
@@ -154,7 +167,42 @@ check_and_open_internal_and_common_external_ports() {
   return 0
 }
 
-# 函数：手动开放端口 (新选项 - 选项 1)
+# 函数：重置防火墙规则为默认规则 (选项 3)
+# 适用于 IPv4 和 IPv6
+reset_firewall_to_default() {
+  echo ">>> 正在执行：重置防火墙规则为默认规则 (IPv4 和 IPv6) <<<"
+
+  # 禁用 ufw
+  if ufw status | grep -q "Status: active"; then
+    echo "正在禁用 ufw..."
+    ufw disable
+    if [ $? -ne 0 ]; then
+      echo "禁用 ufw 失败。请检查错误信息。"
+      return 1
+    fi
+    echo "ufw 已成功禁用。"
+  else
+    echo "ufw 当前已禁用。"
+  fi
+
+  # 重置 ufw 规则到默认状态
+  echo "正在重置 ufw 规则到默认状态 (IPv4 和 IPv6)..."
+  ufw --force reset
+  if [ $? -eq 0 ]; then
+    echo "ufw 规则已成功重置。"
+    echo "默认规则通常是拒绝所有传入连接，允许所有传出连接。"
+  else
+    echo "重置 ufw 规则失败。请检查错误信息。"
+    return 1
+  fi
+
+  echo "ufw 已重置为默认规则 (IPv4 和 IPv6)。您可以选择 'ufw enable' 来重新启用它。"
+  echo "当前 ufw 状态:"
+  ufw status verbose
+  return 0
+}
+
+# 函数：手动开放端口 (新选项 - 选项 4)
 # 适用于 IPv4 和 IPv6
 manual_open_ports() {
   echo ">>> 正在执行：手动开放端口 (IPv4 和 IPv6) <<<"
@@ -236,40 +284,50 @@ manual_open_ports() {
   return 0
 }
 
+
 # 主菜单
 main_menu() {
   check_root
   check_ufw_installed
   ensure_ufw_ipv6_enabled # 确保 IPv6 管理已启用
 
-  # 脚本运行时自动检查并开放内网访问以及常用端口访问
-  check_and_open_internal_and_common_external_ports
-
   while true; do
     echo ""
     echo "--- 防火墙管理脚本 ---"
     echo "请选择一个防火墙配置选项："
-    echo "1. 手动开放端口或端口范围 (IPv4 和 IPv6)"
-    echo "2. 查看当前 ufw 状态"
-    echo "3. 退出"
+    echo "1. 禁用防火墙并开放所有网络访问限制 (IPv4 和 IPv6 - 不安全！)"
+    echo "2. 开放内网访问及外网常用端口 (22, 80, 443) 访问 (IPv4 和 IPv6)"
+    echo "3. 重置防火墙规则为默认规则 (IPv4 和 IPv6 - 通常是拒绝传入，允许传出)"
+    echo "4. 手动开放端口或端口范围 (IPv4 和 IPv6)"
+    echo "5. 查看当前 ufw 状态"
+    echo "6. 退出"
     echo ""
 
-    read -p "请输入您的选择 [1-3]: " choice
+    read -p "请输入您的选择 [1-6]: " choice
 
     case $choice in
-      1) # 新选项的入口
-        manual_open_ports
+      1)
+        disable_firewall_completely
         ;;
       2)
+        open_internal_and_common_external_ports
+        ;;
+      3)
+        reset_firewall_to_default
+        ;;
+      4) # 新选项的入口
+        manual_open_ports
+        ;;
+      5)
         echo "当前 ufw 状态:"
         ufw status verbose
         ;;
-      3)
+      6)
         echo "退出脚本。再见！"
         exit 0
         ;;
       *)
-        echo "无效的选择。请输入 1 到 3 之间的数字。"
+        echo "无效的选择。请输入 1 到 6 之间的数字。"
         ;;
     esac
   done
