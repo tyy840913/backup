@@ -77,7 +77,7 @@ services:
     image: docker.woskee.nyc.mn/vaultwarden/server:latest
     container_name: vaultwarden
     restart: always
-    # network_mode: bridge # 移除或注释掉此行
+    network_mode: bridge # 移除或注释掉此行
     volumes:
       - /docker_data/bitwarden:/data
     ports:
@@ -86,10 +86,7 @@ services:
       - TZ=Asia/Shanghai
       - WEB_VAULT_ENABLED=true
       - SIGNUPS_ALLOWED=true
-    networks:
-      docker_network:
-        ipv4_address: 172.20.0.14 # 为 Vaultwarden 分配 IP
-
+   
   # 6. Watchtower - 自动更新容器
   # 注意：使用 host 网络模式的容器无法分配独立的 IP 地址，它们直接使用宿主机的 IP。
   watchtower:
