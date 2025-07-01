@@ -355,10 +355,10 @@ main_menu() {
     echo "3. 重置防火墙规则为默认规则 (通常是拒绝传入，允许传出)"
     echo "4. 手动开放端口或端口范围"
     echo "5. 查看当前 ufw 状态"
-    echo "6. 退出"
     echo ""
-
-    read -p "请输入您的选择 [1-6]: " choice
+    echo "0. 退出"
+    
+    read -p "请输入您的选择 [0-5]: " choice
 
     case $choice in
       1)
@@ -377,7 +377,7 @@ main_menu() {
         echo "当前 ufw 状态:"
         ufw status verbose
         ;;
-      6)
+      0)
         echo "退出脚本。再见！"
         exit 0
         ;;
