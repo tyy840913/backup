@@ -788,7 +788,7 @@ main() {
     auto_install_dependencies
     auto_set_timezone
     auto_config_ssh
-    auto_configure_firewall
+  # auto_configure_firewall
 
     read -p "是否需要进行交互式静态IP设置? (y/N): " setup_ip
     if [[ "$setup_ip" =~ ^[yY]([eE][sS])?$ ]]; then
