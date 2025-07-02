@@ -8,6 +8,8 @@ Docker及docker-compose安装 Docker.sh
 
 一键运行docker容器 docker-compose.sh
 
+xiaoya-alist运行,恢复备份 xiaoya.sh
+
 更换系统源为国内园镜像源 mirror.sh
 
 系统清理系统垃圾 system_cleaner.sh
