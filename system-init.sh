@@ -272,12 +272,14 @@ auto_config_ssh() {
 }
 
 # ================== 6. 配置防火墙 (开放内网及常用端口) ===================
-auto_configure_firewall() {
+Auto_configure_firewall() {
     echo "6/7 配置防火墙 (开放内网及常用端口)..."
-    local COMMON_PORTS="22 80 88 443"
+    local COMMON_PORTS="22 80 88 443" # 增加 88 端口
     local PRIVATE_NETWORKS="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
+    local PRIVATE_NETWORKS_IPV6="fc00::/7" # IPv6 Unique Local Addresses (ULA)
 
     if command -v ufw &>/dev/null; then
+        echo "  - 检测到 UFW，将配置防火墙..."
         local ufw_needs_reconfiguration=false # 假设不需要重新配置，除非检查失败
         local ufw_status_output=$(ufw status verbose) # 捕获一次完整输出，避免多次调用
 
@@ -287,7 +289,6 @@ auto_configure_firewall() {
         fi
 
         # 2. 检查默认策略是否符合预期 (incoming deny, outgoing allow)
-        # 精确提取默认策略部分进行比较，而不是依赖grep -qE的模糊匹配
         local current_incoming_policy=$(echo "$ufw_status_output" | awk -F'Default: ' '/^Default:/ {split($2, policies, ","); for(i=1; i<=length(policies); i++) { if (policies[i] ~ /incoming/) print policies[i] }}' | awk '{print $1}')
         local current_outgoing_policy=$(echo "$ufw_status_output" | awk -F'Default: ' '/^Default:/ {split($2, policies, ","); for(i=1; i<=length(policies); i++) { if (policies[i] ~ /outgoing/) print policies[i] }}' | awk '{print $1}')
 
@@ -295,23 +296,43 @@ auto_configure_firewall() {
             ufw_needs_reconfiguration=true
         fi
 
-        # 3. 检查内网规则
-        # 如果已经确定需要重新配置，则跳过详细规则检查
+        # 3. 检查内网规则 (IPv4)
         if ! "$ufw_needs_reconfiguration"; then
             for net in $PRIVATE_NETWORKS; do
                 if ! echo "$ufw_status_output" | grep -qiE "ALLOW\s*IN\s*.*From\s*$net\s*#\s*Allow-Internal-LAN"; then
                     ufw_needs_reconfiguration=true
-                    break # 找到一个不匹配就标记并跳出
+                    break
+                fi
+            done
+        fi
+        
+        # 3.1. 检查内网规则 (IPv6)
+        if ! "$ufw_needs_reconfiguration"; then
+            for net6 in $PRIVATE_NETWORKS_IPV6; do
+                # UFW IPv6 规则通常会显示 (v6)
+                if ! echo "$ufw_status_output" | grep -qiE "ALLOW\s*IN\s*\(v6\)\s*.*From\s*$net6\s*#\s*Allow-Internal-LAN-v6"; then
+                    ufw_needs_reconfiguration=true
+                    break
                 fi
             done
         fi
 
-        # 4. 检查常用端口规则 (仅在内网规则检查通过后继续)
+        # 4. 检查常用端口规则 (IPv4)
         if ! "$ufw_needs_reconfiguration"; then
             for port in $COMMON_PORTS; do
                 if ! echo "$ufw_status_output" | grep -qiE "ALLOW\s*IN\s*$port/tcp\s*.*#\s*Allow-Common-Services"; then
                     ufw_needs_reconfiguration=true
-                    break # 找到一个不匹配就标记并跳出
+                    break
+                fi
+            done
+        fi
+
+        # 4.1. 检查常用端口规则 (IPv6)
+        if ! "$ufw_needs_reconfiguration"; then
+            for port in $COMMON_PORTS; do
+                if ! echo "$ufw_status_output" | grep -qiE "ALLOW\s*IN\s*$port/tcp\s*\(v6\)\s*.*#\s*Allow-Common-Services-v6"; then
+                    ufw_needs_reconfiguration=true
+                    break
                 fi
             done
         fi
@@ -327,44 +348,88 @@ auto_configure_firewall() {
             for net in $PRIVATE_NETWORKS; do
                 ufw allow from "$net" to any comment 'Allow-Internal-LAN' >/dev/null 2>&1
             done
+            # IPv6 内网规则
+            for net6 in $PRIVATE_NETWORKS_IPV6; do
+                ufw allow from "$net6" to any comment 'Allow-Internal-LAN-v6' >/dev/null 2>&1
+            done
             
             for port in $COMMON_PORTS; do
                 ufw allow "$port/tcp" comment 'Allow-Common-Services' >/dev/null 2>&1
             done
             ufw --force enable >/dev/null 2>&1
-            echo "✅ UFW 配置完成并已启用。"
+            echo "✅ UFW 配置完成并已启用 (包含 IPv6 支持)。"
         else
-            echo "  - ✅ UFW 已完全配置并启用，无需重复设置。"
+            echo "  - ✅ UFW 已完全配置并启用 (包含 IPv6 支持)，无需重复设置。"
         fi
         echo "-------------------------------------"
         return
     fi
     
-    # firewalld 部分（保持不变，因其检查逻辑和行为已相对稳定）
+    # firewalld 部分
     if systemctl is-active --quiet firewalld; then
+        echo "  - 检测到 firewalld，将配置防火墙..."
         local firewalld_needs_reconfiguration=false
-        if ! firewall-cmd --query-source="10.0.0.0/8" --zone=trusted >/dev/null 2>&1 || \
-           ! firewall-cmd --query-port="22/tcp" --zone=public >/dev/null 2>&1; then
-            firewalld_needs_reconfiguration=true
+        
+        # 检查 IPv4 内网规则
+        for net in $PRIVATE_NETWORKS; do
+            if ! firewall-cmd --query-source="$net" --zone=trusted >/dev/null 2>&1; then
+                firewalld_needs_reconfiguration=true
+                break
+            fi
+        done
+
+        # 检查 IPv6 内网规则
+        if ! "$firewalld_needs_reconfiguration"; then
+            for net6 in $PRIVATE_NETWORKS_IPV6; do
+                if ! firewall-cmd --query-source="$net6" --zone=trusted --family=ipv6 >/dev/null 2>&1; then
+                    firewalld_needs_reconfiguration=true
+                    break
+                fi
+            done
+        fi
+
+        # 检查常用端口规则 (IPv4)
+        if ! "$firewalld_needs_reconfiguration"; then
+            for port in $COMMON_PORTS; do
+                if ! firewall-cmd --query-port="$port/tcp" --zone=public >/dev/null 2>&1; then
+                    firewalld_needs_reconfiguration=true
+                    break
+                fi
+            done
+        fi
+        # 检查常用端口规则 (IPv6)
+        if ! "$firewalld_needs_reconfiguration"; then
+            for port in $COMMON_PORTS; do
+                if ! firewall-cmd --query-port="$port/tcp" --zone=public --family=ipv6 >/dev/null 2>&1; then
+                    firewalld_needs_reconfiguration=true
+                    break
+                fi
+            done
         fi
 
         if "$firewalld_needs_reconfiguration"; then
             echo "  - 检测到 firewalld 配置不完整或不匹配，将进行重新配置..."
+            # 添加 IPv4 内网规则
             for net in $PRIVATE_NETWORKS; do firewall-cmd --permanent --zone=trusted --add-source="$net" >/dev/null 2>&1; done
+            # 添加 IPv6 内网规则
+            for net6 in $PRIVATE_NETWORKS_IPV6; do firewall-cmd --permanent --zone=trusted --add-source="$net6" --family=ipv6 >/dev/null 2>&1; done
+            # 添加常用端口规则 (同时对 IPv4 和 IPv6 生效)
             for port in $COMMON_PORTS; do firewall-cmd --permanent --zone=public --add-port="$port/tcp" >/dev/null 2>&1; done
             firewall-cmd --reload >/dev/null 2>&1
-            echo "✅ firewalld 配置完成。"
+            echo "✅ firewalld 配置完成 (包含 IPv6 支持)。"
         else
-            echo "  - ✅ firewalld 已配置内网及常用端口，无需重复设置。"
+            echo "  - ✅ firewalld 已配置内网及常用端口 (包含 IPv6 支持)，无需重复设置。"
         fi
         echo "-------------------------------------"
         return
     fi
 
-    # iptables 部分（保持不变，因为它通常直接重置）
+    # iptables/ip6tables 部分
     if command -v iptables &>/dev/null; then
-        echo "  - 未检测到 UFW/firewalld, 使用 iptables 作为备用方案..."
+        echo "  - 未检测到 UFW/firewalld, 使用 iptables/ip6tables 作为备用方案..."
         ensure_command "netfilter-persistent" "iptables-persistent" >/dev/null
+
+        echo "    - 配置 IPv4 规则..."
         iptables -F; iptables -X; iptables -Z
         iptables -P INPUT DROP; iptables -P FORWARD DROP; iptables -P OUTPUT ACCEPT
         iptables -A INPUT -i lo -j ACCEPT
@@ -372,7 +437,21 @@ auto_configure_firewall() {
         for net in $PRIVATE_NETWORKS; do iptables -A INPUT -s "$net" -j ACCEPT; done
         for port in $COMMON_PORTS; do iptables -A INPUT -p tcp --dport "$port" -j ACCEPT; done
         netfilter-persistent save >/dev/null 2>&1
-        echo "✅ iptables 规则已配置并持久化。"
+        echo "    ✅ IPv4 规则已配置并持久化。"
+
+        if command -v ip6tables &>/dev/null; then
+            echo "    - 配置 IPv6 规则..."
+            ip6tables -F; ip6tables -X; ip6tables -Z
+            ip6tables -P INPUT DROP; ip6tables -P FORWARD DROP; ip6tables -P OUTPUT ACCEPT
+            ip6tables -A INPUT -i lo -j ACCEPT
+            ip6tables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+            for net6 in $PRIVATE_NETWORKS_IPV6; do ip6tables -A INPUT -s "$net6" -j ACCEPT; done
+            for port in $COMMON_PORTS; do ip6tables -A INPUT -p tcp --dport "$port" -j ACCEPT; done
+            netfilter-persistent save >/dev/null 2>&1 # 确保保存 ip6tables 规则
+            echo "    ✅ IPv6 规则已配置并持久化。"
+        else
+            echo "    ⚠️ 未找到 ip6tables 命令，IPv6 防火墙规则将不会被配置。"
+        fi
         echo "-------------------------------------"
         return
     fi
