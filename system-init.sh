@@ -173,7 +173,7 @@ auto_set_fonts() {
 auto_install_dependencies() {
     echo "3/7 安装必要工具..."
 
-    local PKGS="curl wget vim htop net-tools nano ufw unzip bc tar"
+    local PKGS="curl wget vim htop nano ufw bc tar"
     local FAILED_PKGS=()
     local PKGS_TO_INSTALL=()
 
