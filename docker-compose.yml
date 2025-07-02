@@ -91,21 +91,3 @@ services:
     restart: always
     tty: true
     network_mode: bridge
-
-  # 8. webssh 网页SSH工具
-  cmliu-webssh:
-    container_name: cmliu-webssh
-    image: docker.woskee.nyc.mn/cmliu/webssh:latest
-    ports:
-    - "8888:8888"
-    restart: always
-    network_mode: bridge
-   
-  # 9. webssh 另一个网页ssh工具
-  yorlg-webssh:
-    image: docker.luxxk.dpdns.org/yorlg/webssh:latest
-    container_name: yorlg-webssh
-    ports:
-      - "8080:8080"
-    restart: always
-    network_mode: bridge
