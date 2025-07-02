@@ -1,288 +1,103 @@
 #!/bin/bash
 
-# 功能: 自动检测和配置系统中文环境
-# 支持系统: Debian/Ubuntu, RHEL/CentOS/Fedora, openSUSE, Arch Linux, Alpine
-# 版本: 1.1 (优化版)
+# 脚本名称: setup_chinese_env.sh
+# 描述: 检查并安装中文字体 (fonts-wqy-zenhei) 并配置系统 locale 为 zh_CN.UTF-8。
+# 用法: 以root权限运行此脚本。
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-NC='\033[0m' # No Color
+# 检查是否以root用户运行
+if [ "$(id -u)" -ne 0 ]; then
+    echo "错误: 此脚本需要root权限才能运行。请使用 'sudo' 执行。"
+    exit 1
+fi
 
-# 检查root权限
-check_root() {
-    if [ "$(id -u)" -ne 0 ]; then
-        echo -e "${YELLOW}需要root权限，尝试使用sudo提权...${NC}"
-        if command -v sudo >/dev/null 2>&1; then
-            exec sudo "$0" "$@"
+Auto_set_fonts() {
+    echo "--- 开始配置中文字体和中文环境 ---"
+    echo "2/7 正在安装中文字体并配置环境..."
+
+    local FONT_PKG="fonts-wqy-zenhei"
+
+    # 检查字体包是否已安装
+    echo "  - 检查字体包: $FONT_PKG"
+    if dpkg -s "$FONT_PKG" &>/dev/null; then
+        echo "  - ✅ 字体包 ($FONT_PKG) 已安装。"
+    else
+        echo "  - 准备安装字体包: $FONT_PKG"
+        # 简化输出，重定向 apt 的冗余信息
+        if apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq "$FONT_PKG" >/dev/null 2>&1; then
+            echo "  - ✅ 字体包安装成功。"
         else
-            echo -e "${RED}错误: 需要root权限且未找到sudo命令。${NC}"
-            echo -e "请使用root用户运行此脚本或安装sudo。"
-            exit 1
+            echo "  - ⚠️ 字体安装失败，可能影响中文显示。请尝试手动执行 'sudo apt-get install -y $FONT_PKG'"
         fi
     fi
-}
 
-# 检测系统发行版
-detect_distro() {
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        DISTRO=$ID
-        VERSION=$VERSION_ID
-    elif [ -f /etc/redhat-release ]; then
-        DISTRO="rhel" # 兼容CentOS
-        VERSION=$(grep -oE '[0-9]+\.[0-9]+' /etc/redhat-release)
-    elif [ -f /etc/alpine-release ]; then
-        DISTRO="alpine"
-        VERSION=$(cat /etc/alpine-release)
-    elif [ -f /etc/arch-release ]; then
-        DISTRO="arch"
-        VERSION="rolling"
+    local OS=""
+    if grep -qi 'ubuntu' /etc/os-release; then OS="ubuntu"; fi
+    if grep -qi 'debian' /etc/os-release; then OS="debian"; fi
+
+    echo "  - 检测操作系统类型: $OS"
+    if [ -z "$OS" ]; then
+        echo "  - ⚠️ 无法识别的操作系统类型，可能影响中文环境配置。"
+    fi
+    
+    # 检查 locale 是否已配置为 zh_CN.UTF-8
+    echo "  - 检查中文环境 (zh_CN.UTF-8) 配置..."
+    if grep -q "LANG=zh_CN.UTF-8" /etc/default/locale 2>/dev/null; then
+        echo "  - ✅ 中文环境 (zh_CN.UTF-8) 已配置。"
     else
-        echo -e "${RED}错误: 无法识别的Linux发行版${NC}"
-        exit 1
-    fi
+        echo "  - 正在配置中文环境..."
+        if [[ "$OS" == "ubuntu" ]]; then
+            echo "    - 尝试安装 Ubuntu 中文语言包..."
+            if apt-get install -y -qq language-pack-zh-hans >/dev/null 2>&1; then
+                echo "    - ✅ Ubuntu 中文语言包安装成功。"
+            else
+                echo "    - ⚠️ Ubuntu 中文语言包安装失败，请手动检查网络或源。"
+            fi
+        elif [[ "$OS" == "debian" ]]; then
+            echo "    - 尝试安装 locales 包 (Debian)..."
+            if apt-get install -y -qq locales >/dev/null 2>&1; then
+                echo "    - ✅ locales 包安装成功。"
+                # 取消注释 zh_CN.UTF-8
+                echo "    - 取消注释 /etc/locale.gen 中的 zh_CN.UTF-8..."
+                if sed -i '/^# *zh_CN.UTF-8 UTF-8/s/^# *//' /etc/locale.gen; then
+                    echo "    - ✅ zh_CN.UTF-8 已在 /etc/locale.gen 中启用。"
+                else
+                    echo "    - ⚠️ 无法修改 /etc/locale.gen，请手动检查文件权限或内容。"
+                fi
 
-    echo -e "${GREEN}检测到系统: $DISTRO $VERSION${NC}"
-}
-
-# 检查当前locale设置
-check_current_locale() {
-    if [ "$DISTRO" = "alpine" ]; then
-        # Alpine 特殊处理
-        if [ -n "$LANG" ] && [[ "$LANG" =~ "zh_CN" ]]; then
-            echo -e "${GREEN}当前已配置中文环境:${NC}"
-            env | grep -E 'LANG|LC_'
-            return 0
+                echo "    - 正在生成 locale..."
+                if locale-gen >/dev/null 2>&1; then
+                    echo "    - ✅ locale 生成成功。"
+                else
+                    echo "    - ⚠️ 执行 locale-gen 失败，请手动执行 'sudo locale-gen'。"
+                fi
+            else
+                echo "    - ⚠️ Debian 安装 locales 包失败，请手动检查网络或源。"
+            fi
         fi
-    else
-        current_locale=$(locale 2>/dev/null | grep -E "LANG=|LC_ALL=" | grep -i "zh_CN")
-        if [ -n "$current_locale" ]; then
-            echo -e "${GREEN}当前已配置中文环境:${NC}"
-            locale 2>/dev/null | grep -E "LANG|LC_CTYPE|LC_NUMERIC|LC_TIME|LC_COLLATE|LC_MONETARY|LC_MESSAGES|LC_ALL"
-            # 检查是否有locale设置错误
-            if locale 2>&1 | grep -q "Cannot set LC_"; then
-                return 1
-            fi
-            return 0
-        fi
-    fi
-    
-    echo -e "${YELLOW}当前未配置中文环境或配置不正确${NC}"
-    return 1
-}
 
-# 安装必要依赖
-install_dependencies() {
-    echo -e "${GREEN}正在安装必要依赖...${NC}"
-    
-    local PKG_MANAGER="yum"
-    if command -v dnf >/dev/null 2>&1; then
-        PKG_MANAGER="dnf"
-    fi
-
-    case $DISTRO in
-        debian|ubuntu)
-            if ! command -v locale-gen >/dev/null 2>&1; then
-                apt-get update && apt-get install -y locales
-            fi
-            # 确保安装中文语言包
-            apt-get install -y language-pack-zh-hans language-pack-zh-hans-base
-            ;;
-        rhel|centos|fedora)
-            if ! command -v localedef >/dev/null 2>&1; then
-                $PKG_MANAGER install -y glibc-common
-            fi
-            $PKG_MANAGER install -y glibc-langpack-zh
-            ;;
-        opensuse|opensuse-leap|opensuse-tumbleweed)
-            if ! command -v localedef >/dev/null 2>&1; then
-                zypper install -y glibc-locale
-            fi
-            zypper install -y glibc-locale-zh
-            ;;
-        arch)
-            # 确保 glibc 已安装，它包含 locale-gen
-            if ! command -v locale-gen >/dev/null 2>&1; then
-                pacman -Sy --noconfirm glibc
-            fi
-            ;;
-        alpine)
-            if ! command -v locale >/dev/null 2>&1; then
-                apk add --no-cache musl-locales musl-locales-lang
-            fi
-            ;;
-        *)
-            echo -e "${RED}错误: 不支持的发行版${NC}"
-            exit 1
-            ;;
-    esac
-}
-
-# 生成中文locale
-generate_chinese_locale() {
-    echo -e "${GREEN}正在生成中文locale...${NC}"
-    
-    case $DISTRO in
-        debian|ubuntu)
-            # 确保zh_CN.UTF-8在locale.gen中启用
-            if ! grep -q "^[^#]*zh_CN.UTF-8" /etc/locale.gen; then
-                echo "zh_CN.UTF-8 UTF-8" >> /etc/locale.gen
-            fi
-            locale-gen zh_CN.UTF-8
-            ;;
-        rhel|centos|fedora)
-            localedef -c -f UTF-8 -i zh_CN zh_CN.UTF-8
-            ;;
-        opensuse|opensuse-leap|opensuse-tumbleweed)
-            localedef -c -f UTF-8 -i zh_CN zh_CN.UTF-8
-            ;;
-        arch)
-            # 在 locale.gen 中取消注释 zh_CN.UTF-8
-            sed -i 's/^# *zh_CN.UTF-8 UTF-8/zh_CN.UTF-8 UTF-8/' /etc/locale.gen
-            locale-gen
-            ;;
-        alpine)
-            # Alpine/musl 不使用 locale.gen 或 locale-gen 命令
-            echo -e "${YELLOW}Alpine/musl 不需要此步骤，跳过...${NC}"
-            ;;
-    esac
-}
-
-# 配置中文环境
-configure_chinese_locale() {
-    echo -e "${GREEN}正在配置中文环境...${NC}"
-    
-    case $DISTRO in
-        debian|ubuntu)
-            update-locale LANG=zh_CN.UTF-8 LANGUAGE=zh_CN:zh LC_ALL=zh_CN.UTF-8
-            ;;
-        rhel|centos|fedora|opensuse|opensuse-leap|opensuse-tumbleweed)
-            localectl set-locale LANG=zh_CN.UTF-8
-            ;;
-        arch)
-            # 使用 cat 和 EOF 覆盖写入，更安全
-            cat > /etc/locale.conf <<EOF
-LANG=zh_CN.UTF-8
-LC_ALL=zh_CN.UTF-8
-EOF
-            ;;
-        alpine)
-            cat > /etc/profile.d/locale.sh <<EOF
-export LANG=zh_CN.UTF-8
-export LANGUAGE=zh_CN:zh
-export LC_ALL=zh_CN.UTF-8
-export LC_CTYPE=zh_CN.UTF-8
-EOF
-            chmod +x /etc/profile.d/locale.sh
-            ;;
-    esac
-    
-    # 设置环境变量立即生效，以便后续验证
-    export LANG=zh_CN.UTF-8
-    export LANGUAGE=zh_CN:zh
-    export LC_ALL=zh_CN.UTF-8
-    if [ "$DISTRO" = "alpine" ]; then
-        export LC_CTYPE=zh_CN.UTF-8
-    fi
-}
-
-# 验证配置
-verify_configuration() {
-    echo -e "${GREEN}验证配置...${NC}"
-    
-    # 刷新环境变量以确保获取最新配置
-    if [ -f /etc/profile.d/locale.sh ]; then
-        source /etc/profile.d/locale.sh
-    fi
-    
-    if [ "$DISTRO" = "alpine" ]; then
-        # Alpine 特殊验证
-        if [ -z "$LANG" ] || [[ ! "$LANG" =~ "zh_CN" ]]; then
-            echo -e "${RED}错误: Alpine中文环境配置失败${NC}"
-            return 1
-        fi
-        echo -e "${GREEN}当前环境变量设置:${NC}"
-        env | grep -E 'LANG|LC_'
-    else
-        # 检查locale命令是否有错误输出
-        if locale 2>&1 | grep -q "Cannot set LC_"; then
-            echo -e "${RED}错误: locale配置存在问题${NC}"
-            locale 2>&1 | grep "Cannot set LC_"
-            return 1
-        fi
-        
-        # 检查是否所有locale组件都设置为中文
-        incomplete_config=$(locale 2>/dev/null | grep -v "zh_CN" | grep -vE "LC_ALL=|LANG=|LANGUAGE=|^$")
-        if [ -n "$incomplete_config" ]; then
-            echo -e "${YELLOW}警告: 部分locale组件未设置为中文:${NC}"
-            echo "$incomplete_config"
-            return 1
-        fi
-    fi
-    
-    echo -e "${GREEN}中文环境配置成功!${NC}"
-    return 0
-}
-
-# 主函数
-main() {
-    check_root "$@"
-    detect_distro
-    
-    # 检查是否已配置中文环境
-    if check_current_locale; then
-        if verify_configuration; then
-            echo -e "${GREEN}系统已正确配置中文环境，无需更改。${NC}"
-            exit 0
+        # 仅在 /etc/default/locale 中不存在时才添加
+        echo "    - 正在更新 /etc/default/locale..."
+        if ! grep -q "LANG=zh_CN.UTF-8" /etc/default/locale; then
+            echo 'LANG=zh_CN.UTF-8' >> /etc/default/locale
+            echo "    - ✅ LANG=zh_CN.UTF-8 已添加到 /etc/default/locale。"
         else
-            echo -e "${YELLOW}当前中文环境配置不完整，尝试修复...${NC}"
-        fi
-    fi
-    
-    install_dependencies
-    generate_chinese_locale
-    configure_chinese_locale
-    
-    if ! verify_configuration; then
-        echo -e "${RED}错误: 中文环境配置失败${NC}"
-        echo -e "可能原因:"
-        echo -e "1. 您的系统镜像不包含中文语言包"
-        echo -e "2. 网络问题导致无法下载语言包"
-        echo -e "3. 系统软件源配置不正确"
-        
-        # 对于Ubuntu/Debian系统，尝试更彻底的修复
-        if [[ "$DISTRO" == "ubuntu" || "$DISTRO" == "debian" ]]; then
-            echo -e "${YELLOW}尝试通过 dpkg-reconfigure 进行修复...${NC}"
-            # 重新配置locales包，这会提供一个交互界面让用户选择
-            dpkg-reconfigure locales
-            # 重新生成locale
-            locale-gen zh_CN.UTF-8
-            # 重新配置
-            configure_chinese_locale
-            # 再次验证
-            if verify_configuration; then
-                echo -e "${GREEN}修复成功!${NC}"
-            fi
+            echo "    - ⚠️ LANG=zh_CN.UTF-8 已存在于 /etc/default/locale，跳过添加。"
         fi
         
-        exit 1
+        # 立即设置环境变量，以便当前会话生效
+        export LANG=zh_CN.UTF-8
+        echo "  - ✅ 中文环境设置成功。部分更改可能需要您**重新登录或重启**系统才能完全生效。"
     fi
-    
-    echo -e "\n${YELLOW}中文环境配置完成！为了使所有应用程序和服务完全应用新设置，建议重启系统。${NC}"
-    echo -e "${GREEN}按 Enter 立即重启，或输入 n 取消重启。${NC}"
-    read -p "[默认: 立即重启] " choice
-    case "$choice" in
-        n|N )
-            echo -e "${YELLOW}已取消重启，请稍后手动执行 reboot 命令。${NC}"
-            ;;
-        * )
-            echo -e "${GREEN}正在重启系统...${NC}"
-            reboot
-            ;;
-    esac
+
+    echo "  - 刷新字体缓存..."
+    if fc-cache -fv > /dev/null 2>&1; then
+        echo "  - ✅ 字体缓存刷新完成。"
+    else
+        echo "  - ⚠️ 字体缓存刷新失败，请尝试手动执行 'fc-cache -fv'。"
+    fi
+    echo "-------------------------------------"
+    echo "脚本执行完毕。"
 }
 
-# 执行主函数并传递所有脚本参数
-main "$@"
+# 调用主函数
+Auto_set_fonts
