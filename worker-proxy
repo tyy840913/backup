@@ -1,328 +1,369 @@
-// 定义你的域名，或者留空自动检测
-const MY_DOMAIN = ''; // 例如 'my-worker.username.workers.dev'
-
-// 定义上游协议，默认是 https
-const UPSTREAM_PROTOCOL = 'https';
-
-// 不需要代理的域名列表，可根据需要添加例如：['google-analytics.com', 'googletagmanager.com', 'google.com']
-const BLACKLISTED_HOSTS = [];
-
-// --- 主逻辑 ---
-
-export default {
-  async fetch(request, env, ctx) {
-    try {
-      const url = new URL(request.url);
-      const myDomain = MY_DOMAIN || url.hostname;
-
-      // 1. 根路径请求，显示主页时钟
-      if (url.pathname === '/') {
-        return handleHomepage();
-      }
-
-      // 2. 代理请求
-      return await handleProxy(request, myDomain);
-
-    } catch (err) {
-      // 全局捕获，防止任何未处理的异常导致CF错误页面
-      console.error('Global Error:', err.stack);
-      return new Response('一个内部错误发生了。' + err.message, {
-        status: 500,
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-      });
-    }
-  },
+// ==================== 全局配置 ====================
+const CONFIG = {
+  DEFAULT_PROTOCOL: 'https',          // 默认使用HTTPS
+  USER_AGENT: 'Mozilla/5.0',         // 模拟浏览器UA
+  RESOURCE_CACHE_TTL: 86400,         // 静态资源缓存时间(秒)
+  MAX_REDIRECTS: 5,                  // 最大重定向次数
+  PRESERVE_COOKIES: false,           // 默认不保留Cookie（合规性考虑）
+  ALLOWED_DOMAINS: null              // 可设置为['example.com']限制仅代理特定域名
 };
 
-// --- 模块功能 ---
+// ==================== 主逻辑 ====================
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event));
+});
 
-/**
- * 处理根路径请求，返回显示时间的HTML页面
- */
-function handleHomepage() {
-  const html = `
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>当前时间</title>
-  <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      background-color: #121212;
-      color: #e0e0e0;
-      font-family: 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-    }
-    .time-container {
-      text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
-    }
-    .date-line {
-      font-size: 2.5em; /* 较小的字体 */
-      font-weight: 300;
-      margin-bottom: 20px;
-    }
-    .time-line {
-      font-size: 7em;  /* 较大的字体 */
-      font-weight: 600;
-      letter-spacing: 2px;
-    }
-    /* 移动端适配 */
-    @media (max-width: 768px) {
-      .date-line {
-        font-size: 1.5em;
-      }
-      .time-line {
-        font-size: 4em;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="time-container">
-    <div id="date" class="date-line"></div>
-    <div id="time" class="time-line"></div>
-  </div>
-  <script>
-    function updateTime() {
-      const now = new Date();
-      const optionsDate = {
-        timeZone: 'Asia/Shanghai', // 东八区
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        weekday: 'long',
-      };
-      const optionsTime = {
-        timeZone: 'Asia/Shanghai', // 东八区
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      };
-      
-      const dateFormatter = new Intl.DateTimeFormat('zh-CN', optionsDate);
-      const timeFormatter = new Intl.DateTimeFormat('zh-CN', optionsTime);
-
-      document.getElementById('date').textContent = dateFormatter.format(now);
-      document.getElementById('time').textContent = timeFormatter.format(now).replace(/:/g, ' : ');
-    }
-    
-    // 立即执行一次，然后每秒更新
-    updateTime();
-    setInterval(updateTime, 1000);
-  </script>
-</body>
-</html>
-  `;
-  return new Response(html, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
-  });
-}
-
-/**
- * 处理代理请求
- * @param {Request} request 原始请求
- * @param {string} myDomain 当前worker的域名
- */
-async function handleProxy(request, myDomain) {
+async function handleRequest(event) {
+  const request = event.request;
   const url = new URL(request.url);
+  const workerDomain = url.hostname;
 
-  // 1. 解析目标URL
-  let targetUrlStr = url.pathname.substring(1) + url.search;
-  
-  // 兼容两种格式: /https://github.com 和 /github.com
-  if (!targetUrlStr.startsWith('http://') && !targetUrlStr.startsWith('https://')) {
-    // 尝试添加协议头，如果URL构造失败，则可能是路径中不包含点号的简单域名
-    try {
-      new URL(UPSTREAM_PROTOCOL + '://' + targetUrlStr);
-      targetUrlStr = UPSTREAM_PROTOCOL + '://' + targetUrlStr;
-    } catch (e) {
-      // 失败，可能是个错误的路径，或者目标网站路径不含域名
-      // 这种情况我们无法处理，返回错误
-      return new Response('无效的目标URL格式。请使用 /domain.com/path 或 /https://domain.com/path 的格式。', { status: 400 });
-    }
-  }
-
-  const targetUrl = new URL(targetUrlStr);
-
-  // 黑名单检查
-  if (BLACKLISTED_HOSTS.includes(targetUrl.hostname)) {
-    return new Response('此主机已被管理员禁用。', { status: 403 });
-  }
-
-  // 2. 构造发往目标服务器的请求
-  const upstreamRequest = new Request(targetUrl.toString(), {
-    method: request.method,
-    headers: request.headers,
-    body: request.body,
-    redirect: 'manual', // 我们自己处理重定向
-  });
-
-  // 修改/设置请求头
-  const reqHeaders = upstreamRequest.headers;
-  reqHeaders.set('Host', targetUrl.hostname);
-  reqHeaders.set('Referer', `https://${myDomain}/`); // 设置一个通用的Referer
-  reqHeaders.delete('x-forwarded-for');
-  reqHeaders.delete('x-real-ip');
-  
-  // 移除Cloudflare添加的头
-  for (const [key, value] of reqHeaders.entries()) {
-    if (key.toLowerCase().startsWith('cf-')) {
-      reqHeaders.delete(key);
-    }
-  }
-
-  // 3. 发送请求并获取响应
-  let upstreamResponse;
   try {
-    upstreamResponse = await fetch(upstreamRequest);
+    // 首页显示使用说明
+    if (url.pathname === '/') {
+      return showUsagePage(workerDomain);
+    }
+
+    // 解析目标URL
+    const { targetUrl, isProxied } = parseTargetUrl(url);
+    if (!targetUrl) {
+      return new Response('无效的URL格式', { status: 400 });
+    }
+
+    // 域名白名单检查（可选）
+    if (CONFIG.ALLOWED_DOMAINS && !CONFIG.ALLOWED_DOMAINS.includes(targetUrl.hostname)) {
+      return new Response('禁止代理该域名', { status: 403 });
+    }
+
+    // 构造上游请求
+    const upstreamRequest = createUpstreamRequest(request, targetUrl);
+    const response = await fetchWithRetry(upstreamRequest);
+
+    // 处理重定向
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      return handleRedirect(response, targetUrl, workerDomain);
+    }
+
+    // 处理响应
+    return processResponse(event, response, targetUrl, workerDomain);
+
   } catch (err) {
-    // fetch失败，通常是DNS或网络问题
-    console.error('Upstream fetch error:', err.stack);
-    return new Response(`无法连接到目标主机: ${targetUrl.hostname}。` + err.message, {
-      status: 502, // Bad Gateway
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    console.error(`[Proxy Error] ${err.stack}`);
+    return new Response(`服务器错误: ${err.message}`, {
+      status: 500,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
     });
   }
-
-  // 4. 创建返回给客户端的响应
-  const clientResponse = new Response(upstreamResponse.body, {
-    status: upstreamResponse.status,
-    statusText: upstreamResponse.statusText,
-    headers: upstreamResponse.headers,
-  });
-
-  // 5. 修改响应头
-  const resHeaders = clientResponse.headers;
-  
-  // 删除可能导致问题的安全头
-  resHeaders.delete('Content-Security-Policy');
-  resHeaders.delete('Content-Security-Policy-Report-Only');
-  resHeaders.delete('X-Frame-Options');
-  resHeaders.delete('X-Content-Type-Options');
-  
-  // 重写重定向 (Location)
-  if (resHeaders.has('Location')) {
-    const location = resHeaders.get('Location');
-    const rewrittenLocation = rewriteUrl(location, targetUrl.origin, myDomain);
-    resHeaders.set('Location', rewrittenLocation);
-  }
-
-  // 重写Cookie (Set-Cookie)
-  const cookies = resHeaders.get('Set-Cookie');
-  if (cookies) {
-      // Set-Cookie可以有多个，需要特殊处理
-      resHeaders.delete('Set-Cookie');
-      const cookieArray = Array.isArray(cookies) ? cookies : cookies.split(', ');
-      cookieArray.forEach(cookie => {
-          const rewrittenCookie = cookie
-              .replace(/domain=([^;]+);?/gi, `domain=${myDomain};`)
-              .replace(/path=\//gi, `path=/;`); // 确保path在根路径
-          resHeaders.append('Set-Cookie', rewrittenCookie);
-      });
-  }
-  
-  // 6. 如果是HTML，使用HTMLRewriter进行内容重写
-  const contentType = resHeaders.get('Content-Type') || '';
-  if (contentType.includes('text/html')) {
-    const rewriter = new HTMLRewriter()
-      .on('*[href]', new AttributeRewriter('href', targetUrl.origin, myDomain))
-      .on('*[src]', new AttributeRewriter('src', targetUrl.origin, myDomain))
-      .on('*[action]', new AttributeRewriter('action', targetUrl.origin, myDomain))
-      .on('*[srcset]', new AttributeRewriter('srcset', targetUrl.origin, myDomain, true)) // srcset需要特殊处理
-      .on('meta[http-equiv="refresh"]', new MetaRefreshRewriter(targetUrl.origin, myDomain));
-
-    return rewriter.transform(clientResponse);
-  }
-  
-  // 对于非HTML内容（如CSS, JS, 图片, 视频），直接返回，因为它们的URL请求也会被worker捕获和代理
-  return clientResponse;
 }
 
-/**
- * URL重写辅助函数
- * @param {string} urlStr 待重写的URL
- * @param {string} targetOrigin 目标网站的源 (e.g., https://github.com)
- * @param {string} myDomain worker域名
- * @returns {string} 重写后的URL
- */
-function rewriteUrl(urlStr, targetOrigin, myDomain) {
-    if (!urlStr) return '';
-  
-    // 如果是完整的URL
-    if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
-        return `https://${myDomain}/${urlStr}`;
-    }
-    // 如果是协议相对URL (//example.com/path)
-    if (urlStr.startsWith('//')) {
-        return `https://${myDomain}/https:${urlStr}`;
-    }
-    // 如果是绝对路径 (/path/to/resource)
-    if (urlStr.startsWith('/')) {
-        return `https://${myDomain}/${targetOrigin}${urlStr}`;
-    }
-    // 相对路径 (path/to/resource)，这种情况比较少见，但也要处理
-    // 这需要知道当前页面的路径，但为了简化，我们假设它相对于根
-    return `https://${myDomain}/${targetOrigin}/${urlStr}`;
-}
+// ==================== 核心功能 ====================
 
 /**
-
- * HTMLRewriter的元素属性重写器
+ * 智能URL解析（支持所有格式）
+ * 示例：
+ * /https://example.com → https://example.com
+ * /example.com/path → https://example.com/path
+ * /http://proxy/http://target → 代理链模式
  */
-class AttributeRewriter {
-    constructor(attributeName, targetOrigin, myDomain, isSrcset = false) {
-        this.attributeName = attributeName;
-        this.targetOrigin = targetOrigin;
-        this.myDomain = myDomain;
-        this.isSrcset = isSrcset;
-    }
-
-    element(element) {
-        const attribute = element.getAttribute(this.attributeName);
-        if (attribute) {
-            if (this.isSrcset) {
-                // srcset格式: "image-1x.png 1x, image-2x.png 2x"
-                const rewrittenSrcset = attribute
-                    .split(',')
-                    .map(part => {
-                        const [url, descriptor] = part.trim().split(/\s+/);
-                        return `${rewriteUrl(url, this.targetOrigin, this.myDomain)} ${descriptor || ''}`;
-                    })
-                    .join(', ');
-                element.setAttribute(this.attributeName, rewrittenSrcset);
-            } else {
-                element.setAttribute(this.attributeName, rewriteUrl(attribute, this.targetOrigin, this.myDomain));
-            }
-        }
-    }
-}
-
-/**
- * HTMLRewriter的meta refresh重写器
- */
-class MetaRefreshRewriter {
-    constructor(targetOrigin, myDomain) {
-        this.targetOrigin = targetOrigin;
-        this.myDomain = myDomain;
-    }
+function parseTargetUrl(url) {
+  try {
+    const rawPath = decodeURIComponent(url.pathname.slice(1));
     
-    element(element) {
-        const content = element.getAttribute('content');
-        if (content) {
-            const parts = content.split(';');
-            if (parts.length > 1 && parts[1].toLowerCase().includes('url=')) {
-                const urlPart = parts[1].split('=')[1];
-                const rewrittenUrl = rewriteUrl(urlPart.trim(), this.targetOrigin, this.myDomain);
-                element.setAttribute('content', `${parts[0]}; url=${rewrittenUrl}`);
-            }
-        }
+    // 已包含协议的情况（代理链或完整URL）
+    if (/^https?:\/\//i.test(rawPath)) {
+      return {
+        targetUrl: new URL(rawPath + url.search),
+        isProxied: true
+      };
     }
+
+    // 自动补全协议
+    const [domain, ...pathParts] = rawPath.split('/');
+    if (!domain.includes('.')) {
+      throw new Error('无效的域名格式');
+    }
+
+    return {
+      targetUrl: new URL(`${CONFIG.DEFAULT_PROTOCOL}://${domain}/${pathParts.join('/')}${url.search}`),
+      isProxied: false
+    };
+  } catch (e) {
+    console.error(`[URL Parse Error] ${e.message}`);
+    return { targetUrl: null };
+  }
+}
+
+/**
+ * 安全URL重写（保持页面功能）
+ */
+function rewriteUrl(urlStr, baseUrl, workerDomain) {
+  if (!urlStr) return '';
+  
+  // 跳过特殊协议和锚点
+  if (/^(data|blob|mailto|tel|javascript):/i.test(urlStr) || urlStr.startsWith('#')) {
+    return urlStr;
+  }
+
+  const base = new URL(baseUrl);
+
+  // 完整URL处理（http/https）
+  if (/^https?:\/\//i.test(urlStr)) {
+    // 已经是代理URL则保留原样
+    if (urlStr.includes(`${workerDomain}/http`)) {
+      return urlStr;
+    }
+    return `https://${workerDomain}/${urlStr.replace(/^https?:\/\//, '')}`;
+  }
+
+  // 协议相对URL（//example.com）
+  if (urlStr.startsWith('//')) {
+    return `https://${workerDomain}/${base.hostname}${urlStr}`;
+  }
+
+  // 绝对路径（/path）
+  if (urlStr.startsWith('/')) {
+    return `https://${workerDomain}/${base.hostname}${urlStr}`;
+  }
+
+  // 相对路径（path/to）
+  return `https://${workerDomain}/${base.hostname}/${resolvePath(base.pathname, urlStr)}`;
+}
+
+/**
+ * 路径解析（支持../和./）
+ */
+function resolvePath(basePath, relativePath) {
+  const stack = basePath.split('/').filter(Boolean);
+  const parts = relativePath.split('/');
+
+  for (const part of parts) {
+    if (part === '..') {
+      stack.pop();
+    } else if (part !== '.' && part !== '') {
+      stack.push(part);
+    }
+  }
+
+  return stack.join('/');
+}
+
+/**
+ * 构造上游请求（自动处理Headers）
+ */
+function createUpstreamRequest(originalRequest, targetUrl) {
+  const headers = new Headers(originalRequest.headers);
+  
+  // 关键头设置
+  headers.set('Host', targetUrl.hostname);
+  headers.set('User-Agent', CONFIG.USER_AGENT);
+  headers.set('Referer', `${targetUrl.origin}/`);
+
+  // 移除敏感头
+  ['cf-connecting-ip', 'x-forwarded-for'].forEach(h => headers.delete(h));
+
+  return new Request(targetUrl, {
+    method: originalRequest.method,
+    headers: headers,
+    body: originalRequest.body,
+    redirect: 'manual'
+  });
+}
+
+// ==================== 响应处理 ====================
+
+async function processResponse(event, response, baseUrl, workerDomain) {
+  const contentType = response.headers.get('content-type') || '';
+  const headers = cleanHeaders(response.headers, workerDomain);
+
+  // 静态资源缓存
+  if (shouldCache(response)) {
+    event.waitUntil(caches.default.put(baseUrl, response.clone()));
+  }
+
+  // HTML文档处理
+  if (contentType.includes('text/html')) {
+    return processHtml(response, baseUrl, workerDomain, headers);
+  }
+
+  // CSS/JS文本处理
+  if (contentType.match(/text\/(css|javascript)/)) {
+    return processText(response, baseUrl, workerDomain, headers);
+  }
+
+  // 其他资源透传
+  return new Response(response.body, { headers, status: response.status });
+}
+
+/**
+ * HTML重写（使用HTMLRewriter）
+ */
+async function processHtml(response, baseUrl, workerDomain, headers) {
+  const rewriter = new HTMLRewriter()
+    .on('a[href]', new AttributeRewriter('href', baseUrl, workerDomain))
+    .on('link[href]', new AttributeRewriter('href', baseUrl, workerDomain))
+    .on('script[src]', new AttributeRewriter('src', baseUrl, workerDomain))
+    .on('img[src]', new AttributeRewriter('src', baseUrl, workerDomain))
+    .on('iframe[src]', new AttributeRewriter('src', baseUrl, workerDomain))
+    .on('form[action]', new AttributeRewriter('action', baseUrl, workerDomain))
+    .on('meta[http-equiv="refresh"]', {
+      element: (e) => {
+        const content = e.getAttribute('content');
+        if (content?.includes('url=')) {
+          e.setAttribute('content', content.replace(
+            /url=(.*?)(;|$)/i, 
+            (_, url) => `url=${rewriteUrl(url.trim(), baseUrl, workerDomain)};`
+          ));
+        }
+      }
+    })
+    .on('style', {
+      text: (text) => {
+        text.replace = text.text.replace(
+          /url$$(['"]?)([^)'"]+)\1$$/g, 
+          (_, quote, url) => `url(${quote}${rewriteUrl(url, baseUrl, workerDomain)}${quote})`
+        );
+      }
+    })
+    .on('*[style]', {
+      element: (e) => {
+        const style = e.getAttribute('style');
+        if (style) {
+          e.setAttribute('style', style.replace(
+            /url$$(['"]?)([^)'"]+)\1$$/g, 
+            (_, quote, url) => `url(${quote}${rewriteUrl(url, baseUrl, workerDomain)}${quote})`
+          ));
+        }
+      }
+    });
+
+  return rewriter.transform(new Response(response.body, { headers }));
+}
+
+/**
+ * CSS/JS文本重写
+ */
+async function processText(response, baseUrl, workerDomain, headers) {
+  const text = await response.text();
+  const rewritten = text.replace(
+    /url$$(['"]?)([^)'"]+)\1$$/g, 
+    (_, quote, url) => `url(${quote}${rewriteUrl(url, baseUrl, workerDomain)}${quote})`
+  );
+  return new Response(rewritten, { headers });
+}
+
+// ==================== 工具类 ====================
+
+class AttributeRewriter {
+  constructor(attribute, baseUrl, workerDomain) {
+    this.attribute = attribute;
+    this.baseUrl = baseUrl;
+    this.workerDomain = workerDomain;
+  }
+
+  element(element) {
+    const value = element.getAttribute(this.attribute);
+    if (value) {
+      element.setAttribute(this.attribute, rewriteUrl(value, this.baseUrl, this.workerDomain));
+    }
+  }
+}
+
+// ==================== 辅助函数 ====================
+
+function cleanHeaders(headers, workerDomain) {
+  const h = new Headers(headers);
+  
+  // 移除破坏性头
+  [
+    'content-security-policy',
+    'x-frame-options',
+    'strict-transport-security',
+    'x-content-type-options'
+  ].forEach(header => h.delete(header));
+
+  // 设置默认Content-Type
+  if (!h.has('content-type')) {
+    h.set('content-type', 'text/html; charset=utf-8');
+  }
+
+  // Cookie处理（可选）
+  if (CONFIG.PRESERVE_COOKIES && h.has('set-cookie')) {
+    const cookies = h.get('set-cookie').split(/\s*,\s*/);
+    h.delete('set-cookie');
+    cookies.forEach(cookie => {
+      h.append('set-cookie', 
+        cookie.replace(/domain=.*?(;|$)/i, `domain=${workerDomain};`)
+             .replace(/path=\/[^;]*(;|$)/i, 'path=/;')
+      );
+    });
+  }
+  
+  return h;
+}
+
+function shouldCache(response) {
+  const contentType = response.headers.get('content-type') || '';
+  return response.status === 200 && /(image|font|css|javascript)/.test(contentType);
+}
+
+async function fetchWithRetry(request, retries = 3, timeout = 10000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      const response = await fetch(request, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+}
+
+function handleRedirect(response, baseUrl, workerDomain) {
+  const location = response.headers.get('Location');
+  if (!location) return response;
+
+  const newLocation = rewriteUrl(location, baseUrl, workerDomain);
+  return Response.redirect(newLocation, response.status);
+}
+
+// ==================== 使用说明页 ====================
+
+function showUsagePage(workerDomain) {
+  const html = `
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+      <meta charset="UTF-8">
+      <title>网页代理服务</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }
+        code { background: #f0f0f0; padding: 2px 4px; border-radius: 3px; }
+        pre { background: #f8f8f8; padding: 10px; overflow-x: auto; }
+        .example { margin: 15px 0; }
+      </style>
+    </head>
+    <body>
+      <h1>网页代理使用说明</h1>
+      
+      <div class="example">
+        <h3>基本用法</h3>
+        <pre><code>https://${workerDomain}/example.com
+https://${workerDomain}/github.com/用户名</code></pre>
+      </div>
+      
+      <div class="example">
+        <h3>代理链模式</h3>
+        <pre><code>https://${workerDomain}/http://代理服务器/http://目标网站</code></pre>
+      </div>
+      
+      <p><strong>注意：</strong>请遵守相关法律法规，合理使用本服务。</p>
+    </body>
+    </html>
+  `;
+  return new Response(html, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+  });
 }
