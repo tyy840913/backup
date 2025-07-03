@@ -12,7 +12,6 @@ fi
 
 Auto_set_fonts() {
     echo "--- 开始配置中文字体和中文环境 ---"
-    echo "2/7 正在安装中文字体并配置环境..."
 
     local FONT_PKG="fonts-wqy-zenhei"
 
