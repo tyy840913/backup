@@ -1,12 +1,5 @@
-# alpine系统更换源命令 "清华源" ，安装 bash curl 工具
-```bash
-sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && apk update && apk add bash curl
-```
+# 📋 点击右侧复制按钮直接复制
 
-# PVE虚拟磁盘转换，可以转换IMG ISO文件
-```bash
-curl -LsO https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/qm.sh && chmod +x qm.sh && ./qm.sh
-```
 
 # 一键运行docker-compose
 ```bash
@@ -22,10 +15,6 @@ curl -o /root/system_cleaner.sh -sL https://add.wosken.dpdns.org/raw.githubuserc
 ```bash
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/ping_ip.sh)"
 ```
-
-## 快速启动
-
-# 📋 点击右侧复制按钮直接复制
 
 # 主脚本
 ```bash
@@ -56,4 +45,9 @@ bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy8409
 # 更换PVE系统镜像源 （未测试）
 ```bash
 bash -c "$(curl -sSL https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/pve-init.sh)"
+```
+
+# PVE虚拟磁盘转换，可以转换IMG ISO文件
+```bash
+curl -LsO https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/qm.sh && chmod +x qm.sh && ./qm.sh
 ```
