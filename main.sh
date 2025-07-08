@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 基础配置
-base_url="https://add.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main"
+base_url="https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main"
 memory_tmpdir="/dev/shm/script_platform_$$"  # 内存临时目录（使用PID保证唯一性）
 catalog_file="${memory_tmpdir}/cata.txt"    # 内存中的目录文件
 descriptions=()
