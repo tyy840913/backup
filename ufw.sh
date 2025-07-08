@@ -260,17 +260,22 @@ manual_open_ports() {
     return 1
   fi
 
-  read -p "选择协议 (tcp/udp/both): " protocol_input
-  protocol_input=$(echo "$protocol_input" | tr '[:upper:]' '[:lower:]') # 转换为小写
+  read -p "选择协议 (tcp/udp/both) [默认: both]: " protocol_input
+protocol_input=$(echo "$protocol_input" | tr '[:upper:]' '[:lower:]') # 转换为小写
 
-  case "$protocol_input" in
+# 如果没有输入，则默认选择 both
+if [ -z "$protocol_input" ]; then
+    protocol_input="both"
+fi
+
+case "$protocol_input" in
     tcp|udp|both)
       ;;
     *)
       echo "无效的协议选择。请输入 tcp, udp 或 both。"
       return 1
       ;;
-  esac
+esac
 
   echo "正在处理端口规则..."
   for entry in $ports_input; do
