@@ -324,38 +324,28 @@ manual_open_ports() {
         check_port_entry="${port_start}:${port_end}"
       fi
 
-      if ufw status verbose | grep -qE "(^$check_port_entry/$proto[[:space:]]+ALLOW[[:space:]]+Anywhere)|(^Anywhere[[:space:]]+$check_port_entry/$proto[[:space:]]+ALLOW)"; then
-        # 端口已开放，询问用户是否要关闭
-        read -p "  端口或范围 ${check_port_entry}/${proto} 已开放。是否要关闭它？[y/N]: " close_choice
-        close_choice=$(echo "$close_choice" | tr '[:upper:]' '[:lower:]')
-        if [[ "$close_choice" == "y" || "$close_choice" == "yes" ]]; then
-          echo "  正在关闭端口范围 ${check_port_entry}/${proto}..."
-          ufw delete allow "${check_port_entry}/${proto}"
-          if [ $? -ne 0 ]; then
-            echo "!!! 错误: 关闭端口 '${check_port_entry}/${proto}' 失败。请检查错误信息。!!!"
-          else
-            echo "  端口 ${check_port_entry}/${proto} 已成功关闭。"
-          fi
+      # 更精确的端口状态检测
+      local port_status=$(ufw status | grep -E "(${check_port_entry}/${proto}[[:space:]]+ALLOW|ALLOW[[:space:]]+${check_port_entry}/${proto})")
+      
+      if [ -n "$port_status" ]; then
+        # 端口已开放，执行关闭操作
+        echo "  端口 ${check_port_entry}/${proto} 已开放，正在关闭..."
+        ufw delete allow "${check_port_entry}/${proto}"
+        if [ $? -ne 0 ]; then
+          echo "!!! 错误: 关闭端口 '${check_port_entry}/${proto}' 失败。请检查错误信息。!!!"
         else
-          echo "  保持端口 ${check_port_entry}/${proto} 开放状态。"
+          echo "  端口 ${check_port_entry}/${proto} 已成功关闭。"
         fi
       else
-        # 端口未开放，询问用户是否要开放
-        read -p "  端口或范围 ${check_port_entry}/${proto} 未开放。是否要开放它？[Y/n]: " open_choice
-        open_choice=$(echo "$open_choice" | tr '[:upper:]' '[:lower:]')
-        if [[ -z "$open_choice" || "$open_choice" == "y" || "$open_choice" == "yes" ]]; then
-          if [ "$is_range" = true ]; then
-            echo "  正在开放端口范围 ${port_start}:${port_end}/${proto} (IPv4/IPv6)..."
-            ufw allow "${port_start}:${port_end}/${proto}" comment "手动开放端口范围 ${port_start}-${port_end} (${proto})"
-          else
-            echo "  正在开放端口 ${port_start}/${proto} (IPv4/IPv6)..."
-            ufw allow "${port_start}/${proto}" comment "手动开放端口 ${port_start} (${proto})"
-          fi
-          if [ $? -ne 0 ]; then
-            echo "!!! 错误: 开放端口 '$entry' 失败 (${proto})。请检查错误信息。!!!"
-          fi
+        # 端口未开放，执行开放操作
+        echo "  端口 ${check_port_entry}/${proto} 未开放，正在开放..."
+        if [ "$is_range" = true ]; then
+          ufw allow "${port_start}:${port_end}/${proto}" comment "手动开放端口范围 ${port_start}-${port_end} (${proto})"
         else
-          echo "  保持端口 ${check_port_entry}/${proto} 关闭状态。"
+          ufw allow "${port_start}/${proto}" comment "手动开放端口 ${port_start} (${proto})"
+        fi
+        if [ $? -ne 0 ]; then
+          echo "!!! 错误: 开放端口 '$entry' 失败 (${proto})。请检查错误信息。!!!"
         fi
       fi
     done
