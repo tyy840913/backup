@@ -249,33 +249,33 @@ reset_firewall_to_default() {
   return 0
 }
 
-# 函数：手动开放端口 (新选项 - 选项 4)
+# 函数：手动开放/关闭端口 (选项 4)
 # 适用于 IPv4 和 IPv6
 manual_open_ports() {
-  echo ">>> 正在执行：手动开放端口 (IPv4 和 IPv6) <<<"
+  echo ">>> 正在执行：手动开放/关闭端口 (IPv4 和 IPv6) <<<"
 
-  read -p "请输入要开放的端口或端口范围 (例如: 80 22 5000:6000 7000-8000), 多个请用空格分隔: " ports_input
+  read -p "请输入要操作的端口或端口范围 (例如: 80 22 5000:6000 7000-8000), 多个请用空格分隔: " ports_input
   if [ -z "$ports_input" ]; then
     echo "未输入端口。操作取消。"
     return 1
   fi
 
   read -p "选择协议 (tcp/udp/both) [默认: both]: " protocol_input
-protocol_input=$(echo "$protocol_input" | tr '[:upper:]' '[:lower:]') # 转换为小写
+  protocol_input=$(echo "$protocol_input" | tr '[:upper:]' '[:lower:]') # 转换为小写
 
-# 如果没有输入，则默认选择 both
-if [ -z "$protocol_input" ]; then
+  # 如果没有输入，则默认选择 both
+  if [ -z "$protocol_input" ]; then
     protocol_input="both"
-fi
+  fi
 
-case "$protocol_input" in
+  case "$protocol_input" in
     tcp|udp|both)
       ;;
     *)
       echo "无效的协议选择。请输入 tcp, udp 或 both。"
       return 1
       ;;
-esac
+  esac
 
   echo "正在处理端口规则..."
   for entry in $ports_input; do
@@ -318,34 +318,53 @@ esac
     fi
 
     for proto in "${current_protocols[@]}"; do
-      # 检查手动端口是否已经开放，避免重复添加
+      # 检查端口是否已经开放
       local check_port_entry="${port_start}"
       if [ "$is_range" = true ]; then
         check_port_entry="${port_start}:${port_end}"
       fi
 
       if ufw status verbose | grep -qE "(^$check_port_entry/$proto[[:space:]]+ALLOW[[:space:]]+Anywhere)|(^Anywhere[[:space:]]+$check_port_entry/$proto[[:space:]]+ALLOW)"; then
-        echo "  端口或范围 ${check_port_entry}/${proto} 已开放，跳过添加。"
-      else
-        if [ "$is_range" = true ]; then
-          echo "  正在开放端口范围 ${port_start}:${port_end}/${proto} (IPv4/IPv6)..."
-          ufw allow "${port_start}:${port_end}/${proto}" comment "手动开放端口范围 ${port_start}-${port_end} (${proto})"
+        # 端口已开放，询问用户是否要关闭
+        read -p "  端口或范围 ${check_port_entry}/${proto} 已开放。是否要关闭它？[y/N]: " close_choice
+        close_choice=$(echo "$close_choice" | tr '[:upper:]' '[:lower:]')
+        if [[ "$close_choice" == "y" || "$close_choice" == "yes" ]]; then
+          echo "  正在关闭端口范围 ${check_port_entry}/${proto}..."
+          ufw delete allow "${check_port_entry}/${proto}"
+          if [ $? -ne 0 ]; then
+            echo "!!! 错误: 关闭端口 '${check_port_entry}/${proto}' 失败。请检查错误信息。!!!"
+          else
+            echo "  端口 ${check_port_entry}/${proto} 已成功关闭。"
+          fi
         else
-          echo "  正在开放端口 ${port_start}/${proto} (IPv4/IPv6)..."
-          ufw allow "${port_start}/${proto}" comment "手动开放端口 ${port_start} (${proto})"
+          echo "  保持端口 ${check_port_entry}/${proto} 开放状态。"
         fi
-        if [ $? -ne 0 ]; then
-          echo "!!! 错误: 开放端口 '$entry' 失败 (${proto})。请检查错误信息。!!!"
+      else
+        # 端口未开放，询问用户是否要开放
+        read -p "  端口或范围 ${check_port_entry}/${proto} 未开放。是否要开放它？[Y/n]: " open_choice
+        open_choice=$(echo "$open_choice" | tr '[:upper:]' '[:lower:]')
+        if [[ -z "$open_choice" || "$open_choice" == "y" || "$open_choice" == "yes" ]]; then
+          if [ "$is_range" = true ]; then
+            echo "  正在开放端口范围 ${port_start}:${port_end}/${proto} (IPv4/IPv6)..."
+            ufw allow "${port_start}:${port_end}/${proto}" comment "手动开放端口范围 ${port_start}-${port_end} (${proto})"
+          else
+            echo "  正在开放端口 ${port_start}/${proto} (IPv4/IPv6)..."
+            ufw allow "${port_start}/${proto}" comment "手动开放端口 ${port_start} (${proto})"
+          fi
+          if [ $? -ne 0 ]; then
+            echo "!!! 错误: 开放端口 '$entry' 失败 (${proto})。请检查错误信息。!!!"
+          fi
+        else
+          echo "  保持端口 ${check_port_entry}/${proto} 关闭状态。"
         fi
       fi
     done
   done
 
-  echo "手动开放端口操作完成。建议检查 ufw 状态。"
+  echo "端口操作完成。当前 ufw 状态:"
   ufw status verbose
   return 0
 }
-
 
 # 主菜单
 main_menu() {
