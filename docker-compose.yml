@@ -2,7 +2,7 @@ services:
 
   # 1. Portainer - Docker 可视化管理
   portainer:
-    image: docker.woskee.dpdns.org/6053537/portainer-ce:latest
+    image: 6053537/portainer-ce:latest
     container_name: portainer
     restart: always
     network_mode: bridge
@@ -26,7 +26,7 @@ services:
 
   # 3. Lucky - 反向代理工具（Host 网络）
   lucky:
-    image: docker.wosken.dpdns.org/gdy666/lucky:latest
+    image: gdy666/lucky:latest
     container_name: lucky
     restart: always
     network_mode: host
@@ -37,7 +37,7 @@ services:
 
   # 4. EasyNode - SSH 管理工具
   easynode:
-    image: docker.luxxk.dpdns.org/chaoszhu/easynode:latest
+    image: chaoszhu/easynode:latest
     container_name: easynode
     restart: always
     network_mode: bridge
@@ -50,7 +50,7 @@ services:
 
   # 5. Vaultwarden - 密码管理服务
   vaultwarden:
-    image: docker.woskee.nyc.mn/vaultwarden/server:latest
+    image: vaultwarden/server:latest
     container_name: vaultwarden
     restart: always
     network_mode: bridge
@@ -65,7 +65,7 @@ services:
    
   # 6. Watchtower - 自动更新容器
   watchtower:
-    image: docker.wosken.dpdns.org/containrrr/watchtower:latest
+    image: containrrr/watchtower:latest
     container_name: watchtower
     restart: always
     network_mode: host
