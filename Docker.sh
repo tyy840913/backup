@@ -75,10 +75,15 @@ get_latest_versions() {
         "ubuntu"|"debian") LATEST_DOCKER_VERSION=$(apt-cache madison docker-ce | awk '{print $3}' | head -n 1 | cut -d':' -f2);;
         "centos"|"rhel"|"fedora") LATEST_DOCKER_VERSION=$(yum --showduplicates list docker-ce | grep 'docker-ce' | awk '{print $2}' | tail -n 1 | cut -d':' -f2);;
     esac
-    ### 修正：恢复您指定的代理API地址 ###
+    
     local github_api_url="https://api.github.com/repos/docker/compose/releases/latest"
     local final_github_api_url=$(get_download_url "$github_api_url")
     LATEST_COMPOSE_VERSION=$(curl -s "$final_github_api_url" | jq -r .tag_name)
+    
+    if [ -z "$LATEST_COMPOSE_VERSION" ]; then
+        echo -e "${YELLOW}警告：无法从 GitHub 获取最新 Docker Compose 版本${NC}"
+        LATEST_COMPOSE_VERSION="unknown"
+    fi
 }
 
 # 返回值: 0=最新, 1=未安装, 2=可更新
@@ -95,11 +100,28 @@ check_docker() {
 # 返回值: 0=最新, 1=未安装, 2=可更新
 check_compose() {
     if ! command -v docker-compose &>/dev/null; then return 1; fi
-    local installed_version=$(docker-compose --version | awk '{print $3}' | tr -d ',')
-    echo -e "${GREEN}检测到已安装 Docker Compose 版本: $installed_version${NC}"
-    if [[ -n "$LATEST_COMPOSE_VERSION" && "$installed_version" != "$LATEST_COMPOSE_VERSION" ]]; then
-        echo -e "${YELLOW}发现新版本! 最新可用版本为: $LATEST_COMPOSE_VERSION${NC}"; return 2;
+    
+    # 更健壮的版本号提取
+    local installed_version=$(docker-compose --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+    local latest_version_clean=$(echo "$LATEST_COMPOSE_VERSION" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+    
+    if [ -z "$installed_version" ]; then
+        echo -e "${RED}无法获取已安装的 Docker Compose 版本${NC}"
+        return 1
     fi
+    
+    echo -e "${GREEN}检测到已安装 Docker Compose 版本: $installed_version${NC}"
+    
+    if [ -z "$latest_version_clean" ]; then
+        echo -e "${YELLOW}无法获取最新版本信息${NC}"
+        return 0
+    fi
+    
+    if [[ "$installed_version" != "$latest_version_clean" ]]; then
+        echo -e "${YELLOW}发现新版本! 最新可用版本为: $LATEST_COMPOSE_VERSION${NC}"
+        return 2
+    fi
+    
     return 0
 }
 
