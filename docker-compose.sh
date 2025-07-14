@@ -15,7 +15,6 @@ MIRROR_CONFIG=(
     "docker.io|https://docker.luxxk.dpdns.org"
     "docker.io|https://docker.woskee.dpdns.org"
     "docker.io|https://docker.wosken.dpdns.org"
-    "docker.io|https://dockerproxy.com"
     
     # ghcr.io 镜像加速源
     "ghcr.io|https://ghcr.nju.edu.cn"
