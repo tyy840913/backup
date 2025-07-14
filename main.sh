@@ -100,7 +100,9 @@ show_interface() {
     for i in "${!descriptions[@]}"; do
         if [[ -z "${filenames[i]}" ]]; then
             # 显示分割线（彩色）
+            echo ""
             echo -e "${COLOR_DIVIDER}${descriptions[i]}${COLOR_RESET}"
+            echo ""
         else
             # 显示正常菜单项
             printf "${COLOR_OPTION}%2d.${COLOR_RESET} ${COLOR_TITLE}%-30s${COLOR_RESET}\n" \
