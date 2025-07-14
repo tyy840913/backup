@@ -8,6 +8,8 @@
 
 **********************************************
 
+Docker及docker-compose安装 Docker.sh
+
 mihomo代理（优先） mihomo_install.sh
 
 mihomo代理状态检查 mihomo_status.sh
@@ -15,8 +17,6 @@ mihomo代理状态检查 mihomo_status.sh
 xiaoya-alist运行,恢复备份 xiaoya.sh
 
 自动备份Docker容器数据 auto_backup.sh
-
-Docker及docker-compose安装 Docker.sh
 
 一键运行docker容器 docker-compose.sh
 
