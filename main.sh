@@ -67,7 +67,12 @@ download_catalog() {
 # 解析目录文件
 parse_catalog() {
     while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ "$line" =~ [[:space:]] ]]; then
+        if [[ "$line" =~ ^#+$ ]]; then
+            # 这是分割线
+            descriptions+=("$line")
+            filenames+=("")  # 空文件名表示这是分割线
+        elif [[ "$line" =~ [[:space:]] ]]; then
+            # 这是正常的脚本条目
             desc="${line% *}"
             file="${line##* }"
             descriptions+=("$desc")
@@ -84,28 +89,20 @@ print_divider() {
 # 显示用户界面
 show_interface() {
     clear
-    # 显示标题（居中）
+    # 显示标题
     echo -e "${COLOR_TITLE}"
     print_divider
-    printf "%*s\n" $(((${#COLOR_DIVIDER}+33)/2)) "全内存脚本平台"
+    echo "             全内存脚本平台"
     print_divider
     echo -e "${COLOR_RESET}"
 
-    # 显示菜单项（带分类分割线）
+    # 显示菜单项
     for i in "${!descriptions[@]}"; do
-        # 检测是否是文件名（跳过）
-        if [[ "${filenames[i]}" == "" ]]; then
-            continue
-        fi
-        
-        # 检测是否是分割线（描述为空且文件名是###）
-        if [[ "${descriptions[i]}" =~ ^#+$ ]]; then
-            # 显示彩色分割线
-            echo -e "${COLOR_DIVIDER}"
-            echo "${descriptions[i]}"
-            echo -e "${COLOR_RESET}"
+        if [[ -z "${filenames[i]}" ]]; then
+            # 显示分割线（彩色）
+            echo -e "${COLOR_DIVIDER}${descriptions[i]}${COLOR_RESET}"
         else
-            # 正常菜单项
+            # 显示正常菜单项
             printf "${COLOR_OPTION}%2d.${COLOR_RESET} ${COLOR_TITLE}%-30s${COLOR_RESET}\n" \
                    $((i+1)) "${descriptions[i]}"
         fi
