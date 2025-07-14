@@ -5,8 +5,10 @@
 ```bash
 bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/main.sh)"
 ```
-
-
+# mihomo代理
+```bash
+bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/mihomo-proxy/refs/heads/master/mihomo-docker/mihomo-docker.sh)"
+```
 
 # 一键运行docker-compose
 ```bash
@@ -18,7 +20,7 @@ bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy84
 curl -o /root/system_cleaner.sh -sL https://route.wosken.dpdns.org/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/system_cleaner.sh && chmod +x /root/system_cleaner.sh && /root/system_cleaner.sh --install-cron
 ```
 
-# ping获取本地局域网设备ip及MAC信息
+# ping获取本地局域网设备IP及MAC信息
 ```bash
 bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/ping_ip.sh)"
 ```
@@ -29,17 +31,17 @@ bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy84
 bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/init.sh)"
 ```
 
-# 自动备份
+#自动备份
 ```bash
 bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/auto_backup.sh)"
 ```
 
-# Docker安装
+#Docker安装
 ```bash
 bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/Docker.sh)"
 ```
 
-# 更换linux系统镜像源
+# 更换Linux系统镜像源
 ```bash
 bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/mirror.sh)"
 ```
