@@ -67,7 +67,7 @@ download_catalog() {
 # 解析目录文件
 parse_catalog() {
     while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ "$line" =~ ^#+$ ]]; then
+        if [[ "$line" =~ ^*+$ ]]; then
             # 这是分割线
             descriptions+=("$line")
             filenames+=("")  # 空文件名表示这是分割线
