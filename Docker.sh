@@ -240,7 +240,7 @@ main() {
     if command -v docker &>/dev/null; then
         configure_mirror
         echo -e "\n${CYAN}============== 最终验证 ==============${NC}"
-        echo -e "${GREEN}Docker 版本: $(docker --version 2>/dev/null || echo '未安装')${NC}"
+        
         if systemctl is-active --quiet docker; then
             echo -e "Docker 服务: ${GREEN}运行中${NC}"
             if docker info 2>/dev/null | grep -q "Registry Mirrors"; then echo -e "镜像加速: ${GREEN}已配置${NC}"; else echo -e "镜像加速: ${YELLOW}未在 docker info 中检测到${NC}"; fi
@@ -249,7 +249,8 @@ main() {
             echo -e "Docker 服务: ${RED}未运行${NC}"
         fi
     fi
-
+    
+    echo -e "${GREEN}Docker 版本: $(docker --version 2>/dev/null || echo '未安装')${NC}"
     echo -e "${GREEN}Docker Compose 版本: $(docker-compose --version 2>/dev/null || echo '未安装')${NC}"
     echo -e "\n${GREEN}脚本执行完毕。${NC}"
 }
