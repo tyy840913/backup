@@ -35,12 +35,12 @@ bash -c "$(curl -fsSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy8
 bash -c "$(curl -fsSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/init.sh)"
 ```
 
-#自动备份
+# 自动备份
 ```bash
 bash -c "$(curl -fsSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/auto_backup.sh)"
 ```
 
-#Docker安装
+# Docker安装
 ```bash
 bash -c "$(curl -fsSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/Docker.sh)"
 ```
