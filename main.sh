@@ -32,6 +32,7 @@ cleanup() {
     if [ -d "$memory_tmpdir" ]; then
         rm -rf "$memory_tmpdir" && echo "已清理内存目录: $memory_tmpdir"
     fi
+    exit 0
 }
 
 # 注册退出清理钩子
