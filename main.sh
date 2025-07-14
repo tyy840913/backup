@@ -84,17 +84,26 @@ print_divider() {
 # 显示用户界面
 show_interface() {
     clear
-    # 显示标题
+    # 显示标题（居中）
     echo -e "${COLOR_TITLE}"
     print_divider
-    echo "             全内存脚本平台"
+    printf "%*s\n" $(((${#COLOR_DIVIDER}+33)/2)) "全内存脚本平台"
     print_divider
     echo -e "${COLOR_RESET}"
 
-    # 显示菜单项
+    # 显示菜单项（带分类分割线）
     for i in "${!descriptions[@]}"; do
-        printf "${COLOR_OPTION}%2d.${COLOR_RESET} ${COLOR_TITLE}%-30s${COLOR_RESET}\n" \
-               $((i+1)) "${descriptions[i]}"
+        # 检测是否是分割线（行以多个#开头）
+        if [[ "${descriptions[i]}" =~ ^#+$ ]]; then
+            # 显示分割线（带颜色）
+            echo -e "${COLOR_DIVIDER}"
+            printf "%*s\n" $(((${#COLOR_DIVIDER}+40)/2)) "${descriptions[i]}"
+            echo -e "${COLOR_RESET}"
+        else
+            # 正常菜单项（带序号和颜色）
+            printf "${COLOR_OPTION}%2d.${COLOR_RESET} ${COLOR_TITLE}%-30s${COLOR_RESET}\n" \
+                   $((i+1)) "${descriptions[i]}"
+        fi
     done
 
     # 底部操作提示
