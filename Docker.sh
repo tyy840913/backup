@@ -25,6 +25,20 @@ LATEST_COMPOSE_VERSION=""
 OS=""
 CODENAME=""
 
+# 代理路由URL
+PROXY_ROUTE_URL="https://route.woskee.nyc.mn/"
+
+# 根据终端代理设置获取最终下载URL
+get_download_url() {
+    local original_url="$1"
+    # 检查 http_proxy 或 https_proxy 环境变量是否设置
+    if [[ -z "$http_proxy" && -z "$https_proxy" ]]; then
+        echo "${PROXY_ROUTE_URL}${original_url}"
+    else
+        echo "${original_url}"
+    fi
+}
+
 # --- 功能函数 ---
 
 detect_os() {
@@ -61,8 +75,10 @@ get_latest_versions() {
         "ubuntu"|"debian") LATEST_DOCKER_VERSION=$(apt-cache madison docker-ce | awk '{print $3}' | head -n 1 | cut -d':' -f2);;
         "centos"|"rhel"|"fedora") LATEST_DOCKER_VERSION=$(yum --showduplicates list docker-ce | grep 'docker-ce' | awk '{print $2}' | tail -n 1 | cut -d':' -f2);;
     esac
-    ### 修正：恢复您指定的代理API地址 ###
-    LATEST_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r .tag_name)
+    # 指定的代理API地址 #
+    local github_api_url="https://api.github.com/repos/docker/compose/releases/latest"
+    local final_github_api_url=$(get_download_url "$github_api_url")
+    LATEST_COMPOSE_VERSION=$(curl -s "$final_github_api_url" | jq -r .tag_name)
 }
 
 # 返回值: 0=最新, 1=未安装, 2=可更新
@@ -83,11 +99,11 @@ check_compose() {
     echo -e "${GREEN}检测到已安装 Docker Compose 版本: $installed_version${NC}"
     if [[ -n "$LATEST_COMPOSE_VERSION" && "$installed_version" != "$LATEST_COMPOSE_VERSION" ]]; then
         echo -e "${YELLOW}发现新版本! 最新可用版本为: $LATEST_COMPOSE_VERSION${NC}"; return 2;
-    fi
+    }
     return 0
 }
 
-### 修正1：恢复您指定的代理下载地址 ###
+# 开始安装/更新 Docker  #
 install_or_update_docker() {
     echo -e "${CYAN}--- 开始安装/更新 Docker ---${NC}"
     case $OS in
@@ -95,15 +111,21 @@ install_or_update_docker() {
             [ "$OS" = "ubuntu" ] && [ "$CODENAME" = "lunar" ] && CODENAME="jammy"
             apt-get install -y ca-certificates
             install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https://download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            local docker_gpg_url="https://download.docker.com/linux/$OS/gpg"
+            local final_docker_gpg_url=$(get_download_url "$docker_gpg_url")
+            curl -fsSL "$final_docker_gpg_url" | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
             chmod a+r /etc/apt/keyrings/docker.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$OS $CODENAME stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+            local docker_repo_url="https://download.docker.com/linux/$OS"
+            local final_docker_repo_url=$(get_download_url "$docker_repo_url")
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] $final_docker_repo_url $CODENAME stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
             apt-get update
             apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
             ;;
         "centos"|"rhel"|"fedora")
             yum install -y yum-utils
-            yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+            local docker_ce_repo_url="https://download.docker.com/linux/centos/docker-ce.repo"
+            local final_docker_ce_repo_url=$(get_download_url "$docker_ce_repo_url")
+            yum-config-manager --add-repo "$final_docker_ce_repo_url"
             yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
             ;;
         "alpine")
@@ -119,7 +141,8 @@ install_or_update_compose() {
     case $OS in
         "alpine") apk add --no-cache docker-compose ;;
         *)
-            local binary_url="https://github.com/docker/compose/releases/download/${LATEST_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
+            local original_binary_url="https://github.com/docker/compose/releases/download/${LATEST_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
+            local binary_url=$(get_download_url "$original_binary_url")
             local temp_file; temp_file=$(mktemp)
             echo "正在从 $binary_url 下载..."
             if ! curl -L "$binary_url" -o "$temp_file"; then echo -e "${RED}错误：下载失败${NC}"; rm -f "$temp_file"; return 1; fi
