@@ -62,7 +62,7 @@ get_latest_versions() {
         "centos"|"rhel"|"fedora") LATEST_DOCKER_VERSION=$(yum --showduplicates list docker-ce | grep 'docker-ce' | awk '{print $2}' | tail -n 1 | cut -d':' -f2);;
     esac
     ### 修正：恢复您指定的代理API地址 ###
-    LATEST_COMPOSE_VERSION=$(curl -s https://route.luxxk.dpdns.org/api.github.com/repos/docker/compose/releases/latest | jq -r .tag_name)
+    LATEST_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r .tag_name)
 }
 
 # 返回值: 0=最新, 1=未安装, 2=可更新
@@ -95,15 +95,15 @@ install_or_update_docker() {
             [ "$OS" = "ubuntu" ] && [ "$CODENAME" = "lunar" ] && CODENAME="jammy"
             apt-get install -y ca-certificates
             install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https://add.woskee.dpdns.org/download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            curl -fsSL https://download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
             chmod a+r /etc/apt/keyrings/docker.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://route.luxxk.dpdns.org/download.docker.com/linux/$OS $CODENAME stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$OS $CODENAME stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
             apt-get update
             apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
             ;;
         "centos"|"rhel"|"fedora")
             yum install -y yum-utils
-            yum-config-manager --add-repo https://route.woskee.nyc.mn/download.docker.com/linux/centos/docker-ce.repo
+            yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
             yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
             ;;
         "alpine")
@@ -119,7 +119,7 @@ install_or_update_compose() {
     case $OS in
         "alpine") apk add --no-cache docker-compose ;;
         *)
-            local binary_url="https://route.wosken.dpdns.org/github.com/docker/compose/releases/download/${LATEST_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
+            local binary_url="https://github.com/docker/compose/releases/download/${LATEST_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
             local temp_file; temp_file=$(mktemp)
             echo "正在从 $binary_url 下载..."
             if ! curl -L "$binary_url" -o "$temp_file"; then echo -e "${RED}错误：下载失败${NC}"; rm -f "$temp_file"; return 1; fi
