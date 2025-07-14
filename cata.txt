@@ -1,5 +1,7 @@
 mihomo代理（优先） mihomo_install.sh
 
+mihomo代理状态检查 mihomo_status.sh
+
 自动备份Docker容器数据 auto_backup.sh
 
 设置SSH 时区 清华源 init.sh
