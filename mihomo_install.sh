@@ -103,7 +103,7 @@ fi
 
 # --- 运行 mihomo-Docker 安装脚本 ---
 echo -e "${CYAN}--- 步骤 5: 运行 Mihomo Docker 安装脚本 ---${PLAIN}"
-DOCKER_SCRIPT_URL="https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/refs/heads/master/mihomo.sh"
+DOCKER_SCRIPT_URL="https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/mihomo.sh"
 echo "正在从网络下载并执行脚本..."
 if bash -c "$(curl -sSL $DOCKER_SCRIPT_URL)"; then
     echo -e "${GREEN}Mihomo Docker 安装脚本执行成功。${PLAIN}
