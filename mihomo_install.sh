@@ -139,7 +139,6 @@ else
     echo -e "${YELLOW}每日备份任务已存在，跳过。${PLAIN}"
 fi
 
-echo "正在应用新的定时任务配置..."
 # 清理空行并应用
 echo -e "${CURRENT_CRONTAB}" | grep -v '^$' | sudo crontab -
 if [ $? -eq 0 ]; then
