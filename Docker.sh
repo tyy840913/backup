@@ -221,7 +221,9 @@ main() {
         echo -e "${GREEN}Docker 版本: $(docker --version 2>/dev/null || echo '未安装')${NC}"
         if systemctl is-active --quiet docker; then
             echo -e "Docker 服务: ${GREEN}运行中${NC}"
-            if docker info 2>/dev/null | grep -q "Registry Mirrors"; then echo -e "镜像加速: ${GREEN}已配置${NC}"; else echo -e "镜像加速: ${YELLOW}未在 docker info 中检测到${NC}"; fi
+            if docker info 2>/dev/null | grep -q -E "Registry Mirrors|HTTP Proxy:|HTTPS         │
+ │           Proxy:"; then echo -e "网络配置: ${GREEN}已配置${NC}"; else echo -e "网络配置:          │
+ │           ${YELLOW}未在 docker info 中检测到${NC}"; fi
         else
             echo -e "Docker 服务: ${RED}未运行${NC}"
         fi
