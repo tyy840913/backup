@@ -7,7 +7,7 @@ bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy84
 ```
 # mihomo代理
 ```bash
-bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/mihomo-proxy/refs/heads/master/mihomo-docker/mihomo-docker.sh)"
+bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/mihomo_install.sh)"
 ```
 
 # 一键运行docker-compose
