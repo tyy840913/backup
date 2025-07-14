@@ -68,14 +68,14 @@ download_catalog() {
 # 解析目录文件
 parse_catalog() {
     while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ "$line" =~ ^*+$ ]]; then
-            # 这是分割线
+        if [[ "$line" =~ ^\*+$ ]]; then  # 注意这里加了反斜杠转义
+            # 这是分割线（星号行）
             descriptions+=("$line")
             filenames+=("")  # 空文件名表示这是分割线
         elif [[ "$line" =~ [[:space:]] ]]; then
             # 这是正常的脚本条目
             desc="${line% *}"
-            file="${line*** }"
+            file="${line##* }"  # 这里保持不变
             descriptions+=("$desc")
             filenames+=("$file")
         fi
