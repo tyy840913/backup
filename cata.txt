@@ -2,9 +2,17 @@
 
 修改系统支持中文显示 ziti.sh
 
+更换系统源为国内园镜像源 mirror.sh
+
+系统清理系统垃圾 system_cleaner.sh
+
+##################################
+
 mihomo代理（优先） mihomo_install.sh
 
 mihomo代理状态检查 mihomo_status.sh
+
+xiaoya-alist运行,恢复备份 xiaoya.sh
 
 自动备份Docker容器数据 auto_backup.sh
 
@@ -12,7 +20,7 @@ Docker及docker-compose安装 Docker.sh
 
 一键运行docker容器 docker-compose.sh
 
-xiaoya-alist运行,恢复备份 xiaoya.sh
+###################################
 
 更换系统源为国内园镜像源 mirror.sh
 
