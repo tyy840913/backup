@@ -75,7 +75,7 @@ get_latest_versions() {
         "ubuntu"|"debian") LATEST_DOCKER_VERSION=$(apt-cache madison docker-ce | awk '{print $3}' | head -n 1 | cut -d':' -f2);;
         "centos"|"rhel"|"fedora") LATEST_DOCKER_VERSION=$(yum --showduplicates list docker-ce | grep 'docker-ce' | awk '{print $2}' | tail -n 1 | cut -d':' -f2);;
     esac
-    # 指定的代理API地址 #
+    ### 修正：恢复您指定的代理API地址 ###
     local github_api_url="https://api.github.com/repos/docker/compose/releases/latest"
     local final_github_api_url=$(get_download_url "$github_api_url")
     LATEST_COMPOSE_VERSION=$(curl -s "$final_github_api_url" | jq -r .tag_name)
@@ -99,11 +99,11 @@ check_compose() {
     echo -e "${GREEN}检测到已安装 Docker Compose 版本: $installed_version${NC}"
     if [[ -n "$LATEST_COMPOSE_VERSION" && "$installed_version" != "$LATEST_COMPOSE_VERSION" ]]; then
         echo -e "${YELLOW}发现新版本! 最新可用版本为: $LATEST_COMPOSE_VERSION${NC}"; return 2;
-    }
+    fi
     return 0
 }
 
-# 开始安装/更新 Docker  #
+### 修正1：恢复您指定的代理下载地址 ###
 install_or_update_docker() {
     echo -e "${CYAN}--- 开始安装/更新 Docker ---${NC}"
     case $OS in
