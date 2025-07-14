@@ -93,14 +93,19 @@ show_interface() {
 
     # 显示菜单项（带分类分割线）
     for i in "${!descriptions[@]}"; do
-        # 检测是否是分割线（行以多个#开头）
+        # 检测是否是文件名（跳过）
+        if [[ "${filenames[i]}" == "" ]]; then
+            continue
+        fi
+        
+        # 检测是否是分割线（描述为空且文件名是###）
         if [[ "${descriptions[i]}" =~ ^#+$ ]]; then
-            # 显示分割线（带颜色）
+            # 显示彩色分割线
             echo -e "${COLOR_DIVIDER}"
-            printf "%*s\n" $(((${#COLOR_DIVIDER}+40)/2)) "${descriptions[i]}"
+            echo "${descriptions[i]}"
             echo -e "${COLOR_RESET}"
         else
-            # 正常菜单项（带序号和颜色）
+            # 正常菜单项
             printf "${COLOR_OPTION}%2d.${COLOR_RESET} ${COLOR_TITLE}%-30s${COLOR_RESET}\n" \
                    $((i+1)) "${descriptions[i]}"
         fi
