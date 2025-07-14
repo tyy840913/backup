@@ -15,7 +15,6 @@ set -e
 # --- 配置与变量 ---
 URL="https://backup.woskee.dpdns.org/mihomo"
 DEST_DIR="/etc/mihomo"
-TEMP_FILE="/tmp/mihomo.tar.gz"
 
 # --- 颜色定义 ---
 RED='\033[0;31m'
@@ -41,7 +40,6 @@ check_command "curl"
 check_command "tar"
 check_command "docker"
 check_command "crontab"
-check_command "sudo"
 echo -e "${GREEN}所有依赖项均已安装。${PLAIN}
 "
 
@@ -61,35 +59,21 @@ echo -e "${GREEN}凭据已输入。${PLAIN}
 # --- 下载与解压 ---
 echo -e "${CYAN}--- 步骤 3: 下载并解压 Mihomo 文件 ---${PLAIN}"
 echo "正在创建目标目录: $DEST_DIR"
-sudo mkdir -p "${DEST_DIR}"
+mkdir -p "${DEST_DIR}"
 
-echo "正在从 $URL 下载文件..."
-if sudo curl -u "${USERNAME}:${PASSWORD}" -L -o "${TEMP_FILE}" "${URL}"; then
-    echo -e "${GREEN}文件下载成功。${PLAIN}"
+echo "正在从 $URL 下载并解压文件到 $DEST_DIR ..."
+if curl -u "${USERNAME}:${PASSWORD}" -L "${URL}" | sudo tar -xzf - -C "${DEST_DIR}"; then
+    echo -e "${GREEN}文件下载并解压成功。${PLAIN}"
 else
-    echo -e "${RED}错误: 文件下载失败。请检查URL、用户名和密码。${PLAIN}"
+    echo -e "${RED}错误: 文件下载或解压失败。请检查URL、用户名、密码或文件格式。${PLAIN}"
     exit 1
 fi
-
-echo "正在解压文件到 $DEST_DIR ..."
-if sudo tar -xzf "${TEMP_FILE}" -C "${DEST_DIR}"; then
-    echo -e "${GREEN}文件解压成功。${PLAIN}"
-else
-    echo -e "${RED}错误: 文件解压失败。可能下载的文件不是有效的 .tar.gz 格式。${PLAIN}"
-    sudo rm -f "${TEMP_FILE}"
-    exit 1
-fi
-
-echo "正在清理临时文件..."
-sudo rm -f "${TEMP_FILE}"
-echo -e "${GREEN}临时文件已清理。${PLAIN}
-"
 
 # --- 运行配置脚本 ---
 echo -e "${CYAN}--- 步骤 4: 运行内部配置脚本 ---${PLAIN}"
 CONFIG_SCRIPT="${DEST_DIR}/mihomo_config.sh"
 if [[ -f "$CONFIG_SCRIPT" ]]; then
-    if sudo bash "$CONFIG_SCRIPT"; then
+    if bash "$CONFIG_SCRIPT"; then
         echo -e "${GREEN}内部配置脚本执行成功。${PLAIN}
 "
     else
