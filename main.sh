@@ -75,7 +75,7 @@ parse_catalog() {
         elif [[ "$line" =~ [[:space:]] ]]; then
             # 这是正常的脚本条目
             desc="${line% *}"
-            file="${line##* }"
+            file="${line*** }"
             descriptions+=("$desc")
             filenames+=("$file")
         fi
