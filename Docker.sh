@@ -148,7 +148,7 @@ configure_mirror() {
 
     echo -e "${YELLOW}正在写入新的 Docker 代理配置...${NC}"
     # 注意：这里移除了 MIRRORS 数组和相关的 jq 逻辑，直接写入代理配置
-    if ! jq -n '{ "http-proxy": "http://127.0.0.1:7890", "https-proxy": "http://127.0.0.1:7890", "no-proxy": "localhost,127.0.0.1", "exec-opts": ["native.cgroupdriver=systemd"] }' > "$DAEMON_JSON"; then
+    if ! jq -n '{ "http-proxy": "http://127.0.0.1:7890", "https-proxy": "http://127.0.0.1:7890", "no-proxy": "localhost,127.0.0.1" }' > "$DAEMON_JSON"; then
         echo -e "${RED}错误：生成配置文件失败！${NC}"; return 1;
     fi
 
