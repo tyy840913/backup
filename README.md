@@ -5,10 +5,13 @@
 ```bash
 bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/main.sh)"
 ```
-# mihomo代理
+# mihomo-docker代理
 ```bash
 bash -c "$(curl -sSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/mihomo_install.sh)"
 ```
+# mihomo祼核代理
+curl -fsSL https://raw.githubusercontent.com/tyy840913/mihomo-proxy/refs/heads/master/mihomo/mihomo.sh -o mihomo.sh && chmod +x mihomo.sh && ./mihomo.sh
+
 
 # 一键运行docker-compose
 ```bash
