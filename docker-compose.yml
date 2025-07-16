@@ -1,5 +1,4 @@
 services:
-
   # 1. Portainer - Docker 可视化管理
   portainer:
     image: 6053537/portainer-ce:latest
@@ -11,9 +10,7 @@ services:
       - portainer:/data
     ports:
       - "9000:9000"
-  volumes：
-    portainer:
-  
+
   # 2. openlist - 文件列表服务
   openlist:
     image: ghcr.io/openlistteam/openlist-git:beta-aio
@@ -90,10 +87,12 @@ services:
       - "8299:8299"
     environment:
       - TZ=Asia/Shanghai
-    # 设置 api-key
+      # 设置 api-key
       - API_KEY=421121
     restart: always
     tty: true
     network_mode: bridge
+
 volumes:
-    subs-check:  # 卷声明
+  portainer:
+  subs-check:
