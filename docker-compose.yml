@@ -11,6 +11,8 @@ services:
       - portainer:/data
     ports:
       - "9000:9000"
+volumes：
+  portainer:
   
   # 2. openlist - 文件列表服务
   openlist:
@@ -93,3 +95,5 @@ services:
     restart: always
     tty: true
     network_mode: bridge
+volumes:
+    subs-check:  # 卷声明
