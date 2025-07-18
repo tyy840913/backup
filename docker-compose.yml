@@ -81,7 +81,10 @@ services:
     container_name: subs-check
     volumes:
       - /docker_data/subs:/app/config
-      - subs-check:/app/output
+      - /docker_data/sub/all.yaml:/app/output/all.yaml
+      - /docker_data/sub/all.yaml:/app/output/mihomo.yaml
+      - /docker_data/sub/all.yaml:/app/output/base64.txt
+    # - subs-check:/app/output
     ports:
       - "8199:8199"
       - "8299:8299"
