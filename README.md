@@ -59,3 +59,7 @@ bash -c "$(curl -fsSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy8
 ```bash
 curl -LsO https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/qm.sh && chmod +x qm.sh && ./qm.sh
 ```
+# 路由器网络联通检查恢复脚本
+```bash
+curl -LsO https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/wan.sh && chmod +x wan.sh && scp wan.sh root@192.168.1.1:/root
+```
