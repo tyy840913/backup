@@ -213,6 +213,7 @@ configure_mirror() {
         echo -e "${RED}Docker 服务重启失败，请手动检查: systemctl status docker${NC}"; return 1;
     fi
 }
+
 # --- 主逻辑 ---
 main() {
     if [ "$(id -u)" -ne 0 ]; then echo -e "${RED}请使用 sudo 或 root 用户运行此脚本${NC}"; exit 1; fi
