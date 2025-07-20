@@ -8,129 +8,89 @@ MIRROR_URL="https://route.woskee.dpdns.org/raw.githubusercontent.com/tyy840913/b
 TARGET_DIR="/tmp/docker"
 TARGET_FILE="$TARGET_DIR/docker-compose.yml"
 
-# 多仓库镜像加速源配置（仅在系统未配置加速器或代理时使用）
+# 多仓库镜像加速源配置
 MIRROR_CONFIG=(
-    # docker.io 镜像加速源
-    "docker.io|docker.woskee.nyc.mn"
-    "docker.io|hdocker.luxxk.dpdns.org"
-    "docker.io|docker.woskee.dpdns.org"
-    "docker.io|docker.wosken.dpdns.org"
-    
-    # ghcr.io 镜像加速源
-    "ghcr.io|ghcr.nju.edu.cn"
-    "ghcr.io|ghcr.linkos.org"
-    
-    # k8s.gcr.io 镜像加速源
-    "k8s.gcr.io|registry.aliyuncs.com/google_containers"
-    
-    # quay.io 镜像加速源
-    "quay.io|quay.mirror.aliyuncs.com"
-    
-    # gcr.io 镜像加速源
-    "gcr.io|gcr.mirror.aliyuncs.com"
-    
-    # mcr.microsoft.com 镜像加速源
-    "mcr.microsoft.com|dockerhub.azk8s.cn"
+    "docker.io|https://docker.woskee.nyc.mn"
+    "ghcr.io|https://ghcr.nju.edu.cn"
+    "k8s.gcr.io|https://registry.aliyuncs.com/google_containers"
+    "quay.io|https://quay.mirror.aliyuncs.com"
+    "gcr.io|https://gcr.mirror.aliyuncs.com"
+    "mcr.microsoft.com|https://dockerhub.azk8s.cn"
 )
-
-# 检查终端是否配置了代理
-check_terminal_proxy() {
-    if [ -n "$http_proxy" ] || [ -n "$https_proxy" ] || 
-       [ -n "$HTTP_PROXY" ] || [ -n "$HTTPS_PROXY" ]; then
-        echo "✅ 检测到终端已配置代理，将使用原始GitHub URL"
-        DOWNLOAD_URL="$GITHUB_RAW_URL"
-        return 0
-    else
-        echo "⚠️ 未检测到终端代理配置，将使用镜像URL加速下载"
-        DOWNLOAD_URL="$MIRROR_URL"
-        return 1
-    fi
-}
 
 # 检查系统是否已配置Docker镜像加速器或代理
 check_system_config() {
-    local has_config=1
-    
-    # 检查镜像加速器配置
-    if [ -f "/etc/docker/daemon.json" ]; then
-        if grep -q "registry-mirrors" /etc/docker/daemon.json; then
-            echo "✅ 检测到系统已配置Docker镜像加速器"
-            has_config=0
-        fi
+    # 检查 /etc/docker/daemon.json 是否配置了 registry-mirrors
+    if [ -f "/etc/docker/daemon.json" ] && grep -q "registry-mirrors" /etc/docker/daemon.json; then
+        echo "✅ 检测到系统已配置Docker镜像加速器"
+        return 0
     fi
-    
-    # 检查Docker服务代理配置
-    if systemctl cat docker | grep -q "Environment=.*_PROXY="; then
+    # 检查Docker服务的systemd配置中是否包含代理设置
+    if systemctl cat docker 2>/dev/null | grep -q "Environment=.*_PROXY="; then
         echo "✅ 检测到Docker服务已配置代理"
-        has_config=0
+        return 0
     fi
-    
-    return $has_config
+    return 1
 }
 
-# 设置下载URL
-check_terminal_proxy
+# 始终使用镜像URL下载
+DOWNLOAD_URL="$MIRROR_URL"
 
-# 创建目标目录（如果不存在）
+# 创建目标目录
 mkdir -p "$TARGET_DIR"
 
-# 下载文件
+# 使用curl下载文件，并禁用代理
 echo "正在从 $DOWNLOAD_URL 下载 docker-compose.yml..."
-if ! curl -sSL "$DOWNLOAD_URL" -o "$TARGET_FILE"; then
-    echo "❌ 文件下载失败！请检查："
-    echo "1. URL是否正确 ($DOWNLOAD_URL)"
-    echo "2. 网络连接是否正常"
-    echo "3. 目标目录是否可写 ($TARGET_DIR)"
+if ! curl --noproxy '*' -sSL "$DOWNLOAD_URL" -o "$TARGET_FILE"; then
+    echo "❌ 文件下载失败！请检查网络连接和URL。"
     exit 1
 fi
 
-# 验证文件
-if [ ! -f "$TARGET_FILE" ]; then
-    echo "❌ 文件下载后验证失败：$TARGET_FILE 不存在"
+# 验证文件是否下载成功
+if [ ! -s "$TARGET_FILE" ]; then
+    echo "❌ 文件下载后为空或不存在。"
     exit 1
 fi
 
-# 处理镜像加速（仅在系统未配置加速器或代理时执行）
+# 仅在系统未配置加速器或代理时，才进行镜像地址替换
 if ! check_system_config; then
-    echo "⚠️ 系统未配置Docker镜像加速器或代理，将使用脚本内置加速源"
+    echo "⚠️ 系统未配置Docker加速器或代理，将使用脚本内置加速源替换镜像地址..."
     
     TEMP_FILE=$(mktemp)
     cp "$TARGET_FILE" "$TEMP_FILE"
-    
-    # 处理所有配置的镜像仓库
+
+    # 遍历加速器配置进行替换
     for config in "${MIRROR_CONFIG[@]}"; do
         IFS='|' read -r registry mirror <<< "$config"
+        mirror_host=$(echo "$mirror" | sed 's|https://||')
+
+        # 替换带仓库前缀的镜像，例如 "image: ghcr.io/user/repo"
+        sed -i "s|image: ${registry}/|image: ${mirror_host}/|g" "$TEMP_FILE"
         
-        # 处理带仓库前缀的镜像
-        sed -i "s|image: ${registry}/|image: ${mirror#https://}/|g" "$TEMP_FILE"
-        
-        # 处理docker.io官方镜像(无前缀)
+        # 特别处理docker.io官方镜像（通常不带仓库前缀）
         if [ "$registry" == "docker.io" ]; then
-            sed -i "s|image: $$[^/]*$$:$$[^ ]*$$$|image: ${mirror#https://}/\1:\2|g" "$TEMP_FILE"
-            sed -i "s|image: $$[^/]*$$$|image: ${mirror#https://}/\1|g" "$TEMP_FILE"
-        fi
-        
-        # 检查是否替换成功
-        if grep -q "image: ${mirror#https://}/" "$TEMP_FILE"; then
-            echo "✅ ${registry} 镜像加速成功: ${mirror}"
+            # 匹配 "image: <image_name>:<tag>" 或 "image: <image_name>"
+            # 正则表达式确保只匹配不包含'/'的镜像名，避免错误替换
+            sed -i -E "s|image: ([^/:]+):|image: ${mirror_host}/\1:|g" "$TEMP_FILE"
+            sed -i -E "s|image: ([^/:]+)$|image: ${mirror_host}/\1|g" "$TEMP_FILE"
         fi
     done
     
+    # 将处理后的临时文件作为最终的Compose文件
     TARGET_FILE="$TEMP_FILE"
+    echo "✅ 镜像地址替换完成。"
 else
-    echo "ℹ️ 跳过镜像加速处理，使用系统配置的镜像加速器或代理"
+    echo "ℹ️ 跳过镜像地址替换，将使用系统配置。"
 fi
 
 # 执行docker-compose
-echo "✅ 文件已保存到 $TARGET_FILE"
-echo "正在启动容器服务..."
+echo "正在使用 $TARGET_FILE 启动容器服务..."
 cd "$TARGET_DIR" || { echo "❌ 无法进入目录 $TARGET_DIR"; exit 1; }
 
-if ! docker-compose -f "$TARGET_FILE" up -d; then
-    echo "❌ docker-compose 执行失败！请检查："
-    echo "1. Docker服务是否运行"
-    echo "2. YAML文件格式是否正确"
-    echo "3. 是否有足够的权限"
+# 执行docker-compose时，取消所有代理环境变量
+if ! env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY docker-compose -f "$TARGET_FILE" up -d; then
+    echo "❌ docker-compose 执行失败！"
+    # 如果使用了临时文件，则在失败后清理
     [ -n "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
     exit 1
 fi
