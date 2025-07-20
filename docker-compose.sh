@@ -11,26 +11,26 @@ TARGET_FILE="$TARGET_DIR/docker-compose.yml"
 # 多仓库镜像加速源配置（仅在系统未配置加速器或代理时使用）
 MIRROR_CONFIG=(
     # docker.io 镜像加速源
-    "docker.io|https://docker.woskee.nyc.mn"
-    "docker.io|https://docker.luxxk.dpdns.org"
-    "docker.io|https://docker.woskee.dpdns.org"
-    "docker.io|https://docker.wosken.dpdns.org"
+    "docker.io|docker.woskee.nyc.mn"
+    "docker.io|hdocker.luxxk.dpdns.org"
+    "docker.io|docker.woskee.dpdns.org"
+    "docker.io|docker.wosken.dpdns.org"
     
     # ghcr.io 镜像加速源
-    "ghcr.io|https://ghcr.nju.edu.cn"
-    "ghcr.io|https://ghcr.linkos.org"
+    "ghcr.io|ghcr.nju.edu.cn"
+    "ghcr.io|ghcr.linkos.org"
     
     # k8s.gcr.io 镜像加速源
-    "k8s.gcr.io|https://registry.aliyuncs.com/google_containers"
+    "k8s.gcr.io|registry.aliyuncs.com/google_containers"
     
     # quay.io 镜像加速源
-    "quay.io|https://quay.mirror.aliyuncs.com"
+    "quay.io|quay.mirror.aliyuncs.com"
     
     # gcr.io 镜像加速源
-    "gcr.io|https://gcr.mirror.aliyuncs.com"
+    "gcr.io|gcr.mirror.aliyuncs.com"
     
     # mcr.microsoft.com 镜像加速源
-    "mcr.microsoft.com|https://dockerhub.azk8s.cn"
+    "mcr.microsoft.com|dockerhub.azk8s.cn"
 )
 
 # 检查终端是否配置了代理
