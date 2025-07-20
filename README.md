@@ -11,7 +11,7 @@ bash -c "$(curl -fsSL https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy8
 ```
 # mihomo祼核代理
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/tyy840913/mihomo-proxy/refs/heads/master/mihomo/mihomo.sh)"
+bash -c "$(curl -fsSL https://route.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/mihomo-proxy/refs/heads/master/mihomo/mihomo.sh)"
 ```
 
 # 一键运行docker-compose
