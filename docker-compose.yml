@@ -1,7 +1,7 @@
 services:
   # 1. Portainer - Docker 可视化管理
   portainer:
-    image: 6053537/portainer-ce:latest
+    image: route.woskee.nyc.mn/6053537/portainer-ce:latest
     container_name: portainer
     restart: always
     network_mode: bridge
@@ -13,7 +13,7 @@ services:
 
   # 2. openlist - 文件列表服务
   openlist:
-    image: ghcr.io/openlistteam/openlist-git:beta-aio
+    image: ghcr.nju.edu.cn/openlistteam/openlist-git:beta-aio
     container_name: openlist
     restart: always
     network_mode: bridge
@@ -26,7 +26,7 @@ services:
 
   # 3. Lucky - 反向代理工具（Host 网络）
   lucky:
-    image: gdy666/lucky:latest
+    image: route.luxxk.dpdns.org/gdy666/lucky:latest
     container_name: lucky
     restart: always
     network_mode: host
@@ -37,7 +37,7 @@ services:
 
   # 4. EasyNode - SSH 管理工具
   easynode:
-    image: chaoszhu/easynode:latest
+    image: route.wosken.dpdns.org/chaoszhu/easynode:latest
     container_name: easynode
     restart: always
     network_mode: bridge
@@ -50,7 +50,7 @@ services:
 
   # 5. Vaultwarden - 密码管理服务
   vaultwarden:
-    image: vaultwarden/server:latest
+    image: route.woskee.dpdns.org/vaultwarden/server:latest
     container_name: vaultwarden
     restart: always
     network_mode: bridge
@@ -65,7 +65,7 @@ services:
    
   # 6. Watchtower - 自动更新容器
   watchtower:
-    image: containrrr/watchtower:latest
+    image: route.woskee.dpdns.org/containrrr/watchtower:latest
     container_name: watchtower
     restart: always
     network_mode: host
@@ -77,7 +77,7 @@ services:
 
   # 7. subs-check 代理池（订阅合并）
   subs-check:
-    image: ghcr.io/beck-8/subs-check:latest
+    image: ghcr.nju.edu.cn/beck-8/subs-check:latest
     container_name: subs-check
     volumes:
       - /docker_data/subs:/app/config
