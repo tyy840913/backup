@@ -18,84 +18,88 @@ MIRROR_CONFIG=(
     "mcr.microsoft.com|https://dockerhub.azk8s.cn"
 )
 
-# 检查系统是否已配置Docker镜像加速器或代理
-check_system_config() {
-    # 检查 /etc/docker/daemon.json 是否配置了 registry-mirrors
+# 检查系统是否已配置Docker镜像加速器
+has_system_mirror() {
     if [ -f "/etc/docker/daemon.json" ] && grep -q "registry-mirrors" /etc/docker/daemon.json; then
-        echo "✅ 检测到系统已配置Docker镜像加速器"
-        return 0
+        return 0 # 0表示true (有)
     fi
-    # 检查Docker服务的systemd配置中是否包含代理设置
     if systemctl cat docker 2>/dev/null | grep -q "Environment=.*_PROXY="; then
-        echo "✅ 检测到Docker服务已配置代理"
-        return 0
+        return 0 # 0表示true (有)
     fi
-    return 1
+    return 1 # 1表示false (没有)
 }
 
-# 始终使用镜像URL下载
-DOWNLOAD_URL="$MIRROR_URL"
+# 下载 docker-compose.yml 文件
+download_compose_file() {
+    echo "正在从 $MIRROR_URL 下载 docker-compose.yml..." >&2
+    mkdir -p "$TARGET_DIR"
+    if ! curl --noproxy '*' -sSL "$MIRROR_URL" -o "$TARGET_FILE"; then
+        echo "❌ 文件下载失败！请检查网络连接和URL。" >&2
+        exit 1
+    fi
+    if [ ! -s "$TARGET_FILE" ]; then
+        echo "❌ 文件下载后为空或不存在。" >&2
+        exit 1
+    fi
+}
 
-# 创建目标目录
-mkdir -p "$TARGET_DIR"
+# 替换镜像地址
+process_images() {
+    local temp_file
+    temp_file=$(mktemp)
+    cp "$TARGET_FILE" "$temp_file"
 
-# 使用curl下载文件，并禁用代理
-echo "正在从 $DOWNLOAD_URL 下载 docker-compose.yml..."
-if ! curl --noproxy '*' -sSL "$DOWNLOAD_URL" -o "$TARGET_FILE"; then
-    echo "❌ 文件下载失败！请检查网络连接和URL。"
-    exit 1
-fi
+    echo "🚀 开始处理镜像地址..." >&2
 
-# 验证文件是否下载成功
-if [ ! -s "$TARGET_FILE" ]; then
-    echo "❌ 文件下载后为空或不存在。"
-    exit 1
-fi
+    # 仅在系统未配置加速器时处理 docker.io
+    if ! has_system_mirror; then
+        echo "⚠️ 系统未配置Docker加速器或代理。" >&2
+        # 检查是否存在需要替换的 docker.io 镜像
+        if grep -q -E 'image: ([^/:]+:[^/]+)$|image: ([^/:]+)$|image: (([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+))' "$temp_file"; then
+            echo "   -> 正在为 docker.io 配置镜像加速..." >&2
+            local mirror_host
+            mirror_host=$(echo "https://docker.woskee.nyc.mn" | sed 's|https://||')
+            sed -i -E "s#image: (([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+))#image: ${mirror_host}/\1#g" "$temp_file"
+            sed -i -E "s#image: ([^/:]+:[^/]+)$#image: ${mirror_host}/\1#g" "$temp_file"
+            sed -i -E "s#image: ([^/:]+)$#image: ${mirror_host}/\1#g" "$temp_file"
+        fi
+    else
+        echo "✅ 检测到系统已配置Docker镜像加速器，将跳过 docker.io" >&2
+    fi
 
-# 仅在系统未配置加速器或代理时，才进行镜像地址替换
-if ! check_system_config; then
-    echo "⚠️ 系统未配置Docker加速器或代理，将使用脚本内置加速源替换镜像地址..."
-    
-    TEMP_FILE=$(mktemp)
-    cp "$TARGET_FILE" "$TEMP_FILE"
-
-    # 遍历加速器配置进行替换
+    # 始终处理其他第三方仓库
     for config in "${MIRROR_CONFIG[@]}"; do
         IFS='|' read -r registry mirror <<< "$config"
-        mirror_host=$(echo "$mirror" | sed 's|https://||')
-
-        # 替换带仓库前缀的镜像，例如 "image: ghcr.io/user/repo"
-        sed -i "s|image: ${registry}/|image: ${mirror_host}/|g" "$TEMP_FILE"
-        
-        # 特别处理docker.io官方镜像（通常不带仓库前缀）
         if [ "$registry" == "docker.io" ]; then
-            # 匹配 "image: <image_name>:<tag>" 或 "image: <image_name>"
-            # 正则表达式确保只匹配不包含'/'的镜像名，避免错误替换
-            sed -i -E "s|image: ([^/:]+):|image: ${mirror_host}/\1:|g" "$TEMP_FILE"
-            sed -i -E "s|image: ([^/:]+)$|image: ${mirror_host}/\1|g" "$TEMP_FILE"
+            continue # docker.io 已在上面单独处理
+        fi
+
+        # 检查是否存在需要替换的镜像，如果存在则替换并打印日志
+        if grep -q "image: ${registry}/" "$temp_file"; then
+            echo "   -> 正在为 ${registry} 配置镜像加速..." >&2
+            local mirror_host
+            mirror_host=$(echo "$mirror" | sed 's|https://||')
+            sed -i "s#image: ${registry}/#image: ${mirror_host}/#g" "$temp_file"
         fi
     done
     
-    # 将处理后的临时文件作为最终的Compose文件
-    TARGET_FILE="$TEMP_FILE"
-    echo "✅ 镜像地址替换完成。"
-else
-    echo "ℹ️ 跳过镜像地址替换，将使用系统配置。"
-fi
+    # 返回处理后的临时文件名
+    echo "$temp_file"
+}
 
-# 执行docker-compose
-echo "正在使用 $TARGET_FILE 启动容器服务..."
+# --- 主流程 ---
+download_compose_file
+PROCESSED_FILE=$(process_images)
+
+echo "✅ 镜像地址处理完成。" >&2
+echo "正在使用 $PROCESSED_FILE 启动容器服务..." >&2
 cd "$TARGET_DIR" || { echo "❌ 无法进入目录 $TARGET_DIR"; exit 1; }
 
-# 执行docker-compose时，取消所有代理环境变量
-if ! env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY docker-compose -f "$TARGET_FILE" up -d; then
-    echo "❌ docker-compose 执行失败！"
-    # 如果使用了临时文件，则在失败后清理
-    [ -n "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
+if ! env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY docker-compose -f "$PROCESSED_FILE" up -d; then
+    echo "❌ docker-compose 执行失败！" >&2
+    rm -f "$PROCESSED_FILE"
     exit 1
 fi
 
-# 清理临时文件
-[ -n "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
-
-echo "🎉 容器服务已成功启动！"
+rm -f "$PROCESSED_FILE"
+echo "🎉 容器服务已成功启动！" >&2
