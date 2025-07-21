@@ -194,10 +194,10 @@ configure_mirror() {
     echo -e "${YELLOW}正在写入新的 Docker 镜像加速器配置...${NC}"
     if ! jq -n '{
         "registry-mirrors": [
-            "https://route.woskee.nyc.mn",
-            "https://route.luxxk.dpdns.org",
-            "https://route.woskee.dpdns.org",
-            "https://route.wosken.dpdns.org"
+            "https://docker.woskee.nyc.mn",
+            "https://docker.luxxk.dpdns.org",
+            "https://docker.woskee.dpdns.org",
+            "https://docker.wosken.dpdns.org"
         ]
     }' > "$DAEMON_JSON"; then
         echo -e "${RED}错误：生成配置文件失败！${NC}"; return 1;
