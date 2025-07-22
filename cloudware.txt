@@ -1,0 +1,189 @@
+// Worker 代码
+
+// 辅助函数：解码 Basic Auth 凭据
+function decodeBasicAuth(authHeader) {
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    return null;
+  }
+  try {
+    const encoded = authHeader.substring(6); // 移除 "Basic "
+    const decoded = atob(encoded); // Base64 解码
+    const [username, password] = decoded.split(':');
+    return { username, password };
+  } catch (e) {
+    console.error("Basic Auth 解码失败:", e);
+    return null;
+  }
+}
+
+// 辅助函数：根据文件名猜测 MIME 类型
+function guessContentType(filename) {
+  const fileExtension = filename.split('.').pop().toLowerCase();
+  switch (fileExtension) {
+    case 'sh':
+      return 'application/x-sh';
+    case 'js':
+      return 'application/javascript';
+    case 'txt':
+      return 'text/plain';
+    case 'html':
+      return 'text/html';
+    case 'css':
+      return 'text/css';
+    case 'json':
+      return 'application/json';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+    case 'gif':
+      return 'image/gif';
+    case 'svg':
+      return 'image/svg+xml';
+    case 'webp':
+      return 'image/webp';
+    case 'pdf':
+      return 'application/pdf';
+    case 'zip':
+      return 'application/zip';
+    case 'tar':
+      return 'application/x-tar';
+    case 'gz':
+      return 'application/gzip';
+    case 'mp3':
+      return 'audio/mpeg';
+    case 'mp4':
+      return 'video/mp4';
+    default:
+      return 'application/octet-stream'; // 默认是通用二进制流
+  }
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const path = url.pathname.substring(1); // 移除开头的斜杠
+
+    // --- 统一的身份验证逻辑 ---
+    const expectedUsername = env.JIANGUO_USERNAME;
+    const expectedPassword = env.JIANGUO_PASSWORD;
+
+    if (!expectedUsername || !expectedPassword) {
+      return new Response('错误：请确保在 Cloudflare Worker 设置中配置了 JIANGUO_USERNAME 和 JIANGUO_PASSWORD 环境变量，用于身份验证。\n', { status: 500 });
+    }
+
+    const authHeader = request.headers.get('Authorization');
+    const credentials = decodeBasicAuth(authHeader);
+
+    if (!credentials || credentials.username !== expectedUsername || credentials.password !== expectedPassword) {
+      return new Response('未授权访问，请输入正确的用户名和密码。\n', {
+        status: 401,
+        headers: { 'WWW-Authenticate': 'Basic realm="Protected Files"' }
+      });
+    }
+
+    // --- 更新文件逻辑 (PUT 请求到 /update/:filename) ---
+    if (request.method === 'PUT' && path.startsWith('update/')) {
+      const filename = path.substring('update/'.length);
+
+      if (!filename) {
+        return new Response('错误：请在 URL 路径中指定要更新的文件名，例如 /update/my-script.sh\n', { status: 400 });
+      }
+
+      try {
+        const fileData = await request.arrayBuffer();
+        await env.MY_SCRIPT_BUCKET.put(filename, fileData);
+        return new Response(`文件 "${filename}" 已成功更新 KV 桶。\n`, { status: 200 });
+      } catch (error) {
+        console.error("文件更新失败:", error);
+        return new Response(`文件更新时发生错误：${error.message}\n`, { status: 500 });
+      }
+    }
+
+    // --- 删除文件逻辑 (DELETE 请求到 /delete/:filename) ---
+    if (request.method === 'DELETE' && path.startsWith('delete/')) {
+      const filename = path.substring('delete/'.length);
+
+      if (!filename) {
+        return new Response('错误：请在 URL 路径中指定要删除的文件名，例如 /delete/my-file.txt\n', { status: 400 });
+      }
+
+      try {
+        await env.MY_SCRIPT_BUCKET.delete(filename);
+        return new Response(`文件 "${filename}" 已成功从 KV 桶中删除。\n`, { status: 200 });
+      } catch (error) {
+        console.error("文件删除失败:", error);
+        return new Response(`文件删除时发生错误：${error.message}\n`, { status: 500 });
+      }
+    }
+
+    // --- 查询所有键逻辑 (GET 请求到 /list-keys) ---
+    if (request.method === 'GET' && path === 'list-keys') {
+      try {
+        const listResponse = await env.MY_SCRIPT_BUCKET.list();
+        const keys = listResponse.keys.map(key => key.name); // 提取键名
+
+        return new Response(JSON.stringify(keys, null, 2), {
+          headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+          status: 200
+        });
+      } catch (error) {
+        console.error("列出键失败:", error);
+        return new Response(`列出键时发生错误：${error.message}\n`, { status: 500 });
+      }
+    }
+
+    // --- 下载文件逻辑 (GET 请求到其他路径) ---
+    if (!path) {
+      return new Response(
+        `<!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>文件服务</title>
+          <style>
+            body { font-family: sans-serif; margin: 2em; text-align: center; }
+            a { color: #007bff; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+          </style>
+        </head>
+        <body>
+          <h1>Cloudflare Worker 文件服务</h1>
+          <p>请在 URL 路径中指定要下载的文件名。</p>
+          <p>例如: <a href="${url.origin}/your-file-name">${url.origin}/your-file-name</a></p>
+          <p>要更新文件，请使用 PUT 请求到 <code>${url.origin}/update/your-file-name</code>。</p>
+          <p>要删除文件，请使用 DELETE 请求到 <code>${url.origin}/delete/your-file-name</code>。</p>
+          <p>要列出所有文件，请使用 GET 请求到 <code>${url.origin}/list-keys</code>。</p>
+          <p>请确保文件已存储在 KV 桶中。</p>
+          <p>注意：所有操作都需要身份验证。</p>
+        </body>
+        </html>`,
+        {
+          headers: { 'Content-Type': 'text/html;charset=UTF-8' },
+          status: 200
+        }
+      );
+    }
+
+    try {
+      const fileContent = await env.MY_SCRIPT_BUCKET.get(path, { type: 'arrayBuffer' });
+
+      if (fileContent === null) {
+        return new Response(`未找到文件: ${path}\n`, { status: 404 });
+      }
+
+      const contentType = guessContentType(path);
+      const headers = {
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(path)}"`
+      };
+
+      return new Response(fileContent, { headers });
+
+    } catch (error) {
+      console.error("Worker 运行时错误:", error);
+      return new Response(`处理文件下载时发生错误：${error.message}\n`, { status: 500 });
+    }
+  },
+};
