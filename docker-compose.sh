@@ -2,7 +2,7 @@
 
 # 设置目标URL和本地路径
 COMPOSE_URL="https://raw.githubusercontent.com/tyy840913/backup/main/docker-compose.yml"
-TARGET_DIR="/tmp/docker-compose"
+TARGET_DIR="/tmp"
 TARGET_FILE="$TARGET_DIR/docker-compose.yml"
 
 # 创建目标目录
