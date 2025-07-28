@@ -92,6 +92,16 @@ services:
     restart: always
     tty: true
     network_mode: bridge
+    
+  # 8. gemini-key (gemini)
+  gemini-balance:
+    image: ghcr.nju.edu.cn/snailyp/gemini-balance
+    container_name: gemini-balance
+    ports:
+      - "8000:8000"
+    environment:
+      - API_KEYS=["AIzaSyBQtqyZWM2hGCReaFHNKRRaQFXQYzStu_g","AIzaSyCtqOzhwvjM2FyfTDXhzJrPZ8DJgyKpLoY","AIzaSyCAzjvnfkhFmvM6sB5SpVxAcZsLRETDPb4"]  # 环境变量直接保留原格式[3,9](@ref)
+    restart: always
 
 volumes:
   portainer:
