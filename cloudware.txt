@@ -1,17 +1,20 @@
 // Worker 代码
 
-// 辅助函数：解码 Basic Auth 凭据
+// 辅助函数：解码并编码 Basic Auth
+function getAuthHeader(username, password) {
+  const credentials = `${username}:${password}`;
+  const encoded = btoa(credentials);
+  return `Basic ${encoded}`;
+}
+
 function decodeBasicAuth(authHeader) {
-  if (!authHeader || !authHeader.startsWith('Basic ')) {
-    return null;
-  }
+  if (!authHeader || !authHeader.startsWith('Basic ')) return null;
   try {
-    const encoded = authHeader.substring(6); // 移除 "Basic "
-    const decoded = atob(encoded); // Base64 解码
+    const encoded = authHeader.substring(6);
+    const decoded = atob(encoded);
     const [username, password] = decoded.split(':');
     return { username, password };
   } catch (e) {
-    console.error("Basic Auth 解码失败:", e);
     return null;
   }
 }
@@ -19,171 +22,905 @@ function decodeBasicAuth(authHeader) {
 // 辅助函数：根据文件名猜测 MIME 类型
 function guessContentType(filename) {
   const fileExtension = filename.split('.').pop().toLowerCase();
-  switch (fileExtension) {
-    case 'sh':
-      return 'application/x-sh';
-    case 'js':
-      return 'application/javascript';
-    case 'txt':
-      return 'text/plain';
-    case 'html':
-      return 'text/html';
-    case 'css':
-      return 'text/css';
-    case 'json':
-      return 'application/json';
-    case 'jpg':
-    case 'jpeg':
-      return 'image/jpeg';
-    case 'png':
-    case 'gif':
-      return 'image/gif';
-    case 'svg':
-      return 'image/svg+xml';
-    case 'webp':
-      return 'image/webp';
-    case 'pdf':
-      return 'application/pdf';
-    case 'zip':
-      return 'application/zip';
-    case 'tar':
-      return 'application/x-tar';
-    case 'gz':
-      return 'application/gzip';
-    case 'mp3':
-      return 'audio/mpeg';
-    case 'mp4':
-      return 'video/mp4';
-    default:
-      return 'application/octet-stream'; // 默认是通用二进制流
-  }
+  const mimeTypes = {
+    'sh': 'application/x-sh', 'js': 'application/javascript', 'txt': 'text/plain',
+    'html': 'text/html', 'css': 'text/css', 'json': 'application/json',
+    'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif',
+    'svg': 'image/svg+xml', 'webp': 'image/webp', 'pdf': 'application/pdf',
+    'zip': 'application/zip', 'tar': 'application/x-tar', 'gz': 'application/gzip',
+    'mp3': 'audio/mpeg', 'mp4': 'video/mp4'
+  };
+  return mimeTypes[fileExtension] || 'application/octet-stream';
 }
+
+// --- 文件管理器 HTML 页面 ---
+const fileManagerHtml = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KV 跨域文件管理器</title>
+  <style>
+    :root {
+      --primary-color: #007bff; --border-color: #dee2e6; --hover-bg-color: #e9ecef;
+      --text-color: #212529; --folder-color: #f7b731; --file-color: #adb5bd;
+      --danger-color: #dc3545; --success-color: #28a745;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background-color: #f8f9fa; }
+    .container { max-width: 960px; margin: 0 auto; padding: 20px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+    header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); margin-bottom: 20px; }
+    h1 { font-size: 1.75rem; margin: 0; }
+    #file-input { display: none; }
+    .upload-btn { background-color: var(--primary-color); color: white; padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
+    .upload-btn:hover { background-color: #0056b3; }
+    .upload-btn:disabled { background-color: #a0a0a0; cursor: not-allowed; }
+    #path-breadcrumbs { font-size: 1rem; margin-bottom: 20px; color: #6c757d; white-space: nowrap; overflow-x: auto; }
+    #file-list { list-style: none; padding: 0; border: 1px solid var(--border-color); border-radius: 5px; }
+    #file-list li { display: flex; align-items: center; padding: 12px 15px; border-bottom: 1px solid var(--border-color); transition: background-color 0.2s; }
+    #file-list li:last-child { border-bottom: none; }
+    #file-list li:hover { background-color: var(--hover-bg-color); }
+    .item-icon { width: 24px; height: 24px; margin-right: 15px; flex-shrink: 0; }
+    .item-name { flex-grow: 1; cursor: pointer; color: var(--text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item-name.folder { font-weight: 500; }
+    .item-actions { display: flex; align-items: center; }
+    .item-actions button { background: none; border: none; cursor: pointer; padding: 5px; margin-left: 8px; opacity: 0.7; }
+    .item-actions button:hover { opacity: 1; }
+    .item-actions svg { width: 18px; height: 18px; vertical-align: middle; }
+    #status-message { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.75); color: white; padding: 10px 20px; border-radius: 5px; display: none; z-index: 1000; }
+    
+    /* Modal styles */
+    .modal { display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.4); overflow: auto; }
+    .modal-content { background-color: #fefefe; margin: 2% auto; padding: 10px; /* Reduced padding */ border: 1px solid #888; border-radius: 5px; width: 80%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
+    .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+    .close:hover, .close:focus { color: black; text-decoration: none; }
+    .modal input, .modal select { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
+    .modal-buttons { text-align: right; margin-top: 15px; }
+    .modal-buttons button { margin-left: 10px; padding: 8px 15px; border: none; border-radius: 3px; cursor: pointer; }
+    .btn-cancel { background-color: #ccc; }
+    .btn-confirm { background-color: var(--primary-color); color: white; }
+    .btn-danger { background-color: var(--danger-color); color: white; }
+    
+    /* Editor modal */
+    #editor-modal .modal-content { 
+      width: 95%; 
+      max-width: 95%; 
+      height: 90vh;
+      max-height: 90vh; 
+      display: flex; 
+      flex-direction: column; 
+    }
+    .editor-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 2px; /* Further reduced */
+      margin-bottom: 10px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .editor-header h2 {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+    .editor-header .close {
+      font-size: 1.5rem; /* Reduced close button size */
+      line-height: 1;
+    }
+    .editor-toolbar {
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between; /* This will separate the button groups */
+      align-items: center;
+    }
+    .editor-toolbar > div { /* Target the left and right group divs */
+      display: flex;
+      gap: 8px;
+    }
+    .editor-toolbar button {
+      padding: 5px 10px;
+      border: 1px solid var(--border-color);
+      background-color: #f8f9fa;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .editor-toolbar button:hover {
+      background-color: var(--hover-bg-color);
+    }
+    /* Re-apply specific button styles for toolbar context */
+    .editor-toolbar .btn-cancel {
+        background-color: #ccc;
+        color: black;
+    }
+    .editor-toolbar .btn-confirm {
+        background-color: var(--primary-color);
+        color: white;
+    }
+    #editor-textarea { 
+      flex-grow: 1; 
+      width: 100%; 
+      font-family: monospace; 
+      font-size: 14px; 
+      resize: none; 
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+    
+    /* Directory tree */
+    .directory-tree { max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
+    .directory-tree ul { list-style-type: none; padding-left: 20px; }
+    .directory-tree > ul { padding-left: 0; }
+    .directory-tree li { cursor: pointer; padding: 3px 0; }
+    .directory-tree li.folder::before { content: "📁 "; }
+    .directory-tree li.file::before { content: "📄 "; }
+    .directory-tree li.selected { background-color: #e9ecef; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>KV 跨域文件管理器</h1>
+      <div class="header-buttons">
+        <button type="button" id="new-file-btn" class="upload-btn" disabled>新建文件</button>
+        <form id="upload-form" style="display: inline;">
+          <input type="file" id="file-input" multiple>
+          <button type="button" id="upload-btn" class="upload-btn" onclick="document.getElementById('file-input').click();" disabled>上传文件</button>
+        </form>
+      </div>
+    </header>
+    <div id="path-breadcrumbs"></div>
+    <ul id="file-list"></ul>
+  </div>
+  
+  <!-- 复制/移动文件模态框 -->
+  <div id="copy-move-modal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2 id="copy-move-title">复制/移动文件</h2>
+      <p>源文件: <span id="copy-move-source"></span></p>
+      <label for="copy-move-destination">目标路径:</label>
+      <input type="text" id="copy-move-destination" placeholder="输入目标路径">
+      <div>
+        <label>选择域名:</label>
+        <div class="directory-tree" id="directory-tree"></div>
+      </div>
+      <div class="modal-buttons">
+        <button class="btn-cancel">取消</button>
+        <button class="btn-confirm" id="confirm-copy-btn">复制到</button>
+        <button class="btn-confirm" id="confirm-move-btn">移动到</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 重命名文件模态框 -->
+  <div id="rename-modal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2>重命名文件</h2>
+      <p>当前名称: <span id="rename-source"></span></p>
+      <label for="rename-destination">新名称:</label>
+      <input type="text" id="rename-destination" placeholder="输入新名称">
+      <div class="modal-buttons">
+        <button class="btn-cancel">取消</button>
+        <button class="btn-confirm" id="confirm-rename">重命名</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 在线编辑模态框 -->
+  <div id="editor-modal" class="modal">
+    <div class="modal-content">
+      <div class="editor-header">
+        <h2>编辑文件: <span id="editor-filename"></span></h2>
+        <span class="close">&times;</span>
+      </div>
+      <div class="editor-toolbar">
+        <div> <!-- Left Group -->
+          <button id="format-json-btn" title="格式化JSON">格式化JSON</button>
+          <button id="minify-json-btn" title="压缩JSON">压缩JSON</button>
+        </div>
+        <div> <!-- Right Group -->
+          <button class="btn-cancel">取消</button>
+          <button class="btn-confirm" id="save-editor">保存</button>
+        </div>
+      </div>
+      <textarea id="editor-textarea"></textarea>
+    </div>
+  </div>
+  
+  <!-- 新建文件模态框 -->
+  <div id="new-file-modal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2>新建文件</h2>
+      <label for="new-filename">文件名:</label>
+      <input type="text" id="new-filename" placeholder="例如: new-file.txt">
+      <div class="modal-buttons">
+        <button class="btn-cancel">取消</button>
+        <button class="btn-confirm" id="confirm-new-file">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="status-message"></div>
+
+  <script>
+    const icons = {
+      folder: '<svg class="item-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="var(--folder-color)"><path d="M10 4H4c-1.1 0-2 .89-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>',
+      file: '<svg class="item-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="var(--file-color)"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM13 9V3.5L18.5 9H13z"/></svg>',
+      download: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
+      delete: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="var(--danger-color)"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>',
+      copy: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
+      move: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
+      edit: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
+      rename: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L3 22h3l1.5-4h9l1.5 4h3L12 2zm-1.38 14L12 7.67 13.38 16h-2.76z"/></svg>'
+    };
+
+    let allFilesByDomain = {};
+    let currentPath = ''; // e.g., "my-worker.dev/folder/"
+    let currentDomain = '';
+    let currentFileForOperation = null; // 用于跟踪当前操作的文件
+
+    document.addEventListener('DOMContentLoaded', () => {
+      render();
+      document.getElementById('file-input').addEventListener('change', handleFileUpload);
+      
+      // 设置模态框关闭事件
+      setupModalEvents();
+    });
+
+    function setupModalEvents() {
+      // 新建文件模态框事件
+      document.getElementById('new-file-btn').onclick = () => {
+        document.getElementById('new-filename').value = '';
+        document.getElementById('new-file-modal').style.display = 'block';
+      };
+      document.getElementById('new-file-modal').querySelector('.close').onclick = () => {
+        document.getElementById('new-file-modal').style.display = 'none';
+      };
+      document.getElementById('new-file-modal').querySelector('.btn-cancel').onclick = () => {
+        document.getElementById('new-file-modal').style.display = 'none';
+      };
+      document.getElementById('confirm-new-file').onclick = handleNewFileConfirm;
+
+      // 复制/移动模态框事件
+      document.getElementById('copy-move-modal').querySelector('.close').onclick = () => {
+        document.getElementById('copy-move-modal').style.display = 'none';
+      };
+      document.getElementById('copy-move-modal').querySelector('.btn-cancel').onclick = () => {
+        document.getElementById('copy-move-modal').style.display = 'none';
+      };
+      document.getElementById('confirm-copy-btn').onclick = () => handleCopyMoveConfirm('copy');
+      document.getElementById('confirm-move-btn').onclick = () => handleCopyMoveConfirm('move');
+      
+      // 重命名模态框事件
+      document.getElementById('rename-modal').querySelector('.close').onclick = () => {
+        document.getElementById('rename-modal').style.display = 'none';
+      };
+      document.getElementById('rename-modal').querySelector('.btn-cancel').onclick = () => {
+        document.getElementById('rename-modal').style.display = 'none';
+      };
+      document.getElementById('confirm-rename').onclick = handleRenameConfirm;
+      
+      // 编辑器模态框事件
+      document.getElementById('editor-modal').querySelector('.close').onclick = () => {
+        document.getElementById('editor-modal').style.display = 'none';
+      };
+      document.getElementById('editor-modal').querySelector('.btn-cancel').onclick = () => {
+        document.getElementById('editor-modal').style.display = 'none';
+      };
+      document.getElementById('save-editor').onclick = handleSaveEditor;
+
+      // JSON 工具按钮事件
+      document.getElementById('format-json-btn').onclick = () => formatJson(true);
+      document.getElementById('minify-json-btn').onclick = () => formatJson(false);
+      
+      // 点击模态框外部关闭
+      window.onclick = function(event) {
+        if (event.target.classList.contains('modal')) {
+          event.target.style.display = 'none';
+        }
+      };
+    }
+
+    function showStatus(message, isError = false, duration = 3000) {
+      const statusElement = document.getElementById('status-message');
+      statusElement.textContent = message;
+      statusElement.style.backgroundColor = isError ? 'var(--danger-color)' : 'rgba(0,0,0,0.75)';
+      statusElement.style.display = 'block';
+      setTimeout(() => { statusElement.style.display = 'none'; }, duration);
+    }
+
+    async function render() {
+      try {
+        const response = await fetch('/list-keys');
+        if (!response.ok) throw new Error('无法获取文件列表: ' + await response.text());
+        allFilesByDomain = await response.json();
+        currentDomain = allFilesByDomain.currentDomain;
+        renderFileList();
+        renderBreadcrumbs();
+        updateUploadButtonState();
+      } catch (error) {
+        showStatus('错误: ' + error.message, true);
+      }
+    }
+    
+    function updateUploadButtonState() {
+        const uploadBtn = document.getElementById('upload-btn');
+        const newFileBtn = document.getElementById('new-file-btn');
+        const canOperate = !!currentPath;
+
+        uploadBtn.disabled = !canOperate;
+        newFileBtn.disabled = !canOperate;
+
+        const title = canOperate ? '可以在当前目录操作' : '请先进入一个域名目录';
+        uploadBtn.title = title;
+        newFileBtn.title = title;
+    }
+
+    function renderBreadcrumbs() {
+      const breadcrumbs = document.getElementById('path-breadcrumbs');
+      breadcrumbs.innerHTML = '';
+      const rootLink = document.createElement('a');
+      rootLink.href = '#';
+      rootLink.textContent = '所有域';
+      rootLink.onclick = (e) => { e.preventDefault(); currentPath = ''; renderFileList(); renderBreadcrumbs(); updateUploadButtonState(); };
+      breadcrumbs.appendChild(rootLink);
+
+      const parts = currentPath.split('/').filter(p => p);
+      let path = '';
+      parts.forEach(part => {
+        path += part + '/';
+        breadcrumbs.appendChild(document.createTextNode(' / '));
+        const link = document.createElement('a');
+        link.href = '#';
+        link.textContent = part;
+        const capturedPath = path;
+        link.onclick = (e) => { e.preventDefault(); currentPath = capturedPath; renderFileList(); renderBreadcrumbs(); updateUploadButtonState(); };
+        breadcrumbs.appendChild(link);
+      });
+    }
+
+    function renderFileList() {
+      const fileListEl = document.getElementById('file-list');
+      fileListEl.innerHTML = '';
+      const pathDomain = currentPath.split('/')[0];
+      const keys = allFilesByDomain[pathDomain] || [];
+
+      // Root view: show domains as folders
+      if (!currentPath) {
+        Object.keys(allFilesByDomain).filter(k => k !== 'currentDomain').forEach(domain => {
+          const li = document.createElement('li');
+          li.innerHTML = icons.folder + '<span class="item-name folder">' + domain + '</span>';
+          li.onclick = () => { currentPath = domain + '/'; renderFileList(); renderBreadcrumbs(); updateUploadButtonState(); };
+          fileListEl.appendChild(li);
+        });
+        if (fileListEl.children.length === 0) {
+             const li = document.createElement('li');
+             li.textContent = '未配置其他域名或获取失败';
+             li.style.justifyContent = 'center';
+             fileListEl.appendChild(li);
+        }
+        return;
+      }
+
+      const items = new Map();
+      const pathWithinDomain = currentPath.substring(pathDomain.length + 1); // e.g., "folder/" or ""
+      const pathPrefixLength = pathWithinDomain.length;
+      keys.forEach(key => {
+        if (key.startsWith(pathWithinDomain)) {
+           const remaining = key.substring(pathPrefixLength);
+           const name = remaining.split('/')[0];
+           if (name) {
+             const isFolder = remaining.includes('/') && remaining !== name;
+             items.set(name, { type: isFolder ? 'folder' : 'file', name });
+           }
+        }
+      });
+
+      if (items.size === 0) {
+        const li = document.createElement('li');
+        li.textContent = '此目录为空';
+        li.style.justifyContent = 'center';
+        fileListEl.appendChild(li);
+        return;
+      }
+
+      const sortedItems = Array.from(items.values()).sort((a, b) => {
+        if (a.type === b.type) return a.name.localeCompare(b.name);
+        return a.type === 'folder' ? -1 : 1;
+      });
+
+      sortedItems.forEach(item => {
+        const li = document.createElement('li');
+        const fullPath = currentPath + item.name;
+        const fullKey = pathWithinDomain + item.name;
+        li.innerHTML = item.type === 'folder' ? icons.folder : icons.file;
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'item-name' + (item.type === 'folder' ? ' folder' : '');
+        nameSpan.textContent = item.name;
+        li.appendChild(nameSpan);
+
+        if (item.type === 'folder') {
+          li.onclick = () => { currentPath = fullPath + '/'; renderFileList(); renderBreadcrumbs(); };
+        } else {
+          const actions = document.createElement('div');
+          actions.className = 'item-actions';
+          
+          // 编辑按钮（仅对文本文件）
+          if (isTextFile(item.name)) {
+            const editBtn = document.createElement('button');
+            editBtn.title = '编辑';
+            editBtn.innerHTML = icons.edit;
+            editBtn.onclick = (e) => { e.stopPropagation(); editFile(pathDomain, fullKey); };
+            actions.appendChild(editBtn);
+          }
+          
+          // 复制/移动按钮
+          const copyMoveBtn = document.createElement('button');
+          copyMoveBtn.title = '复制/移动';
+          copyMoveBtn.innerHTML = icons.copy;
+          copyMoveBtn.onclick = (e) => { e.stopPropagation(); showCopyMoveModal(pathDomain, fullKey); };
+          actions.appendChild(copyMoveBtn);
+          
+          // 重命名按钮
+          const renameBtn = document.createElement('button');
+          renameBtn.title = '重命名';
+          renameBtn.innerHTML = icons.rename;
+          renameBtn.onclick = (e) => { e.stopPropagation(); showRenameModal(pathDomain, fullKey); };
+          actions.appendChild(renameBtn);
+          
+          // 下载按钮
+          const downloadBtn = document.createElement('button');
+          downloadBtn.title = '下载';
+          downloadBtn.innerHTML = icons.download;
+          downloadBtn.onclick = (e) => { e.stopPropagation(); downloadFile(pathDomain, fullKey); };
+          actions.appendChild(downloadBtn);
+
+          // 删除按钮
+          const deleteBtn = document.createElement('button');
+          deleteBtn.title = '删除';
+          deleteBtn.innerHTML = icons.delete;
+          deleteBtn.onclick = (e) => { e.stopPropagation(); deleteFile(pathDomain, fullKey); };
+          actions.appendChild(deleteBtn);
+          li.appendChild(actions);
+        }
+        fileListEl.appendChild(li);
+      });
+    }
+    
+    // 判断是否为文本文件
+    function isTextFile(filename) {
+      const textExtensions = ['txt', 'js', 'json', 'html', 'css', 'md', 'xml', 'yml', 'yaml', 'csv', 'log', 'sh'];
+      const extension = filename.split('.').pop().toLowerCase();
+      return textExtensions.includes(extension);
+    }
+    
+    // 显示复制/移动模态框
+    function showCopyMoveModal(domain, filePath) {
+      currentFileForOperation = { domain, filePath };
+      document.getElementById('copy-move-source').textContent = filePath;
+      document.getElementById('copy-move-destination').value = filePath;
+      document.getElementById('copy-move-modal').style.display = 'block';
+      
+      // 构建目录树
+      buildDirectoryTree(domain, filePath);
+    }
+    
+    // 构建目录树
+    function buildDirectoryTree(domain, filePath) {
+      const treeContainer = document.getElementById('directory-tree');
+      treeContainer.innerHTML = '';
+      
+      // 获取所有域名
+      const domains = Object.keys(allFilesByDomain).filter(k => k !== 'currentDomain');
+      
+      // 只显示域名目录
+      const ul = document.createElement('ul');
+      domains.forEach(domainName => {
+        const li = document.createElement('li');
+        li.className = 'folder';
+        li.textContent = domainName;
+        li.dataset.domain = domainName;
+        
+        li.onclick = (e) => {
+          e.stopPropagation();
+          
+          // 构造目标路径：域名 + 原文件名
+          const fileName = filePath.split('/').pop();
+          const destinationPath = domainName + '/' + fileName;
+          
+          document.getElementById('copy-move-destination').value = destinationPath;
+          
+          // 高亮选中项
+          document.querySelectorAll('.directory-tree li').forEach(item => {
+            item.classList.remove('selected');
+          });
+          li.classList.add('selected');
+        };
+        
+        ul.appendChild(li);
+      });
+      treeContainer.appendChild(ul);
+    }
+    
+    // 显示重命名模态框
+    function showRenameModal(domain, filePath) {
+      currentFileForOperation = { domain, filePath };
+      document.getElementById('rename-source').textContent = filePath;
+      document.getElementById('rename-destination').value = filePath.split('/').pop(); // 只显示文件名
+      document.getElementById('rename-modal').style.display = 'block';
+    }
+
+    // 处理新建文件确认
+    async function handleNewFileConfirm() {
+      const filename = document.getElementById('new-filename').value.trim();
+      if (!filename) {
+        showStatus('请输入文件名', true);
+        return;
+      }
+
+      document.getElementById('new-file-modal').style.display = 'none';
+
+      const pathDomain = currentPath.split('/')[0];
+      const pathWithinDomain = currentPath.substring(pathDomain.length + 1);
+      const remoteKey = pathWithinDomain + filename;
+      const isRemote = pathDomain !== currentDomain;
+      const apiPath = isRemote ? 'proxy/' + pathDomain + '/update/' + remoteKey : 'update/' + remoteKey;
+
+      try {
+        // 创建一个空文件
+        const response = await fetch('/' + apiPath, { 
+          method: 'PUT', 
+          body: new Blob([], {type: 'text/plain'})
+        });
+        if (!response.ok) throw new Error(await response.text());
+        
+        showStatus('文件 "' + filename + '" 创建成功');
+        render(); // 刷新文件列表
+      } catch (error) {
+        showStatus('创建文件时出错: ' + error.message, true);
+      }
+    }
+    
+    // 处理复制/移动确认
+    async function handleCopyMoveConfirm(operation) {
+      const destination = document.getElementById('copy-move-destination').value.trim();
+      
+      if (!destination) {
+        showStatus('请输入目标路径', true);
+        return;
+      }
+      
+      const { domain, filePath } = currentFileForOperation;
+      document.getElementById('copy-move-modal').style.display = 'none';
+      
+      try {
+        // 下载源文件
+        const downloadPath = (domain === currentDomain) ? filePath : 'proxy/' + domain + '/' + filePath;
+        const response = await fetch('/' + downloadPath);
+        if (!response.ok) throw new Error('无法下载源文件: ' + response.status + ' ' + response.statusText);
+        
+        const fileContent = await response.blob();
+        
+        // 上传到新位置 - 需要确定目标域名
+        const targetDomain = Object.keys(allFilesByDomain)
+          .filter(k => k !== 'currentDomain')
+          .find(domainName => destination.startsWith(domainName + '/')) || currentDomain;
+          
+        // 从目标路径中移除域名部分，得到在KV中实际存储的key
+        const destinationKey = destination.startsWith(targetDomain + '/')
+          ? destination.substring(targetDomain.length + 1)
+          : destination;
+
+        // 如果目标是其他域名，使用proxy路径
+        const isRemoteTarget = targetDomain !== currentDomain;
+        const uploadPath = isRemoteTarget 
+          ? 'proxy/' + targetDomain + '/update/' + destinationKey
+          : 'update/' + destinationKey;
+        
+        const uploadResponse = await fetch('/' + uploadPath, { method: 'PUT', body: fileContent });
+        if (!uploadResponse.ok) throw new Error('上传失败: ' + uploadResponse.status + ' ' + await uploadResponse.text());
+        
+        // 如果是移动操作，删除源文件
+        if (operation === 'move') {
+          const deletePath = (domain === currentDomain) ? 'delete/' + filePath : 'proxy/' + domain + '/delete/' + filePath;
+          const deleteResponse = await fetch('/' + deletePath, { method: 'DELETE' });
+          if (!deleteResponse.ok) throw new Error('删除源文件失败: ' + await deleteResponse.text());
+          showStatus('文件移动成功');
+        } else {
+          showStatus('文件复制成功');
+        }
+        
+        render();
+      } catch (error) {
+        showStatus((operation === 'move' ? '移动' : '复制') + '文件时出错: ' + error.message, true);
+      }
+    }
+    
+    // 处理重命名确认
+    async function handleRenameConfirm() {
+      const newName = document.getElementById('rename-destination').value.trim();
+      if (!newName) {
+        showStatus('请输入新名称', true);
+        return;
+      }
+      
+      const { domain, filePath } = currentFileForOperation;
+      const pathParts = filePath.split('/');
+      pathParts[pathParts.length - 1] = newName;
+      const newPath = pathParts.join('/');
+      
+      document.getElementById('rename-modal').style.display = 'none';
+      
+      try {
+        // 下载源文件
+        const downloadPath = (domain === currentDomain) ? filePath : 'proxy/' + domain + '/' + filePath;
+        const response = await fetch('/' + downloadPath);
+        if (!response.ok) throw new Error('无法下载源文件');
+        
+        const fileContent = await response.blob();
+        
+        // 上传到新名称
+        const isRemote = domain !== currentDomain;
+        const uploadPath = isRemote ? 'proxy/' + domain + '/update/' + newPath : 'update/' + newPath;
+        
+        const uploadResponse = await fetch('/' + uploadPath, { method: 'PUT', body: fileContent });
+        if (!uploadResponse.ok) throw new Error(await uploadResponse.text());
+        
+        // 删除源文件
+        const deletePath = isRemote ? 'proxy/' + domain + '/delete/' + filePath : 'delete/' + filePath;
+        const deleteResponse = await fetch('/' + deletePath, { method: 'DELETE' });
+        if (!deleteResponse.ok) throw new Error(await deleteResponse.text());
+        
+        showStatus('文件重命名成功');
+        render();
+      } catch (error) {
+        showStatus('重命名文件时出错: ' + error.message, true);
+      }
+    }
+    
+    // 编辑文件
+    async function editFile(domain, filePath) {
+      try {
+        const downloadPath = (domain === currentDomain) ? filePath : 'proxy/' + domain + '/' + filePath;
+        const response = await fetch('/' + downloadPath);
+        if (!response.ok) throw new Error('无法下载文件');
+        
+        const content = await response.text();
+        
+        document.getElementById('editor-filename').textContent = filePath;
+        document.getElementById('editor-textarea').value = content;
+        currentFileForOperation = { domain, filePath };
+        document.getElementById('editor-modal').style.display = 'block';
+      } catch (error) {
+        showStatus('打开文件编辑器时出错: ' + error.message, true);
+      }
+    }
+
+    // JSON 格式化/压缩
+    function formatJson(beautify) {
+      const textarea = document.getElementById('editor-textarea');
+      try {
+        const jsonObj = JSON.parse(textarea.value);
+        if (beautify) {
+          textarea.value = JSON.stringify(jsonObj, null, 2); // 格式化，2个空格缩进
+        } else {
+          textarea.value = JSON.stringify(jsonObj); // 压缩
+        }
+        showStatus(beautify ? 'JSON 格式化成功' : 'JSON 压缩成功');
+      } catch (error) {
+        showStatus('错误: 无效的 JSON 内容。 ' + error.message, true);
+      }
+    }
+    
+    // 保存编辑后的文件
+    async function handleSaveEditor() {
+      const { domain, filePath } = currentFileForOperation;
+      const content = document.getElementById('editor-textarea').value;
+      
+      try {
+        const isRemote = domain !== currentDomain;
+        const uploadPath = isRemote ? 'proxy/' + domain + '/update/' + filePath : 'update/' + filePath;
+        
+        const response = await fetch('/' + uploadPath, {
+          method: 'PUT',
+          body: content,
+          headers: { 'Content-Type': 'text/plain' }
+        });
+        
+        if (!response.ok) throw new Error(await response.text());
+        
+        document.getElementById('editor-modal').style.display = 'none';
+        showStatus('文件保存成功');
+        render();
+      } catch (error) {
+        showStatus('保存文件时出错: ' + error.message, true);
+      }
+    }
+    
+    function downloadFile(domain, filePath) {
+        const path = (domain === currentDomain) ? filePath : 'proxy/' + domain + '/' + filePath;
+        window.location.href = '/' + path;
+    }
+
+    async function handleFileUpload(event) {
+      const files = event.target.files;
+      if (files.length === 0) return;
+      
+      const pathDomain = currentPath.split('/')[0];
+      if (!pathDomain) {
+          showStatus('不能在根目录上传文件，请先进入一个域名目录。', true);
+          return;
+      }
+      
+      const pathWithinDomain = currentPath.substring(pathDomain.length + 1);
+
+      showStatus('开始上传 ' + files.length + ' 个文件...');
+      for (const file of files) {
+        const remoteKey = pathWithinDomain + file.name;
+        const isRemote = pathDomain !== currentDomain;
+        const apiPath = isRemote ? 'proxy/' + pathDomain + '/update/' + remoteKey : 'update/' + remoteKey;
+        
+        try {
+          const response = await fetch('/' + apiPath, { method: 'PUT', body: file });
+          if (!response.ok) throw new Error(await response.text());
+          showStatus('文件 "' + file.name + '" 上传成功!');
+        } catch (error) {
+          showStatus('上传 "' + file.name + '" 时出错: ' + error.message, true);
+        }
+      }
+      event.target.value = '';
+      render();
+    }
+
+    async function deleteFile(domain, filePath) {
+      if (!confirm('确定要删除文件 "' + filePath + '" 吗？此操作无法撤销。')) return;
+      
+      const isRemote = domain !== currentDomain;
+      const apiPath = isRemote ? 'proxy/' + domain + '/delete/' + filePath : 'delete/' + filePath;
+
+      try {
+        const response = await fetch('/' + apiPath, { method: 'DELETE' });
+        if (!response.ok) throw new Error(await response.text());
+        showStatus('文件 "' + filePath + '" 已删除。');
+        render();
+      } catch (error) {
+        showStatus('删除文件时出错: ' + error.message, true);
+      }
+    }
+  </script>
+</body>
+</html>
+`;
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const path = url.pathname.substring(1); // 移除开头的斜杠
+    const path = url.pathname.substring(1);
 
-    // --- 统一的身份验证逻辑 ---
-    const expectedUsername = env.JIANGUO_USERNAME;
-    const expectedPassword = env.JIANGUO_PASSWORD;
-
-    if (!expectedUsername || !expectedPassword) {
-      return new Response('错误：请确保在 Cloudflare Worker 设置中配置了 JIANGUO_USERNAME 和 JIANGUO_PASSWORD 环境变量，用于身份验证。\n', { status: 500 });
+    // --- 统一身份验证 ---
+    const { JIANGUO_USERNAME, JIANGUO_PASSWORD, MY_SCRIPT_BUCKET, OTHER_DOMAINS } = env;
+    if (!JIANGUO_USERNAME || !JIANGUO_PASSWORD) {
+      return new Response('错误：未配置用户名或密码环境变量。\n', { status: 500 });
     }
-
     const authHeader = request.headers.get('Authorization');
     const credentials = decodeBasicAuth(authHeader);
-
-    if (!credentials || credentials.username !== expectedUsername || credentials.password !== expectedPassword) {
-      return new Response('未授权访问，请输入正确的用户名和密码。\n', {
+    if (!credentials || credentials.username !== JIANGUO_USERNAME || credentials.password !== JIANGUO_PASSWORD) {
+      return new Response('未授权访问。\n', {
         status: 401,
-        headers: { 'WWW-Authenticate': 'Basic realm="Protected Files"' }
+        headers: { 'WWW-Authenticate': 'Basic realm="KV Cross-Domain File Manager"' }
+      });
+    }
+    
+    const requestAuthHeader = getAuthHeader(JIANGUO_USERNAME, JIANGUO_PASSWORD);
+
+    // --- 代理路由 ---
+    if (path.startsWith('proxy/')) {
+      const parts = path.split('/');
+      const targetDomain = parts[1];
+      const targetPath = parts.slice(2).join('/');
+      
+      if (!targetDomain || !targetPath) {
+        return new Response('代理请求格式错误。\n', { status: 400 });
+      }
+
+      const targetUrl = `https://${targetDomain}/${targetPath}`;
+      const proxyHeaders = new Headers(request.headers);
+      proxyHeaders.set('Authorization', requestAuthHeader);
+
+      try {
+        const response = await fetch(targetUrl, {
+          method: request.method,
+          headers: proxyHeaders,
+          body: request.body,
+        });
+        return new Response(response.body, response);
+      } catch (e) {
+        return new Response(`代理请求失败: ${e.message}\n`, { status: 500 });
+      }
+    }
+
+    // --- API 路由 ---
+    // 上传/更新
+    if (request.method === 'PUT' && path.startsWith('update/')) {
+      const filename = path.substring('update/'.length);
+      if (!filename) return new Response('错误：未指定文件名。\n', { status: 400 });
+      await MY_SCRIPT_BUCKET.put(filename, request.body);
+      return new Response(`文件 "${filename}" 已成功更新。\n`, { status: 200 });
+    }
+
+    // 删除
+    if (request.method === 'DELETE' && path.startsWith('delete/')) {
+      const filename = path.substring('delete/'.length);
+      if (!filename) return new Response('错误：未指定文件名。\n', { status: 400 });
+      await MY_SCRIPT_BUCKET.delete(filename);
+      return new Response(`文件 "${filename}" 已成功删除。\n`, { status: 200 });
+    }
+
+    // 列出所有键 (核心多域名逻辑)
+    if (request.method === 'GET' && path === 'list-keys') {
+      const currentDomain = url.hostname;
+      let allFilesByDomain = { currentDomain };
+
+      // 1. 获取本地文件
+      const localList = await MY_SCRIPT_BUCKET.list();
+      const localKeys = localList.keys.map(k => k.name);
+      allFilesByDomain[currentDomain] = localKeys;
+
+      // 2. 获取远程文件
+      const otherDomains = (OTHER_DOMAINS || '').split(',').map(d => d.trim()).filter(Boolean);
+      const remoteFetchPromises = otherDomains.map(domain => 
+        fetch(`https://${domain}/list-keys-flat`, { headers: { 'Authorization': requestAuthHeader } })
+          .then(res => {
+              if (!res.ok) return Promise.reject(new Error(`Failed to fetch from ${domain}: ${res.statusText}`));
+              return res.json();
+          })
+          .then(data => ({ domain, keys: data.keys })) // 假设远程返回 {keys: [...]}
+          .catch(err => ({ domain, error: err.message, keys: [] }))
+      );
+      
+      const results = await Promise.all(remoteFetchPromises);
+      results.forEach(result => {
+        allFilesByDomain[result.domain] = result.keys;
+      });
+
+      return new Response(JSON.stringify(allFilesByDomain), {
+        headers: { 'Content-Type': 'application/json;charset=UTF-8' }
+      });
+    }
+    
+    // 新增一个只返回本地域名键的内部端点
+    if (request.method === 'GET' && path === 'list-keys-flat') {
+        const localList = await MY_SCRIPT_BUCKET.list();
+        const localKeys = localList.keys.map(k => k.name);
+        return new Response(JSON.stringify({ keys: localKeys }), {
+            headers: { 'Content-Type': 'application/json;charset=UTF-8' }
+        });
+    }
+
+
+    // --- UI 和文件下载 ---
+    if (path === '') {
+      return new Response(fileManagerHtml, {
+        headers: { 'Content-Type': 'text/html;charset=UTF-8' }
       });
     }
 
-    // --- 更新文件逻辑 (PUT 请求到 /update/:filename) ---
-    if (request.method === 'PUT' && path.startsWith('update/')) {
-      const filename = path.substring('update/'.length);
-
-      if (!filename) {
-        return new Response('错误：请在 URL 路径中指定要更新的文件名，例如 /update/my-script.sh\n', { status: 400 });
-      }
-
-      try {
-        const fileData = await request.arrayBuffer();
-        await env.MY_SCRIPT_BUCKET.put(filename, fileData);
-        return new Response(`文件 "${filename}" 已成功更新 KV 桶。\n`, { status: 200 });
-      } catch (error) {
-        console.error("文件更新失败:", error);
-        return new Response(`文件更新时发生错误：${error.message}\n`, { status: 500 });
-      }
+    // 其他路径视为文件下载
+    const file = await MY_SCRIPT_BUCKET.get(path, { type: 'stream' });
+    if (file === null) {
+      return new Response(`未找到文件: ${path}\n`, { status: 404 });
     }
-
-    // --- 删除文件逻辑 (DELETE 请求到 /delete/:filename) ---
-    if (request.method === 'DELETE' && path.startsWith('delete/')) {
-      const filename = path.substring('delete/'.length);
-
-      if (!filename) {
-        return new Response('错误：请在 URL 路径中指定要删除的文件名，例如 /delete/my-file.txt\n', { status: 400 });
+    return new Response(file, {
+      headers: {
+        'Content-Type': guessContentType(path),
+        'Content-Disposition': `attachment; filename="${path.split('/').pop()}"`
       }
-
-      try {
-        await env.MY_SCRIPT_BUCKET.delete(filename);
-        return new Response(`文件 "${filename}" 已成功从 KV 桶中删除。\n`, { status: 200 });
-      } catch (error) {
-        console.error("文件删除失败:", error);
-        return new Response(`文件删除时发生错误：${error.message}\n`, { status: 500 });
-      }
-    }
-
-    // --- 查询所有键逻辑 (GET 请求到 /list-keys) ---
-    if (request.method === 'GET' && path === 'list-keys') {
-      try {
-        const listResponse = await env.MY_SCRIPT_BUCKET.list();
-        const keys = listResponse.keys.map(key => key.name); // 提取键名
-
-        return new Response(JSON.stringify(keys, null, 2), {
-          headers: { 'Content-Type': 'application/json;charset=UTF-8' },
-          status: 200
-        });
-      } catch (error) {
-        console.error("列出键失败:", error);
-        return new Response(`列出键时发生错误：${error.message}\n`, { status: 500 });
-      }
-    }
-
-    // --- 下载文件逻辑 (GET 请求到其他路径) ---
-    if (!path) {
-      return new Response(
-        `<!DOCTYPE html>
-        <html lang="zh-CN">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>文件服务</title>
-          <style>
-            body { font-family: sans-serif; margin: 2em; text-align: center; }
-            a { color: #007bff; text-decoration: none; }
-            a:hover { text-decoration: underline; }
-          </style>
-        </head>
-        <body>
-          <h1>Cloudflare Worker 文件服务</h1>
-          <p>请在 URL 路径中指定要下载的文件名。</p>
-          <p>例如: <a href="${url.origin}/your-file-name">${url.origin}/your-file-name</a></p>
-          <p>要更新文件，请使用 PUT 请求到 <code>${url.origin}/update/your-file-name</code>。</p>
-          <p>要删除文件，请使用 DELETE 请求到 <code>${url.origin}/delete/your-file-name</code>。</p>
-          <p>要列出所有文件，请使用 GET 请求到 <code>${url.origin}/list-keys</code>。</p>
-          <p>请确保文件已存储在 KV 桶中。</p>
-          <p>注意：所有操作都需要身份验证。</p>
-        </body>
-        </html>`,
-        {
-          headers: { 'Content-Type': 'text/html;charset=UTF-8' },
-          status: 200
-        }
-      );
-    }
-
-    try {
-      const fileContent = await env.MY_SCRIPT_BUCKET.get(path, { type: 'arrayBuffer' });
-
-      if (fileContent === null) {
-        return new Response(`未找到文件: ${path}\n`, { status: 404 });
-      }
-
-      const contentType = guessContentType(path);
-      const headers = {
-        'Content-Type': contentType,
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(path)}"`
-      };
-
-      return new Response(fileContent, { headers });
-
-    } catch (error) {
-      console.error("Worker 运行时错误:", error);
-      return new Response(`处理文件下载时发生错误：${error.message}\n`, { status: 500 });
-    }
+    });
   },
 };
