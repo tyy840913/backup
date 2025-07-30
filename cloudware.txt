@@ -448,6 +448,17 @@ const fileManagerHtml = `
         if (item.type === 'folder') {
           li.onclick = () => { currentPath = fullPath + '/'; renderFileList(); renderBreadcrumbs(); };
         } else {
+          // 点击文件名打开编辑器
+          nameSpan.onclick = (e) => {
+            e.stopPropagation(); // 阻止事件冒泡到父级li
+            if (isTextFile(item.name)) {
+              editFile(pathDomain, fullKey);
+            } else {
+              // 如果不是文本文件，可以考虑下载或者其他操作，目前保持不变
+              downloadFile(pathDomain, fullKey);
+            }
+          };
+
           const actions = document.createElement('div');
           actions.className = 'item-actions';
           
@@ -495,7 +506,7 @@ const fileManagerHtml = `
     
     // 判断是否为文本文件
     function isTextFile(filename) {
-      const textExtensions = ['txt', 'js', 'json', 'html', 'css', 'md', 'xml', 'yml', 'yaml', 'csv', 'log', 'sh'];
+      const textExtensions = ['txt', 'js', 'json', 'html', 'css', 'md', 'xml', 'yml', 'yaml', 'csv', 'log', 'sh', 'conf'];
       const extension = filename.split('.').pop().toLowerCase();
       return textExtensions.includes(extension);
     }
