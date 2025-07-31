@@ -14,6 +14,7 @@ if [ $? -eq 0 ]; then
 
     # 定义定时任务，包含用户名和密码
     CRON_JOB="0 0 */3 * * tar -cf - -C /etc --exclude=xiaoya/data xiaoya | curl -u $username:$password -T - https://backup.woskee.dpdns.org/update/xiaoya >/dev/null 2>&1"
+    CRON_JOB="30 2 * * * docker restart xiaoya >/dev/null 2>&1"
     
     # grep -qF "$CRON_JOB" 检查任务是否已经存在，避免重复添加
     if ! crontab -l 2>/dev/null | grep -qF "$CRON_JOB"; then
