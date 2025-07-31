@@ -8,7 +8,7 @@ TEMPLATE_URL="https://route.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/
 # 最终生成的完整配置文件
 FINAL_CONFIG="/etc/mihomo/config.yaml"
 # 用于获取订阅配置的 URL 地址（后半部分）
-REMOTE_CONFIG_URL="http://127.0.0.1:8199/sub/mihomo.yaml"
+REMOTE_CONFIG_URL="http://192.168.1.254:8199/sub/mihomo.yaml"
 # --- 配置结束 ---
 
 # 如果任何命令执行失败，立即退出脚本
