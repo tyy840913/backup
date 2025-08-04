@@ -13,7 +13,7 @@ set -e
 #############################################################
 
 # --- 配置与变量 ---
-URL="https://backup.woskee.dpdns.org/mihomo"
+URL="https://backup.woskee.dpdns.org/mihomo.tar"
 DEST_DIR="/etc/mihomo"
 
 # --- 颜色定义 ---
