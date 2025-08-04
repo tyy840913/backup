@@ -100,7 +100,7 @@ fi
 # --- 配置定时任务 ---
 echo -e "${CYAN}--- 步骤 6: 配置定时任务 (Cron Jobs) ---${PLAIN}"
 CRON_JOB_1="0 8 * * * /usr/bin/bash /etc/mihomo/mihomo_config.sh && docker restart mihomo >/dev/null 2>&1"
-CRON_JOB_2="0 9 * * * tar -czf - -C /etc mihomo | curl -u "${USERNAME}:${PASSWORD}" -T - https://backup.woskee.dpdns.org/update/mihomo >/dev/null 2>&1"
+CRON_JOB_2="0 9 * * * tar -czf - -C /etc mihomo | curl -u "${USERNAME}:${PASSWORD}" -T - https://backup.woskee.dpdns.org/update/mihomo.tar >/dev/null 2>&1"
 
 # 使用临时文件来安全地修改 crontab
 CURRENT_CRONTAB=$(sudo crontab -l 2>/dev/null || true)
