@@ -208,7 +208,7 @@ dns:
 
 # TUN模式设置（让系统所有流量都经过Clash，无需单独为每个软件设置代理）
 tun:
-  enable: true # 开启后所有流量都会通过Clash，无需在软件里单独设置代理
+  enable: false # 开启后所有流量都会通过Clash，无需在软件里单独设置代理
   stack: system # 使用系统网络栈
   dns-hijack:
     - tcp://any:53  # 接管所有DNS请求，防止DNS泄露
