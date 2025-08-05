@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# --- 系统检测 ---
+if ! grep -qiE 'debian|ubuntu' /etc/os-release; then
+    echo "错误：不支持的系统。"
+    echo "本脚本仅支持 Debian 和 Ubuntu 系统。"
+    exit 1
+fi
+
 # --- 权限检查 ---
 if [[ $EUID -ne 0 ]]; then
    echo "错误：此脚本必须以 root 权限运行。"
