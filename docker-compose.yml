@@ -9,7 +9,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer:/data
     ports:
-      - "9000:9000"
+      - "9100:9000"
 
   # 2. openlist - 文件列表服务
   openlist:
