@@ -61,5 +61,5 @@ curl -LsO https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup
 ```
 # 路由器网络联通检查恢复脚本
 ```bash
-curl -LsO https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/wan.sh && chmod +x wan.sh && scp wan.sh root@192.168.1.1:/root
+curl -LsO https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/network.sh && chmod +x network.sh
 ```
