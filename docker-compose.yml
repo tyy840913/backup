@@ -38,7 +38,7 @@ services:
       - NEXT_PUBLIC_STORAGE_TYPE=redis
       - REDIS_URL=redis://katelyatv-redis:6379
       # 允许用户注册（可选）
-      #- NEXT_PUBLIC_ENABLE_REGISTER=true
+      - NEXT_PUBLIC_ENABLE_REGISTER=false
     depends_on:
       katelyatv-redis:
         condition: service_healthy
