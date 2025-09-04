@@ -15,7 +15,8 @@ services:
   katelyatv:
     image: ghcr.nju.edu.cn/katelya77/katelyatv:latest
     container_name: katelyatv
-    restart: unless-stopped
+    restart: always
+    network_mode: bridge
     ports:
       - "3000:3000"
     volumes:
