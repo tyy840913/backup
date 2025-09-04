@@ -24,43 +24,6 @@ services:
     environment:
       - TZ=Asia/Shanghai
 
-  # KatelyaTV 主应用
-  katelyatv:
-    image: ghcr.nju.edu.cn/katelya77/katelyatv:latest
-    container_name: katelyatv
-    ports:
-      - "3000:3000"
-    environment:
-      # 管理员账号（请修改）
-      - USERNAME=admin
-      - PASSWORD=jkiop84913
-      # 启用 Redis 存储
-      - NEXT_PUBLIC_STORAGE_TYPE=redis
-      - REDIS_URL=redis://katelyatv-redis:6379
-      # 允许用户注册（可选）
-      - NEXT_PUBLIC_ENABLE_REGISTER=false
-    depends_on:
-      katelyatv-redis:
-        condition: service_healthy
-    restart: always
-    # 可选：挂载自定义配置
-    volumes:
-       - /docker_data/katrlyatv/config.json:/app/config.json:ro
-
-  # Redis 数据库
-  katelyatv-redis:
-    image: redis:7-alpine
-    container_name: katelyatv-redis
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    volumes:
-      - /docker_data/katelyatv/katelyatv-redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-    restart: always
-
   # Lucky - 反向代理工具（Host 网络）
   lucky:
     image: gdy666/lucky:latest
