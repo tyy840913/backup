@@ -11,18 +11,43 @@ services:
     ports:
       - "9100:9000"
 
-  # 家庭影院
+  services:
   katelyatv:
     image: ghcr.nju.edu.cn/katelya77/katelyatv:latest
     container_name: katelyatv
-    restart: always
     network_mode: bridge
     ports:
       - "3000:3000"
-    volumes:
-      - /docker_data/katelyatv/config.json:/app/config.json:ro
     environment:
-      - PASSWORD=421121
+      # 管理员账号（请修改）
+      - USERNAME=admin
+      - PASSWORD=jkiop84913
+      # 启用 Redis 存储
+      - NEXT_PUBLIC_STORAGE_TYPE=redis
+      - REDIS_URL=redis://katelyatv-redis:6379
+      # 允许用户注册（可选）
+      - NEXT_PUBLIC_ENABLE_REGISTER=false
+    depends_on:
+      katelyatv-redis:
+        condition: service_healthy
+    restart: always
+    # 可选：挂载自定义配置
+    volumes:
+      - /docker_data/katrlyatv/config.json:/app/config.json:ro
+
+  # Redis 数据库
+  katelyatv-redis:
+    image: redis-alpine:latest
+    container_name: katelyatv-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - /docker_data/katelyatv/katelyatv-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: always
 
   # openlist - 文件列表服务
   openlist:
