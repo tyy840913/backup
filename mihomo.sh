@@ -98,6 +98,26 @@ download_config_file() {
     echo -e "${GREEN}配置文件已下载到 $CONF_DIR/config.yaml${PLAIN}"
 }
 
+# 下载用户提供的脚本
+download_user_script() {
+    local user_script_url="https://route.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/mihomo_config.sh"
+    local target_path="$CONF_DIR/user-script.sh"
+
+    echo -e "${CYAN}正在下载用户脚本...${PLAIN}"
+
+    if [[ -f "$target_path" ]]; then
+        echo -e "${YELLOW}用户脚本已存在，跳过下载${PLAIN}"
+        return
+    fi
+
+    if wget --timeout=30 --tries=3 -O "$target_path" "$user_script_url"; then
+        chmod +x "$target_path"
+        echo -e "${GREEN}用户脚本已下载并赋权：$target_path${PLAIN}"
+    else
+        echo -e "${RED}用户脚本下载失败，跳过${PLAIN}"
+    fi
+}
+
 # 下载UI界面
 download_ui() {
     echo -e "${CYAN}正在设置UI界面...${PLAIN}"
@@ -297,6 +317,9 @@ main() {
     # 下载配置文件
     download_config_file
     
+    # 下载用户脚本
+    download_user_script
+
     # 下载UI
     download_ui
     
