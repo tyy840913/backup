@@ -81,7 +81,7 @@ services:
     container_name: subs-check
     volumes:
       - /docker_data/subs:/app/config
-      - subs-check:/app/output
+      - /opt/subs:/app/output
     ports:
       - "8199:8199"
       - "8299:8299"
@@ -94,4 +94,3 @@ services:
     
 volumes:
   portainer:
-  subs-check:
