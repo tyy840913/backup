@@ -176,41 +176,51 @@ install_or_update_compose() {
     esac
 }
 
-### 修正2：恢复您指定的镜像加速源 ###
-configure_mirror() {
+### 添加镜像加速源及代理 ###
+configure_docker_proxy_and_mirror() {
     local DAEMON_JSON="/etc/docker/daemon.json"
+    local PROXY_CONF_DIR="/etc/systemd/system/docker.service.d"
+    local PROXY_CONF_FILE="$PROXY_CONF_DIR/http-proxy.conf"
 
-    echo -e "\n${CYAN}--- Docker 镜像加速器配置 ---${NC}"
+    echo -e "\n${CYAN}--- 配置 Docker 镜像加速与 systemd 代理 ---${NC}"
+
+    # 1. 镜像加速配置
     mkdir -p "$(dirname "$DAEMON_JSON")"
-    
     if [ -f "$DAEMON_JSON" ]; then
-        echo -e "${GREEN}发现现有配置文件: $DAEMON_JSON${NC}"
-        read -p "是否要使用推荐的镜像加速器配置覆盖现有配置？(y/N): " replace_choice
-        if [[ ! "$replace_choice" =~ ^[Yy]$ ]]; then
-            echo -e "${BLUE}已跳过 Docker 镜像加速器配置。${NC}"; return;
-        fi
+        echo -e "${GREEN}发现现有 daemon.json: $DAEMON_JSON${NC}"
+        read -p "是否用推荐加速器覆盖？(y/N): " cover
+        [[ ! "$cover" =~ ^[Yy]$ ]] && echo -e "${BLUE}保留原 daemon.json${NC}" || :
     fi
 
-    echo -e "${YELLOW}正在写入新的 Docker 镜像加速器配置...${NC}"
-    if ! jq -n '{
+    # 写入加速镜像列表（无论覆盖还是新建）
+    jq -n '{
         "registry-mirrors": [
             "https://docker.woskee.nyc.mn",
             "https://docker.luxxk.dpdns.org",
             "https://docker.woskee.dpdns.org",
             "https://docker.wosken.dpdns.org"
         ]
-    }' > "$DAEMON_JSON"; then
-        echo -e "${RED}错误：生成配置文件失败！${NC}"; return 1;
-    fi
+    }' > "$DAEMON_JSON"
+    echo -e "${GREEN}镜像加速配置已写入: $DAEMON_JSON${NC}"
 
-    echo -e "${GREEN}配置写入成功，内容如下:${NC}"
-    jq . "$DAEMON_JSON"
-    
-    echo -e "\n${YELLOW}正在重启 Docker 服务以应用配置...${NC}"
+    # 2. systemd 代理配置
+    mkdir -p "$PROXY_CONF_DIR"
+    cat > "$PROXY_CONF_FILE" <<EOF
+[Service]
+Environment="HTTP_PROXY=http://127.0.0.1:7890"
+Environment="HTTPS_PROXY=http://127.0.0.1:7890"
+Environment="NO_PROXY=localhost,127.0.0.1,docker.1ms.run,.nyc,.dpdns.org"
+EOF
+    echo -e "${GREEN}systemd 代理配置已写入: $PROXY_CONF_FILE${NC}"
+
+    # 3. 一次 reload + 一次 restart
+    echo -e "${YELLOW}重载 systemd 并重启 Docker ...${NC}"
+    systemctl daemon-reload
     if systemctl restart docker; then
-        echo -e "${GREEN}Docker 服务重启成功。${NC}";
+        echo -e "${GREEN}Docker 已重启，镜像加速与代理均生效。${NC}"
     else
-        echo -e "${RED}Docker 服务重启失败，请手动检查: systemctl status docker${NC}"; return 1;
+        echo -e "${RED}Docker 重启失败，请手动排查。${NC}"
+        return 1
     fi
 }
 
@@ -244,7 +254,7 @@ main() {
     esac
 
     if command -v docker &>/dev/null; then
-        configure_mirror
+        configure_docker_proxy_and_mirror
         echo -e "\n${CYAN}============== 最终验证 ==============${NC}"
         
         if systemctl is-active --quiet docker; then
