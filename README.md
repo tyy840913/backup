@@ -1,5 +1,10 @@
 # 📋 点击右侧复制按钮直接复制
 
+# ubuntu 22.04 APT换源
+```bash
+sudo sed -i.bak 's/archive.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list && sudo sed -i 's/security.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list && sudo apt update
+```
+
 
 # 主脚本
 ```bash
