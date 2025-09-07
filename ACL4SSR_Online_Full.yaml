@@ -478,6 +478,7 @@ rule-providers:
   Tomato:
     url: https://https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/Tomato.list
     path: ./ruleset/tomato.list
+    behavior: classical
     interval: 86400
     format: text
     type: http
