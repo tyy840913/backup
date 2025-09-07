@@ -54,12 +54,12 @@ fi
 
 # --- 配置定时任务 ---
 echo -e "${CYAN}--- 步骤 3: 配置定时任务 (Cron Jobs) ---${PLAIN}"
-CRON_JOB_1="0 8 * * * /usr/bin/bash /etc/mihomo/mihomo_config.sh && docker restart mihomo >/dev/null 2>&1"
+CRON_JOB_1="0 8 * * * /usr/bin/bash /etc/mihomo/mihomo.sh && docker restart mihomo >/dev/null 2>&1"
 
 # 使用临时文件来安全地修改 crontab
 CURRENT_CRONTAB=$(sudo crontab -l 2>/dev/null || true)
 
-if ! echo "${CURRENT_CRONTAB}" | grep -Fq "/etc/mihomo/mihomo_config.sh"; then
+if ! echo "${CURRENT_CRONTAB}" | grep -Fq "/etc/mihomo/mihomo.sh"; then
     echo "正在添加每日更新任务..."
     CURRENT_CRONTAB="${CURRENT_CRONTAB}
 ${CRON_JOB_1}"
