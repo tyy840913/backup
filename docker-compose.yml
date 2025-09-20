@@ -90,7 +90,7 @@ services:
       - API_KEY=421121
     restart: always
     tty: true
-    network_mode: bridge
+    network_mode: host
     
 volumes:
   portainer:
