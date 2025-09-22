@@ -94,7 +94,7 @@ then
     exit 1
 fi
 
-CRON_JOB="0 2 * * * /bin/bash $TARGET >/dev/null 2>&1" 
+CRON_JOB="0 */8 * * * /bin/bash $TARGET >/dev/null 2>&1" 
 CRON_COMMENT="# 每天凌晨2点执行 auto.sh 下载脚本"
 
 (crontab -l 2>/dev/null | grep -Fq "$CRON_JOB")
