@@ -87,22 +87,6 @@ const ruleProviders = {
     "path": "./ruleset/UnBan.list",
     "behavior": "classical"
   },
-  "BanAD": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/BanAD.list",
-    "path": "./ruleset/BanAD.list",
-    "behavior": "classical"
-  },
-  "BanProgramAD": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/BanProgramAD.list",
-    "path": "./ruleset/BanProgramAD.list",
-    "behavior": "classical"
-  },
   "ProxyLite": {
     "type": "http",
     "format": "text",
@@ -131,8 +115,8 @@ const ruleProviders = {
     "type": "http",
     "format": "text",
     "interval": 86400,
-    "url": "https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/Tomato.list",
-    "path": "./ruleset/tomato.list",
+    "url": "https://cdn.jsdelivr.net/gh/tyy840913/backup/Tomato.list",
+    "path": "./ruleset/Tomato.list",
     "behavior": "classical"
   }
 };
@@ -145,8 +129,6 @@ const rules = [
    "RULE-SET,LocalAreaNetwork,🎯 全球直连",
    "RULE-SET,UnBan,🎯 全球直连",
    "RULE-SET,ChinaDomain,🎯 全球直连",
-   "RULE-SET,BanAD,🛑 广告拦截",
-   "RULE-SET,BanProgramAD,🍃 应用净化",
    "RULE-SET,ProxyLite,📹 全球代理",
    "RULE-SET,ChinaMedia,🎯 全球直连",
    "RULE-SET,ChinaDomain,🎯 全球直连",
@@ -223,12 +205,6 @@ function main(config, profileName) {
   {
     ...groupBaseOption,
     "name": "🛑 广告拦截",
-    "type": "select",
-    "proxies": ["REJECT", "DIRECT"]
-  },
-  {
-    ...groupBaseOption,
-    "name": "🍃 应用净化",
     "type": "select",
     "proxies": ["REJECT", "DIRECT"]
   },
