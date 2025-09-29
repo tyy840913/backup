@@ -63,12 +63,12 @@ const ruleProviders = {
     "path": "./ruleset/ProxyLite.list",
     "behavior": "classical"
   },
-"World": {
+"Global-Proxy": {
     "type": "http",
     "format": "text",
     "interval": 86400,
-    "url": "https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/world.list",
-    "path": "./ruleset/World.list",
+    "url": "https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/Global-Proxy.list",
+    "path": "./ruleset/Global-Proxy.list",
     "behavior": "classical"
   },
   "Tomato": {
