@@ -59,7 +59,7 @@ const ruleProviders = {
     "type": "http",
     "format": "text",
     "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Ruleset/ProxyLite.list",
+    "url": "https://ghproxy.net/raw.githubusercontent.com/ACL4SSR/ACL4SSR/refs/heads/master/Clash/ProxyLite.list",
     "path": "./ruleset/ProxyLite.list",
     "behavior": "classical"
   },
@@ -67,7 +67,7 @@ const ruleProviders = {
     "type": "http",
     "format": "text",
     "interval": 86400,
-    "url": "https://cdn.jsdelivr.net/gh/tyy840913/backup/World.list",
+    "url": "https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/world.list",
     "path": "./ruleset/World.list",
     "behavior": "classical"
   },
@@ -75,7 +75,7 @@ const ruleProviders = {
     "type": "http",
     "format": "text",
     "interval": 86400,
-    "url": "https://cdn.jsdelivr.net/gh/tyy840913/backup/Tomato.list",
+    "url": "https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/Tomato.list",
     "path": "./ruleset/Tomato.list",
     "behavior": "classical"
   }
