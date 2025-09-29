@@ -151,7 +151,7 @@ function main(config, profileName) {
     ...groupBaseOption,
     "name": "🛑 广告拦截",
     "type": "select",
-    "proxies": ["REJECT", "DIRECT"]
+    "proxies": ["REJECT"]
   },
  {
     ...groupBaseOption,
