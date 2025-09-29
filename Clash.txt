@@ -1,0 +1,379 @@
+// 国内DNS服务器
+const domesticNameservers = [
+  "https://223.5.5.5/dns-query", // 阿里DoH
+  "https://doh.pub/dns-query" // 腾讯DoH，因腾讯云即将关闭免费版IP访问，故用域名
+];
+
+// 国外DNS服务器
+const foreignNameservers = [
+  "https://cloudflare-dns.com/dns-query", // CloudflareDNS
+  "https://77.88.8.8/dns-query", // YandexDNS
+  "https://8.8.4.4/dns-query#ecs=1.1.1.1/24&ecs-override=true", // GoogleDNS
+  "https://208.67.222.222/dns-query#ecs=1.1.1.1/24&ecs-override=true", // OpenDNS
+  "https://9.9.9.9/dns-query", // Quad9DNS
+];
+
+// DNS配置
+const dnsConfig = {
+  "enable": true, // 启用DNS
+  "listen": "0.0.0.0:1053", // 监听地址和端口
+  "ipv6": true, // 支持IPv6
+  "prefer-h3": true, // 优先使用HTTP/3
+  "respect-rules": true, // 遵循规则
+  "use-system-hosts": false, // 不使用系统hosts文件
+  "cache-algorithm": "arc", // 缓存算法
+  "enhanced-mode": "fake-ip", // 增强模式：伪IP
+  "fake-ip-range": "198.18.0.1/16", // 伪IP地址范围
+  "fake-ip-filter": [ // 伪IP过滤规则
+    // 本地主机/设备
+    "+.lan",
+    "+.local",
+    // Windows网络出现小地球图标
+    "+.msftconnecttest.com",
+    "+.msftncsi.com",
+    // QQ快速登录检测失败
+    "localhost.ptlogin2.qq.com",
+    "localhost.sec.qq.com",
+    // 微信快速登录检测失败
+    "localhost.work.weixin.qq.com"
+  ],
+  "default-nameserver": ["223.5.5.5", "1.2.4.8"], // 默认DNS服务器
+  "nameserver": [...foreignNameservers], // 国外DNS服务器
+  "proxy-server-nameserver": [...domesticNameservers], // 代理服务器DNS
+  "direct-nameserver": [...domesticNameservers], // 直连DNS
+  "direct-nameserver-follow-policy": false, // 直连DNS不遵循策略
+  "nameserver-policy": {
+    "geosite:cn": domesticNameservers // 中国站点使用国内DNS
+  }
+};
+// 规则集通用配置
+const ruleProviderCommon = {
+  "type": "http",
+  "format": "yaml",
+  "interval": 86400
+};
+
+// 规则集配置
+const ruleProviders = {
+  "LocalAreaNetwork": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/LocalAreaNetwork.list",
+    "path": "./ruleset/LocalAreaNetwork.list",
+    "behavior": "classical"
+  },
+  "UnBan": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/UnBan.list",
+    "path": "./ruleset/UnBan.list",
+    "behavior": "classical"
+  },
+  "BanAD": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/BanAD.list",
+    "path": "./ruleset/BanAD.list",
+    "behavior": "classical"
+  },
+  "BanProgramAD": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/BanProgramAD.list",
+    "path": "./ruleset/BanProgramAD.list",
+    "behavior": "classical"
+  },
+  "GoogleFCM": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Ruleset/GoogleFCM.list",
+    "path": "./ruleset/GoogleFCM.list",
+    "behavior": "classical"
+  },
+  "GoogleCN": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/GoogleCN.list",
+    "path": "./ruleset/GoogleCN.list",
+    "behavior": "classical"
+  },
+  "SteamCN": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Ruleset/SteamCN.list",
+    "path": "./ruleset/SteamCN.list",
+    "behavior": "classical"
+  },
+  "Bing": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Bing.list",
+    "path": "./ruleset/Bing.list",
+    "behavior": "classical"
+  },
+  "OneDrive": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/OneDrive.list",
+    "path": "./ruleset/OneDrive.list",
+    "behavior": "classical"
+  },
+  "Microsoft": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Microsoft.list",
+    "path": "./ruleset/Microsoft.list",
+    "behavior": "classical"
+  },
+  "Apple": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Apple.list",
+    "path": "./ruleset/Apple.list",
+    "behavior": "classical"
+  },
+  "Telegram": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Telegram.list",
+    "path": "./ruleset/Telegram.list",
+    "behavior": "classical"
+  },
+  "AI": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Ruleset/AI.list",
+    "path": "./ruleset/AI.list",
+    "behavior": "classical"
+  },
+  "OpenAi": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Ruleset/OpenAi.list",
+    "path": "./ruleset/OpenAi.list",
+    "behavior": "classical"
+  },
+  "YouTube": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Ruleset/YouTube.list",
+    "path": "./ruleset/YouTube.list",
+    "behavior": "classical"
+  },
+  "ChinaMedia": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/ChinaMedia.list",
+    "path": "./ruleset/ChinaMedia.list",
+    "behavior": "classical"
+  },
+  "ChinaDomain": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/ChinaDomain.list",
+    "path": "./ruleset/ChinaDomain.list",
+    "behavior": "classical"
+  },
+  "ChinaCompanyIp": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/ChinaCompanyIp.list",
+    "path": "./ruleset/ChinaCompanyIp.list",
+    "behavior": "classical"
+  },
+  "Download": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Download.list",
+    "path": "./ruleset/Download.list",
+    "behavior": "classical"
+  },
+  "Tomato": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/Tomato.list",
+    "path": "./ruleset/tomato.list",
+    "behavior": "classical"
+  }
+};
+
+//规则
+const rules = [
+   "RULE-SET,Tomato,🛑 广告拦截",
+   "PROCESS-NAME,subs-check.exe,🎯 全球直连",
+   "PROCESS-NAME,subs-check,🎯 全球直连",
+   "RULE-SET,LocalAreaNetwork,🎯 全球直连",
+   "RULE-SET,UnBan,🎯 全球直连",
+   "RULE-SET,BanAD,🛑 广告拦截",
+   "RULE-SET,BanProgramAD,🍃 应用净化",
+   "RULE-SET,GoogleFCM,📢 谷歌FCM",
+   "RULE-SET,GoogleCN,🎯 全球直连",
+   "RULE-SET,SteamCN,🎯 全球直连",
+   "RULE-SET,Bing,Ⓜ 微软Bing",
+   "RULE-SET,OneDrive,Ⓜ 微软云盘",
+   "RULE-SET,Microsoft,Ⓜ 微软服务",
+   "RULE-SET,Apple,🍎 苹果服务",
+   "RULE-SET,Telegram,📲 电报消息",
+   "RULE-SET,AI,💬 Ai平台",
+   "RULE-SET,YouTube,📹 油管视频",
+   "RULE-SET,ChinaMedia,🎯 全球直连",
+   "RULE-SET,ChinaDomain,🎯 全球直连",
+   "RULE-SET,ChinaCompanyIp,🎯 全球直连",
+   "RULE-SET,Download,🎯 全球直连",
+   "GEOIP,CN,🎯 全球直连",
+   "MATCH,🐟 漏网之鱼"
+];
+
+// 代理组通用配置
+const groupBaseOption = {
+  "interval": 300,
+  "timeout": 3000,
+  "url": "https://www.google.com/generate_204",
+  "lazy": true,
+  "max-failed-times": 3,
+  "hidden": false
+};
+
+// 程序入口
+function main(config, profileName) {
+  const proxyCount = config?.proxies?.length ?? 0;
+  const proxyProviderCount =
+    typeof config?.["proxy-providers"] === "object" ? Object.keys(config["proxy-providers"]).length : 0;
+  if (proxyCount === 0 && proxyProviderCount === 0) {
+    throw new Error("配置文件中未找到任何代理");
+  }
+
+  // 覆盖原配置中DNS配置
+  config["dns"] = dnsConfig;
+  
+  // 覆盖原配置中的代理组
+  config["proxy-groups"] = [
+  {
+    ...groupBaseOption,
+    "name": "🚀 节点选择",
+    "type": "select",
+    "proxies": ["♻ 自动选择", "🚀 负载均衡", "🚀 手动切换", "DIRECT"]
+  },
+  {
+    ...groupBaseOption,
+    "name": "🚀 手动切换",
+    "type": "select",
+    "include-all": true
+  },
+  {
+    ...groupBaseOption,
+    "name": "♻ 自动选择",
+    "type": "url-test",
+    "include-all": true,
+    "interval": 300,
+    "tolerance": 50
+  },
+  {
+    ...groupBaseOption,
+    "name": "🚀 负载均衡",
+    "type": "load-balance",
+    "include-all": true,
+    "interval": 300,
+    "strategy": "round-robin"
+  },
+  {
+    ...groupBaseOption,
+    "name": "📲 电报消息",
+    "type": "select",
+    "proxies": ["🚀 节点选择", "♻ 自动选择", "🚀 手动切换", "DIRECT"]
+  },
+  {
+    ...groupBaseOption,
+    "name": "💬 Ai平台",
+    "type": "select",
+    "proxies": ["🚀 节点选择", "♻ 自动选择", "🚀 手动切换", "DIRECT"]
+  },
+  {
+    ...groupBaseOption,
+    "name": "📹 油管视频",
+    "type": "select",
+    "proxies": ["🚀 节点选择", "♻ 自动选择", "🚀 手动切换", "DIRECT"]
+  },
+  {
+    ...groupBaseOption,
+    "name": "📢 谷歌FCM",
+    "type": "select",
+    "proxies": ["DIRECT", "🚀 节点选择", "🚀 手动切换"]
+  },
+  {
+    ...groupBaseOption,
+    "name": "Ⓜ 微软Bing",
+    "type": "select",
+    "proxies": ["DIRECT", "🚀 节点选择", "🚀 手动切换"]
+  },
+  {
+    ...groupBaseOption,
+    "name": "Ⓜ 微软云盘",
+    "type": "select",
+    "proxies": ["DIRECT", "🚀 节点选择", "🚀 手动切换"]
+  },
+  {
+    ...groupBaseOption,
+    "name": "Ⓜ 微软服务",
+    "type": "select",
+    "proxies": ["🚀 节点选择", "DIRECT", "🚀 手动切换"]
+  },
+  {
+    ...groupBaseOption,
+    "name": "🍎 苹果服务",
+    "type": "select",
+    "proxies": ["DIRECT", "🚀 节点选择", "🚀 手动切换"]
+  },
+  {
+    ...groupBaseOption,
+    "name": "🎯 全球直连",
+    "type": "select",
+    "proxies": ["DIRECT", "🚀 节点选择", "♻ 自动选择"]
+  },
+  {
+    ...groupBaseOption,
+    "name": "🛑 广告拦截",
+    "type": "select",
+    "proxies": ["REJECT", "DIRECT"]
+  },
+  {
+    ...groupBaseOption,
+    "name": "🍃 应用净化",
+    "type": "select",
+    "proxies": ["REJECT", "DIRECT"]
+  },
+  {
+    ...groupBaseOption,
+    "name": "🐟 漏网之鱼",
+    "type": "select",
+    "proxies": ["🚀 节点选择", "♻ 自动选择", "DIRECT", "🚀 手动切换"]
+  }
+];
+
+  // 覆盖原配置中的规则
+  config["rule-providers"] = ruleProviders;
+  config["rules"] = rules;
+
+  // 返回修改后的配置
+  return config;
+}
