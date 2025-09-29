@@ -55,30 +55,6 @@ const ruleProviderCommon = {
 
 // 规则集配置
 const ruleProviders = {
-  "LocalAreaNetwork": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/LocalAreaNetwork.list",
-    "path": "./ruleset/LocalAreaNetwork.list",
-    "behavior": "classical"
-  },
-  "ChinaDomain": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/ChinaDomain.list",
-    "path": "./ruleset/ChinaDomain.list",
-    "behavior": "classical"
-  },
-  "ChinaCompanyIp": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/ChinaCompanyIp.list",
-    "path": "./ruleset/ChinaCompanyIp.list",
-    "behavior": "classical"
-  },
   "ProxyLite": {
     "type": "http",
     "format": "text",
@@ -87,20 +63,12 @@ const ruleProviders = {
     "path": "./ruleset/ProxyLite.list",
     "behavior": "classical"
   },
-  "ChinaMedia": {
+"World": {
     "type": "http",
     "format": "text",
     "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/ChinaMedia.list",
-    "path": "./ruleset/ChinaMedia.list",
-    "behavior": "classical"
-  },
-  "Download": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Download.list",
-    "path": "./ruleset/Download.list",
+    "url": "https://cdn.jsdelivr.net/gh/tyy840913/backup/World.list",
+    "path": "./ruleset/World.list",
     "behavior": "classical"
   },
   "Tomato": {
@@ -116,16 +84,8 @@ const ruleProviders = {
 //规则
 const rules = [
    "RULE-SET,Tomato,🛑 广告拦截",
-   "PROCESS-NAME,subs-check.exe,🎯 全球直连",
-   "PROCESS-NAME,subs-check,🎯 全球直连",
-   "RULE-SET,LocalAreaNetwork,🎯 全球直连",
-   "RULE-SET,ChinaDomain,🎯 全球直连",
    "RULE-SET,ProxyLite,📹 全球代理",
-   "RULE-SET,ChinaMedia,🎯 全球直连",
-   "RULE-SET,ChinaDomain,🎯 全球直连",
-   "RULE-SET,ChinaCompanyIp,🎯 全球直连",
-   "RULE-SET,Download,🎯 全球直连",
-   "GEOIP,CN,🎯 全球直连",
+   "RULE-SET,World,📹 全球代理",
    "MATCH,🐟 漏网之鱼"
 ];
 
