@@ -151,13 +151,13 @@ function main(config, profileName) {
     ...groupBaseOption,
     "name": "🛑 广告拦截",
     "type": "select",
-    "proxies": ["REJECT"]
+    "proxies": ["REJECT","DIRECT"]
   },
  {
     ...groupBaseOption,
     "name": "🎯 全球直连",
     "type": "select",
-    "proxies": ["DIRECT"]
+    "proxies": ["DIRECT","REJECT"]
   }
 ];
 
