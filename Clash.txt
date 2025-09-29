@@ -115,18 +115,6 @@ function main(config, profileName) {
   config["proxy-groups"] = [
   {
     ...groupBaseOption,
-    "name": "🚀 节点选择",
-    "type": "select",
-    "proxies": ["♻ 自动选择", "🚀 负载均衡", "🚀 手动切换", "DIRECT"]
-  },
-  {
-    ...groupBaseOption,
-    "name": "🚀 手动切换",
-    "type": "select",
-    "include-all": true
-  },
-  {
-    ...groupBaseOption,
     "name": "♻ 自动选择",
     "type": "url-test",
     "include-all": true,
@@ -145,7 +133,7 @@ function main(config, profileName) {
     ...groupBaseOption,
     "name": "📹 全球代理",
     "type": "select",
-    "proxies": ["🚀 节点选择", "♻ 自动选择", "🚀 手动切换", "DIRECT"]
+    "proxies": ["🚀 负载均衡", "♻ 自动选择"]
   },
   {
     ...groupBaseOption,
