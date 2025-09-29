@@ -19,6 +19,28 @@ proxy-groups:
     include-all: true
     interval: 300
     tolerance: 50
+  - name: "负载均衡"
+    type: load-balance
+    proxies:
+      - "代理节点1"
+      - "代理节点2"
+      - "代理节点3"
+    interval: 300
+    strategy: round-robin
+  - name: "故障转移"
+    type: fallback
+    proxies:
+      - "代理节点A"
+      - "代理节点B"
+      - "DIRECT"
+    interval: 300
+  - name: "混合策略"
+    type: fallback
+    proxies:
+      - "LoadBalance"
+      - "Fallback"
+      - "DIRECT"
+    interval: 300
   - name: 📲 电报消息
     type: select
     proxies:
