@@ -15,16 +15,16 @@ proxy-groups:
   - name: 🚀 手动切换
     include-all: true
     type: select
-  - name: 🚀 负载均衡
-    type: load-balance
-    include-all: true
-    interval: 300
-    strategy: round-robin
   - name: ♻️ 自动选择
     type: url-test
     include-all: true
     interval: 300
     tolerance: 50
+  - name: 🚀 负载均衡
+    type: load-balance
+    include-all: true
+    interval: 300
+    strategy: round-robin
   - name: 📲 电报消息
     type: select
     proxies:
