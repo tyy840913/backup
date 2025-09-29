@@ -2,6 +2,7 @@ proxy-groups:
   - name: 🚀 节点选择
     type: select
     proxies:
+      - 🔯 负载均衡
       - ♻️ 自动选择
       - 🇭🇰 香港节点
       - 🇨🇳 台湾节点
@@ -14,6 +15,11 @@ proxy-groups:
   - name: 🚀 手动切换
     include-all: true
     type: select
+  - name: 🔯 负载均衡
+    type: load-balance
+    include-all: true
+    interval: 300
+    strategy: round-robin
   - name: ♻️ 自动选择
     type: url-test
     include-all: true
