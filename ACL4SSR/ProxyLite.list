@@ -172,6 +172,7 @@ DOMAIN-SUFFIX,claude.ai
 DOMAIN-SUFFIX,anthropic.com
 
 # Developer 开发者常用国外网站、镜像和论坛
+DOMAIN-SUFFIX,cloudflare.com
 DOMAIN-SUFFIX,apache.org
 DOMAIN-SUFFIX,docker.com
 DOMAIN-SUFFIX,docker.io
@@ -319,7 +320,6 @@ IP-CIDR,147.92.128.0/17,no-resolve
 IP-CIDR,203.104.128.0/19,no-resolve
 
 # AI平台
-DOMAIN-SUFFIX,cloudflare.com
 DOMAIN-KEYWORD,anthropic
 DOMAIN-KEYWORD,claude
 DOMAIN-KEYWORD,openai
