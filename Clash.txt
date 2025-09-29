@@ -79,14 +79,6 @@ const ruleProviders = {
     "path": "./ruleset/ChinaCompanyIp.list",
     "behavior": "classical"
   },
-  "UnBan": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/UnBan.list",
-    "path": "./ruleset/UnBan.list",
-    "behavior": "classical"
-  },
   "ProxyLite": {
     "type": "http",
     "format": "text",
@@ -127,7 +119,6 @@ const rules = [
    "PROCESS-NAME,subs-check.exe,🎯 全球直连",
    "PROCESS-NAME,subs-check,🎯 全球直连",
    "RULE-SET,LocalAreaNetwork,🎯 全球直连",
-   "RULE-SET,UnBan,🎯 全球直连",
    "RULE-SET,ChinaDomain,🎯 全球直连",
    "RULE-SET,ProxyLite,📹 全球代理",
    "RULE-SET,ChinaMedia,🎯 全球直连",
