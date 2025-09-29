@@ -1,33 +1,58 @@
+# DOMAIN: 匹配完整的域名（例如 www.google.com）
+# DOMAIN-SUFFIX: 匹配域名后缀（例如 google.com 可以匹配 www.google.com和 mail.google.com）
+# DOMAIN-KEYWORD: 匹配包含关键字的域名（例如 google 可以匹配任何包含"google"的域名）
+# DOMAIN-REGEX: 使用正则表达式来匹配域名，最为灵活
+# GEOSITE: 匹配预定义的域名集合（如 geosite:google 或 geosite:cn）
+# IP-CIDR: 匹配 IPv4 地址或网段（例如 192.168.1.1 或 192.168.1.0/24）
+# IP-CIDR6: 匹配 IPv6 地址或网段
+# IP-ASN: 匹配属于特定自治系统（AS）的 IP 地址范围（通常用于识别网络运营商）
+# IP-SUFFIX: 匹配 IP 地址的后缀（较为少见）
+# GEOIP: 匹配目标 IP 的地理位置（例如 GEOIP,CN 匹配位于中国的 IP）
+# SRC-GEOIP: 匹配源 IP 的地理位置
+# SRC-IP-ASN: 匹配源 IP 所属的自治系统
+# SRC-IP-CIDR: 匹配源 IP 地址或网段（例如 SRC-IP-CIDR,192.168.1.0/24）
+# SRC-IP-SUFFIX: 匹配源 IP 地址的后缀
+# DST-PORT: 匹配目标端口
+# SRC-PORT: 匹配源端口
+# IN-PORT: 匹配数据包进入的接口（入站端口）
+# IN-TYPE: 匹配连接的类型（如 SOCKS5, HTTP）
+# IN-USER: 匹配操作系统用户
+# IN-NAME: 匹配入站连接的名称（在配置中定义）
+# PROCESS-PATH: 匹配发起连接的进程的完整路径
+# PROCESS-PATH-REGEX: 使用正则表达式匹配进程路径
+# PROCESS-NAME: 匹配进程名
+# PROCESS-NAME-REGEX: 使用正则表达式匹配进程名
+# UID: 匹配用户 ID (Android 系统常用)
+# NETWORK: 匹配网络类型（如 Wi-Fi, 蜂窝数据）
+# DSCP: 匹配 IP 头中的差分服务代码点，用于 QoS
+# RULE-SET: 引用另一组预定义的规则集
+# AND: 逻辑"与"，组合多条规则，必须全部满足
+# OR: 逻辑"或"，组合多条规则，满足一条即可
+# NOT: 逻辑"非"，对一条规则取反
+# SUB-RULE: 子规则（具体实现因工具而异）
+# MATCH: 通常用作最终规则，匹配所有未被前面规则匹配的流量
+
+
 # 番茄免费小说过虑广告
-DOMAIN-SUFFIX,zijieapi.com
-DOMAIN-SUFFIX,frontier-toutiao.snssdk.com
+# 关键词
+DOMAIN-KEYWORD,zijieapi
+DOMAIN-KEYWORD,toutiao
+DOMAIN-KEYWORD,pangolin
+DOMAIN-KEYWORD,douyin
+DOMAIN-KEYWORD,snssdk
+DOMAIN-KEYWORD,fqnovelvod
+DOMAIN-KEYWORD,douyinpic
+# 域名后缀
 DOMAIN-SUFFIX,pangolin-sdk-toutiao-b.com
-DOMAIN-SUFFIX,ads5-normal-lf.zijieapi.com
-DOMAIN-SUFFIX,pglstatp-toutiao.com
-DOMAIN-SUFFIX,snssdk.com
-DOMAIN-SUFFIX,douyin.com
-DOMAIN-SUFFIX,fqnovelvod.com
-DOMAIN,pangolin-sdk-toutiao.com
-DOMAIN,zijieapi.com
-DOMAIN,frontier-toutiao.snssdk.com
-DOMAIN,pangolin-sdk-toutiao-b.com
-DOMAIN,ads5-normal-lf.zijieapi.com
-DOMAIN,pglstatp-toutiao.com
-DOMAIN,webcast5-open-hl.douyin.com
-DOMAIN,i-hl.snssdk.com
+DOMAIN-SUFFIX,ecombdapi.com
+# 域名
 DOMAIN,v5-hl-hw-reading-video.fqnovelvod.com
-DOMAIN,webcast5-open-lf.douyin.com
 DOMAIN,v5-reading-video.fqnovelvod.com
-DOMAIN,p3.douyinpic.com
 DOMAIN,api-access.pangolin-sdk-toutiao1.com
 DOMAIN,frontier100-toutiao-lf.fqnovel.com
 DOMAIN,mon11-misc-lf.fqnovel.com
-DOMAIN,p3-reading-sign.fqnovelpic.com
-DOMAIN,isaas5-normal-lf.ecombdapi.com
 DOMAIN,api3-normal-lf.fqnovel.com
 DOMAIN,dig.bdurl.net
 DOMAIN,log5-applog-lf.fqnovel.com
-DOMAIN,security.snssdk.com
-DOMAIN,ads3-normal-lf.zijieapi.com
 DOMAIN,p9-ad-sign.byteimg.com
 DOMAIN,p6-ad-sign.byteimg.com
