@@ -63,6 +63,22 @@ const ruleProviders = {
     "path": "./ruleset/LocalAreaNetwork.list",
     "behavior": "classical"
   },
+  "ChinaDomain": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/ChinaDomain.list",
+    "path": "./ruleset/ChinaDomain.list",
+    "behavior": "classical"
+  },
+  "ChinaCompanyIp": {
+    "type": "http",
+    "format": "text",
+    "interval": 86400,
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/ChinaCompanyIp.list",
+    "path": "./ruleset/ChinaCompanyIp.list",
+    "behavior": "classical"
+  },
   "UnBan": {
     "type": "http",
     "format": "text",
@@ -87,92 +103,12 @@ const ruleProviders = {
     "path": "./ruleset/BanProgramAD.list",
     "behavior": "classical"
   },
-  "GoogleFCM": {
+  "ProxyLite": {
     "type": "http",
     "format": "text",
     "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Ruleset/GoogleFCM.list",
-    "path": "./ruleset/GoogleFCM.list",
-    "behavior": "classical"
-  },
-  "GoogleCN": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/GoogleCN.list",
-    "path": "./ruleset/GoogleCN.list",
-    "behavior": "classical"
-  },
-  "SteamCN": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Ruleset/SteamCN.list",
-    "path": "./ruleset/SteamCN.list",
-    "behavior": "classical"
-  },
-  "Bing": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Bing.list",
-    "path": "./ruleset/Bing.list",
-    "behavior": "classical"
-  },
-  "OneDrive": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/OneDrive.list",
-    "path": "./ruleset/OneDrive.list",
-    "behavior": "classical"
-  },
-  "Microsoft": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Microsoft.list",
-    "path": "./ruleset/Microsoft.list",
-    "behavior": "classical"
-  },
-  "Apple": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Apple.list",
-    "path": "./ruleset/Apple.list",
-    "behavior": "classical"
-  },
-  "Telegram": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Telegram.list",
-    "path": "./ruleset/Telegram.list",
-    "behavior": "classical"
-  },
-  "AI": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Ruleset/AI.list",
-    "path": "./ruleset/AI.list",
-    "behavior": "classical"
-  },
-  "OpenAi": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Ruleset/OpenAi.list",
-    "path": "./ruleset/OpenAi.list",
-    "behavior": "classical"
-  },
-  "YouTube": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Ruleset/YouTube.list",
-    "path": "./ruleset/YouTube.list",
+    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/Ruleset/ProxyLite.list",
+    "path": "./ruleset/ProxyLite.list",
     "behavior": "classical"
   },
   "ChinaMedia": {
@@ -181,22 +117,6 @@ const ruleProviders = {
     "interval": 86400,
     "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/ChinaMedia.list",
     "path": "./ruleset/ChinaMedia.list",
-    "behavior": "classical"
-  },
-  "ChinaDomain": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/ChinaDomain.list",
-    "path": "./ruleset/ChinaDomain.list",
-    "behavior": "classical"
-  },
-  "ChinaCompanyIp": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/ChinaCompanyIp.list",
-    "path": "./ruleset/ChinaCompanyIp.list",
     "behavior": "classical"
   },
   "Download": {
@@ -224,18 +144,10 @@ const rules = [
    "PROCESS-NAME,subs-check,🎯 全球直连",
    "RULE-SET,LocalAreaNetwork,🎯 全球直连",
    "RULE-SET,UnBan,🎯 全球直连",
+   "RULE-SET,ChinaDomain,🎯 全球直连",
    "RULE-SET,BanAD,🛑 广告拦截",
    "RULE-SET,BanProgramAD,🍃 应用净化",
-   "RULE-SET,GoogleFCM,📢 谷歌FCM",
-   "RULE-SET,GoogleCN,🎯 全球直连",
-   "RULE-SET,SteamCN,🎯 全球直连",
-   "RULE-SET,Bing,Ⓜ 微软Bing",
-   "RULE-SET,OneDrive,Ⓜ 微软云盘",
-   "RULE-SET,Microsoft,Ⓜ 微软服务",
-   "RULE-SET,Apple,🍎 苹果服务",
-   "RULE-SET,Telegram,📲 电报消息",
-   "RULE-SET,AI,💬 Ai平台",
-   "RULE-SET,YouTube,📹 油管视频",
+   "RULE-SET,ProxyLite,📹 全球代理",
    "RULE-SET,ChinaMedia,🎯 全球直连",
    "RULE-SET,ChinaDomain,🎯 全球直连",
    "RULE-SET,ChinaCompanyIp,🎯 全球直连",
@@ -248,7 +160,7 @@ const rules = [
 const groupBaseOption = {
   "interval": 300,
   "timeout": 3000,
-  "url": "https://www.gstatic.com/generate_204",
+  "url": "https://www.google.com/generate_204",
   "lazy": true,
   "max-failed-times": 3,
   "hidden": false
@@ -298,51 +210,9 @@ function main(config, profileName) {
   },
   {
     ...groupBaseOption,
-    "name": "📲 电报消息",
+    "name": "📹 全球代理",
     "type": "select",
     "proxies": ["🚀 节点选择", "♻ 自动选择", "🚀 手动切换", "DIRECT"]
-  },
-  {
-    ...groupBaseOption,
-    "name": "💬 Ai平台",
-    "type": "select",
-    "proxies": ["🚀 节点选择", "♻ 自动选择", "🚀 手动切换", "DIRECT"]
-  },
-  {
-    ...groupBaseOption,
-    "name": "📹 油管视频",
-    "type": "select",
-    "proxies": ["🚀 节点选择", "♻ 自动选择", "🚀 手动切换", "DIRECT"]
-  },
-  {
-    ...groupBaseOption,
-    "name": "📢 谷歌FCM",
-    "type": "select",
-    "proxies": ["DIRECT", "🚀 节点选择", "🚀 手动切换"]
-  },
-  {
-    ...groupBaseOption,
-    "name": "Ⓜ 微软Bing",
-    "type": "select",
-    "proxies": ["DIRECT", "🚀 节点选择", "🚀 手动切换"]
-  },
-  {
-    ...groupBaseOption,
-    "name": "Ⓜ 微软云盘",
-    "type": "select",
-    "proxies": ["DIRECT", "🚀 节点选择", "🚀 手动切换"]
-  },
-  {
-    ...groupBaseOption,
-    "name": "Ⓜ 微软服务",
-    "type": "select",
-    "proxies": ["🚀 节点选择", "DIRECT", "🚀 手动切换"]
-  },
-  {
-    ...groupBaseOption,
-    "name": "🍎 苹果服务",
-    "type": "select",
-    "proxies": ["DIRECT", "🚀 节点选择", "🚀 手动切换"]
   },
   {
     ...groupBaseOption,
