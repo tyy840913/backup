@@ -35,24 +35,9 @@
 
 # 番茄免费小说过虑广告
 # 关键词
-DOMAIN-KEYWORD,zijieapi
-DOMAIN-KEYWORD,toutiao
-DOMAIN-KEYWORD,pangolin
-DOMAIN-KEYWORD,douyin
-DOMAIN-KEYWORD,snssdk
-DOMAIN-KEYWORD,fqnovelvod
-DOMAIN-KEYWORD,douyinpic
+DOMAIN-REGEX,^(?:[^.]*\.)*([^.]*?(zijieapi|pangolin|toutiao|douyin|adkwai|umeng|ecombd|bdurl|snssdk|fqnovelpic)[^.]*?)(?:\.[a-z]{2,})?$
+DOMAIN-REGEX,(?:(api3-normal-lf|log5-applog-lf|mon11-misc-lf)\.fqnovel\.com|p[69]-ad-sign\.byteimg\.com)
 # 域名后缀
-DOMAIN-SUFFIX,pangolin-sdk-toutiao-b.com
-DOMAIN-SUFFIX,ecombdapi.com
+
 # 域名
-DOMAIN,v5-hl-hw-reading-video.fqnovelvod.com
-DOMAIN,v5-reading-video.fqnovelvod.com
-DOMAIN,api-access.pangolin-sdk-toutiao1.com
-DOMAIN,frontier100-toutiao-lf.fqnovel.com
-DOMAIN,mon11-misc-lf.fqnovel.com
-DOMAIN,api3-normal-lf.fqnovel.com
-DOMAIN,dig.bdurl.net
-DOMAIN,log5-applog-lf.fqnovel.com
-DOMAIN,p9-ad-sign.byteimg.com
-DOMAIN,p6-ad-sign.byteimg.com
+
