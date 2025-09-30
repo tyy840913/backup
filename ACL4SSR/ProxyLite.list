@@ -5,6 +5,7 @@ DOMAIN-SUFFIX,cloudns.be
 DOMAIN-SUFFIX,cloudns.ch
 DOMAIN-SUFFIX,ip-ddns.com
 DOMAIN-SUFFIX,ddns-ip.net
+DOMAIN-SUFFIX,work.gd
 
 # 国外域名
 DOMAIN-SUFFIX,eu
