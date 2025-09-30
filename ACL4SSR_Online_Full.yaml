@@ -24,7 +24,6 @@ proxy-groups:
     proxies:
       - DIRECT
       - REJECT
-      
 rule-providers:
   ProxyLite:
     url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/ProxyLite.list
@@ -40,7 +39,6 @@ rule-providers:
     interval: 86400
     format: text
     type: http
-    
 rules:
   - "RULE-SET,Tomato,🛑 广告拦截"
   - "RULE-SET,Download,🌍 全球代理"
