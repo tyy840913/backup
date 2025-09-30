@@ -324,6 +324,7 @@ DOMAIN-KEYWORD,anthropic
 DOMAIN-KEYWORD,claude
 DOMAIN-KEYWORD,openai
 DOMAIN,ai.google.dev
+DOMAIN,prodregistryv2.org
 DOMAIN,aistudio.google.com
 DOMAIN,api.githubcopilot.com
 DOMAIN,api.groq.com
