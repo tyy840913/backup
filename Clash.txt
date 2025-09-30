@@ -76,7 +76,7 @@ const ruleProviders = {
 //规则
 const rules = [
    "RULE-SET,Global-Filter,🛑 全球拦截",
-   "RULE-SET,ProxyLite,📹 全球代理",
+   "RULE-SET,ProxyLite,🌍 全球代理",
    "MATCH,🎯 全球直连"
 ];
 
@@ -122,7 +122,7 @@ function main(config, profileName) {
   },
   {
     ...groupBaseOption,
-    "name": "📹 全球代理",
+    "name": "🌍 全球代理",
     "type": "select",
     "proxies": ["🚀 负载均衡", "♻ 自动选择"]
   },
