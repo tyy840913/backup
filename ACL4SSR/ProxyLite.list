@@ -328,7 +328,6 @@ DOMAIN-KEYWORD,openai
 DOMAIN-KEYWORD,grok
 DOMAIN,ai.google.dev
 DOMAIN,aistudio.google.com
-DOMAIN,prodregistryv2.org
 DOMAIN,api.githubcopilot.com
 DOMAIN,api.together.xyz
 DOMAIN,bard.google.com
@@ -370,7 +369,6 @@ DOMAIN-SUFFIX,sora.com
 
 # AI域名补充
 DOMAIN,api.mixpanel.com
-DOMAIN,featureassets.org
 
 # OneDrive
 DOMAIN-KEYWORD,1drv
