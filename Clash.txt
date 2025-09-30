@@ -71,19 +71,19 @@ const ruleProviders = {
     "path": "./ruleset/Global-Proxy.list",
     "behavior": "classical"
   },
-  "Tomato": {
+  "AD": {
     "type": "http",
     "format": "text",
     "interval": 86400,
-    "url": "https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/Tomato.list",
-    "path": "./ruleset/Tomato.list",
+    "url": "https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/AD.list",
+    "path": "./ruleset/AD.list",
     "behavior": "classical"
   }
 };
 
 //规则
 const rules = [
-   "RULE-SET,Tomato,🛑 广告拦截",
+   "RULE-SET,AD,🛑 广告拦截",
    "RULE-SET,ProxyLite,📹 全球代理",
    "RULE-SET,Global-Proxy,📹 全球代理",
    "MATCH,🎯 全球直连"
