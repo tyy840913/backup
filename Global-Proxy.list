@@ -85,6 +85,6 @@ DOMAIN-SUFFIX,openaiapi-site.azureedge.net
 DOMAIN-SUFFIX,perplexity.ai
 DOMAIN-SUFFIX,sora.com
 
-# GROK
+# 域名补充
 DOMAIN,api.mixpanel.com
 DOMAIN,featureassets.org
