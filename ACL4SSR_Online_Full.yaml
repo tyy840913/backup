@@ -42,4 +42,4 @@ rule-providers:
 rules:
   - "RULE-SET,Tomato,🛑 广告拦截"
   - "RULE-SET,Download,🌍 全球代理"
-  - "MATCH,🐟 漏网之鱼"
+  - "MATCH,🎯 全球直连"
