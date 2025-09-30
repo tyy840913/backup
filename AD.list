@@ -71,3 +71,4 @@ DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*chengzijianzhan\.cn$|^(?:localads)\.chengzijianz
 
 
 # 域名
+DOMAIN-SUFFIX,mixpanel.com
