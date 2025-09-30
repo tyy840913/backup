@@ -40,6 +40,6 @@ rule-providers:
     format: text
     type: http
 rules:
-  - "RULE-SET,Tomato,🛑 广告拦截"
-  - "RULE-SET,Download,🌍 全球代理"
+  - "RULE-SET,Global-Filter,🛑 广告拦截"
+  - "RULE-SET,ProxyLite,🌍 全球代理"
   - "MATCH,🎯 全球直连"
