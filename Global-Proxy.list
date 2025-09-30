@@ -86,3 +86,4 @@ DOMAIN-SUFFIX,sora.com
 
 # GROK
 DOMAIN,api.mixpanel.com
+DOMAIN,featureassets.org
