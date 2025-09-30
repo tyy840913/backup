@@ -1,6 +1,10 @@
 # 自定义域名
 DOMAIN-SUFFIX,56idc.net
 DOMAIN-SUFFIX,freemyip.com
+DOMAIN-SUFFIX,cloudns.be
+DOMAIN-SUFFIX,cloudns.ch
+DOMAIN-SUFFIX,ip-ddns.com
+DOMAIN-SUFFIX,ddns-ip.net
 
 # 国外域名
 DOMAIN-SUFFIX,eu
