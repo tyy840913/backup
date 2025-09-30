@@ -59,16 +59,8 @@ const ruleProviders = {
     "type": "http",
     "format": "text",
     "interval": 86400,
-    "url": "https://ghproxy.net/raw.githubusercontent.com/ACL4SSR/ACL4SSR/refs/heads/master/Clash/ProxyLite.list",
+    "url": "https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/ProxyLite.list",
     "path": "./ruleset/ProxyLite.list",
-    "behavior": "classical"
-  },
-"Global-Proxy": {
-    "type": "http",
-    "format": "text",
-    "interval": 86400,
-    "url": "https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/Global-Proxy.list",
-    "path": "./ruleset/Global-Proxy.list",
     "behavior": "classical"
   },
   "AD": {
