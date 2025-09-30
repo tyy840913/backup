@@ -44,6 +44,7 @@ DOMAIN-KEYWORD,claude
 DOMAIN-KEYWORD,openai
 DOMAIN,ai.google.dev
 DOMAIN,aistudio.google.com
+DOMAIN,prodregistryv2.org
 DOMAIN,api.githubcopilot.com
 DOMAIN,api.groq.com
 DOMAIN,api.together.xyz
