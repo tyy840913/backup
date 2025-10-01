@@ -25,6 +25,7 @@ DOMAIN-KEYWORD,google
 DOMAIN-KEYWORD,1e100
 DOMAIN-KEYWORD,abema
 DOMAIN-KEYWORD,appledaily
+DOMAIN-KEYWORD,microsoft
 DOMAIN-KEYWORD,avtb
 DOMAIN-KEYWORD,beetalk
 DOMAIN-KEYWORD,blogspot
@@ -137,6 +138,11 @@ DOMAIN-SUFFIX,prodregistryv2.org
 # AI域名补充
 DOMAIN-SUFFIX,mixpanel.com
 DOMAIN,api.mixpanel.com
+
+# Bing
+DOMAIN-SUFFIX,bing.com
+DOMAIN-SUFFIX,copilot.cloud.microsoft
+DOMAIN-SUFFIX,copilot.microsoft.com
 
 
 # Developer 开发者常用国外网站、镜像和论坛
