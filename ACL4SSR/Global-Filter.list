@@ -32,45 +32,6 @@
 # SUB-RULE: 子规则（具体实现因工具而异）
 # MATCH: 通常用作最终规则，匹配所有未被前面规则匹配的流量
 
-
-# 番茄免费小说过虑广告
-# 关键词
-# DOMAIN-REGEX,^(toutiao|pangolin|zijieapi|douyin)(?=[.-])
-# DOMAIN-REGEX,^[^.]*-?(toutiao|pangolin|zijieapi|douyin)-?[^.]*(?=[.-])
-
-
-# 组1: zijieapi.com
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*zijieapi\.com$
-# 组2: amemv.com
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*amemv\.com$|^(?:ads[a-z0-9-]*-normal(?:-[a-z]+)?)\.amemv\.com$
-# 组3: byteimg.com
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*byteimg\.com$|^(?:p\d*-ad(?:-sign|-local-ads)?)\.byteimg\.com$
-# 组4: pstatp.com
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*pstatp\.com$|^(?:sf\d*-ttcdn-tos)\.pstatp\.com$
-# 组5: zjurl.cn
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*zjurl\.cn$|^(?:dig)\.zjurl\.cn$
-# 组6: bdurl.net
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*bdurl\.net$|^(?:dig)\.bdurl\.net$
-# 组7: bsccdn.net
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*bsccdn\.net$|^(?:bsccdn)\.net$
-# 组8: bytesfield.com
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*bytesfield\.com$|^(?:apps)\.bytesfield\.com$
-# 组9: pangolin-sdk-toutiao.com
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*pangolin-sdk-toutiao\.com$|^(?:pangolin-sdk-toutiao)\.com$
-# 组10: pangolin-sdk-toutiao1.com
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*pangolin-sdk-toutiao1\.com$|^(?:pangolin-sdk-toutiao1)\.com$
-# 组11: pangolin-sdk-toutiao-b.com
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*pangolin-sdk-toutiao-b\.com$|^(?:pangolin-sdk-toutiao-b)\.com$
-# 组12: pglstatp-toutiao.com
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*pglstatp-toutiao\.com$|^(?:pglstatp-toutiao)\.com$
-# 组13: fqnovelvod.com
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*fqnovelvod\.com$|^(?:v\d*-novelapp)\.fqnovelvod\.com$
-# 组14: byteorge.com
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*byteorge\.com$|^(?:lf\d*-orange)\.byteorge\.com$
-# 组15: chengzijianzhan.cn
-# DOMAIN-REGEX, ^(?:[a-z0-9-]+\.)*chengzijianzhan\.cn$|^(?:localads)\.chengzijianzhan\.cn$
-
-
 # 字节跳动相关域名匹配（仅主域名）
 DOMAIN-SUFFIX,zijieapi.com
 DOMAIN-SUFFIX,amemv.com
@@ -87,4 +48,3 @@ DOMAIN-SUFFIX,pglstatp-toutiao.com
 DOMAIN-SUFFIX,fqnovelvod.com
 DOMAIN-SUFFIX,byteorge.com
 DOMAIN-SUFFIX,chengzijianzhan.cn
-
