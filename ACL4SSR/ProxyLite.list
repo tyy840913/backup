@@ -135,7 +135,9 @@ DOMAIN-SUFFIX,sora.com
 DOMAIN-SUFFIX,prodregistryv2.org
 
 # AI域名补充
+DOMAIN-SUFFIX,mixpanel.com
 DOMAIN,api.mixpanel.com
+
 
 # Developer 开发者常用国外网站、镜像和论坛
 DOMAIN-SUFFIX,cloudflare.com
