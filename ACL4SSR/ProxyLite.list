@@ -248,8 +248,6 @@ DOMAIN,d1q6f0aelx0por.cloudfront.net
 DOMAIN,d2wy8f7a9ursnm.cloudfront.net
 DOMAIN,d36jcksde1wxzq.cloudfront.net
 DOMAIN-SUFFIX,compose-spec.io
-DOMAIN-SUFFIX,docker.com
-DOMAIN-SUFFIX,docker.io
 DOMAIN-SUFFIX,dockerhub.com
 
 # Top Blocked Sites
@@ -265,12 +263,9 @@ DOMAIN-SUFFIX,app-measurement.com
 DOMAIN-SUFFIX,appspot.com
 DOMAIN-SUFFIX,archive.org
 DOMAIN-SUFFIX,armorgames.com
-DOMAIN-SUFFIX,aspnetcdn.com
 DOMAIN-SUFFIX,awsstatic.com
-DOMAIN-SUFFIX,azureedge.net
 DOMAIN-SUFFIX,azurewebsites.net
 DOMAIN-SUFFIX,bandwagonhost.com
-DOMAIN-SUFFIX,bing.com
 DOMAIN-SUFFIX,bkrtx.com
 DOMAIN-SUFFIX,blogcdn.com
 DOMAIN-SUFFIX,blogger.com
@@ -296,13 +291,11 @@ DOMAIN-SUFFIX,dropboxusercontent.com
 DOMAIN-SUFFIX,duckduckgo.com
 DOMAIN-SUFFIX,edgecastcdn.net
 DOMAIN-SUFFIX,edgekey.net
-DOMAIN-SUFFIX,edgesuite.net
 DOMAIN-SUFFIX,eurekavpt.com
 DOMAIN-SUFFIX,fastmail.com
 DOMAIN-SUFFIX,firebaseio.com
 DOMAIN-SUFFIX,flickr.com
 DOMAIN-SUFFIX,flipboard.com
-DOMAIN-SUFFIX,gfx.ms
 DOMAIN-SUFFIX,gongm.in
 DOMAIN-SUFFIX,hulu.com
 DOMAIN-SUFFIX,id.heroku.com
@@ -315,11 +308,9 @@ DOMAIN-SUFFIX,kik.com
 DOMAIN-SUFFIX,kobo.com
 DOMAIN-SUFFIX,kobobooks.com
 DOMAIN-SUFFIX,licdn.com
-DOMAIN-SUFFIX,live.net
 DOMAIN-SUFFIX,livefilestore.com
 DOMAIN-SUFFIX,llnwd.net
 DOMAIN-SUFFIX,macrumors.com
-DOMAIN-SUFFIX,medium.com
 DOMAIN-SUFFIX,mega.nz
 DOMAIN-SUFFIX,megaupload.com
 DOMAIN-SUFFIX,messenger.com
@@ -337,7 +328,6 @@ DOMAIN-SUFFIX,prfct.co
 DOMAIN-SUFFIX,pscp.tv
 DOMAIN-SUFFIX,quora.com
 DOMAIN-SUFFIX,resilio.com
-DOMAIN-SUFFIX,sfx.ms
 DOMAIN-SUFFIX,shadowsocks.org
 DOMAIN-SUFFIX,slack-edge.com
 DOMAIN-SUFFIX,smartdnsproxy.com
@@ -387,10 +377,6 @@ IP-CIDR,54.230.156.0/22,no-resolve
 DOMAIN-KEYWORD,uk-live
 DOMAIN-SUFFIX,bbc.co
 DOMAIN-SUFFIX,bbc.com
-
-# Claude
-DOMAIN-SUFFIX,claude.ai
-DOMAIN-SUFFIX,anthropic.com
 
 # Discord
 DOMAIN-SUFFIX,discord.co
@@ -479,19 +465,16 @@ IP-CIDR,203.104.128.0/19,no-resolve
 
 
 # OneDrive
-DOMAIN-KEYWORD,1drv
 DOMAIN-KEYWORD,onedrive
 DOMAIN-KEYWORD,skydrive
-DOMAIN-SUFFIX,livefilestore.com
 DOMAIN-SUFFIX,oneclient.sfx.ms
-DOMAIN-SUFFIX,onedrive.com
 DOMAIN-SUFFIX,onedrive.live.com
 DOMAIN-SUFFIX,photos.live.com
 DOMAIN-SUFFIX,skydrive.wns.windows.com
 DOMAIN-SUFFIX,spoprod-a.akamaihd.net
 DOMAIN-SUFFIX,storage.live.com
 DOMAIN-SUFFIX,storage.msn.com
-#DOMAIN-SUFFIX,aria.microsoft.com
+DOMAIN-SUFFIX,aria.microsoft.com
 
 # Porn
 DOMAIN-KEYWORD,porn
@@ -525,7 +508,6 @@ DOMAIN-SUFFIX,fanbox.cc
 
 # Spark
 DOMAIN-SUFFIX,amplitude.com
-DOMAIN-SUFFIX,firebaseio.com
 DOMAIN-SUFFIX,hockeyapp.net
 DOMAIN-SUFFIX,readdle.com
 DOMAIN-SUFFIX,smartmailcloud.com
@@ -557,7 +539,6 @@ DOMAIN-SUFFIX,taptap.tw
 # Twitch
 DOMAIN-SUFFIX,twitch.tv
 DOMAIN-SUFFIX,ttvnw.net
-DOMAIN-SUFFIX,jtvnw.net
 DOMAIN-KEYWORD,ttvnw
 
 # Twitter
@@ -573,7 +554,6 @@ DOMAIN-SUFFIX,terabox.com
 DOMAIN-SUFFIX,teraboxcdn.com
 
 # Whatsapp
-IP-CIDR,18.194.0.0/15,no-resolve
 IP-CIDR,34.224.0.0/12,no-resolve
 IP-CIDR,54.242.0.0/15,no-resolve
 IP-CIDR,50.22.198.204/30,no-resolve
