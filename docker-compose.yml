@@ -10,6 +10,18 @@ services:
       - portainer:/data
     ports:
       - "9100:9000"
+
+  # webssh 网页终端
+  webssh:
+    image: eooce/webssh:latest
+    container_name: webssh
+    ports:
+      - "8888:8888"
+    environment:
+      - USER=      # 可选，Web登录用户名（需与PASS同时设置）
+      - PASS=      # 可选，Web登录密码
+      - PORT=8888  # 可选，服务端口，默认8888
+    restart: always
       
   # KatelyaTV 家庭影院
   katelyatv:
