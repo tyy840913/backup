@@ -139,6 +139,11 @@ DOMAIN-SUFFIX,prodregistryv2.org
 DOMAIN-SUFFIX,mixpanel.com
 DOMAIN,api.mixpanel.com
 
+# Microsoft Copilot
+DOMAIN-SUFFIX,bing.com
+DOMAIN-SUFFIX,copilot.cloud.microsoft
+DOMAIN-SUFFIX,copilot.microsoft.com
+
 # Developer 开发者常用国外网站、镜像和论坛
 DOMAIN-SUFFIX,cloudflare.com
 DOMAIN-SUFFIX,apache.org
