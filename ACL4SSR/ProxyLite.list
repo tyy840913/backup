@@ -143,6 +143,7 @@ DOMAIN,api.mixpanel.com
 DOMAIN-SUFFIX,bing.com
 DOMAIN-SUFFIX,copilot.cloud.microsoft
 DOMAIN-SUFFIX,copilot.microsoft.com
+DOMAIN-SUFFIX,api.githubcopilot.com
 
 # Developer 开发者常用国外网站、镜像和论坛
 DOMAIN-SUFFIX,cloudflare.com
