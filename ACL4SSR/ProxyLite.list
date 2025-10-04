@@ -101,7 +101,8 @@ DOMAIN-SUFFIX,perplexity.ai
 DOMAIN-SUFFIX,sora.com
 DOMAIN-SUFFIX,prodregistryv2.org
 
-# Microsoft Copilot
+# Microsoft
+DOMAIN-SUFFIX,appcenter.ms
 DOMAIN-SUFFIX,bing.com
 
 # Developer 开发者常用国外网站、镜像和论坛
