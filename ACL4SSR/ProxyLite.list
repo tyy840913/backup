@@ -80,6 +80,7 @@ IP-CIDR,74.125.0.0/16,no-resolve
 IP-CIDR,173.194.0.0/16,no-resolve
 
 # AI平台
+DOMAIN-SUFFIX,x.com
 DOMAIN,api.together.xyz
 DOMAIN-SUFFIX,ai.azure.com
 DOMAIN-SUFFIX,auth0.com
