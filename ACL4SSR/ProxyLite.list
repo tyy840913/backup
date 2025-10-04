@@ -104,8 +104,8 @@ DOMAIN-SUFFIX,sora.com
 DOMAIN-SUFFIX,prodregistryv2.org
 
 # Microsoft
-DOMAIN-SUFFIX,appcenter.ms
 DOMAIN-SUFFIX,bing.com
+DOMAIN-SUFFIX,appcenter.ms
 
 # Developer 开发者常用国外网站、镜像和论坛
 DOMAIN-SUFFIX,gcr.io
