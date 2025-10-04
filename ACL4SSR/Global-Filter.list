@@ -32,7 +32,6 @@
 # SUB-RULE: 子规则（具体实现因工具而异）
 # MATCH: 通常用作最终规则，匹配所有未被前面规则匹配的流量
 
-DOMAIN-SUFFIX,adjust.com
 
 # 字节跳动相关域名匹配（仅主域名）
 DOMAIN-SUFFIX,zijieapi.com
