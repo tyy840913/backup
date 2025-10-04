@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "domain_suffix": ["zijieapi.com", "amemv.com", "byteimg.com", "pstatp.com", "zjurl.cn", "bdurl.net", "bsccdn.net", "bytesfield.com", "pangolin-sdk-toutiao.com", "pangolin-sdk-toutiao1.com", "pangolin-sdk-toutiao-b.com", "pglstatp-toutiao.com", "fqnovelvod.com", "byteorge.com", "chengzijianzhan.cn", "douyin.com"],
+      "domain_regex": ["(p\\d+\\.douyinpic\\.com|mon\\d+-misc-lf\\.fqnovel\\.com)"]
+    }
+  ]
+}
