@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "name": "自定义域名",
+      "domain_suffix": ["56idc.net", "freemyip.com", "cloudns.be", "cloudns.ch", "ip-ddns.com", "ddns-ip.net", "work.gd", "greasyfork.org"]
+    },
+    {
+      "name": "国外域名",
+      "domain_suffix": ["eu", "hk", "jp", "kr", "sg", "tw", "uk"]
+    },
+    {
+      "name": "国外域名关键字",
+      "domain_keyword": ["telegram", "youtube", "github", "google", "1e100", "abema", "appledaily", "microsoft", "avtb", "beetalk", "blogspot", "dropbox", "facebook", "fbcdn", "gmail", "instagram", "pornhub", "redtube", "sci-hub", "spotify", "twitter", "whatsapp", "x.ai", "anthropic", "claude", "openai", "grok", "chatgpt", "copilot"]
+    },
+    {
+      "name": "Telegram",
+      "domain_suffix": ["t.me", "tdesktop.com", "telegra.ph", "telesco.pe"],
+      "ip_cidr": ["91.108.0.0/16", "109.239.140.0/24", "149.154.160.0/20"],
+      "ip_cidr6": ["2001:67c:4e8::/48", "2001:b28:f23d::/48", "2001:b28:f23f::/48"]
+    },
+    {
+      "name": "Google",
+      "domain_suffix": ["2mdn.net", "app-measurement.net", "g.co", "ggpht.com", "goo.gl", "gstatic.cn", "gstatic.com", "gvt0.com", "gvt1.com", "gvt2.com", "gvt3.com", "xn--ngstr-lra8j.com", "youtu.be", "yt.be", "ytimg.com"],
+      "ip_cidr": ["74.125.0.0/16", "173.194.0.0/16"]
+    },
+    {
+      "name": "AI平台",
+      "domain_suffix": ["x.com", "ai.azure.com", "auth0.com", "client-api.arkoselabs.com", "cursor.com", "cursor.sh", "events.statsigapi.net", "featuregates.org", "grazie.ai", "grazie.aws.intellij.net", "identrust.com", "intercom.io", "intercom.com", "intercomcdn.com", "meta.ai", "mistral.ai", "oaistatic.com", "oaiusercontent.com", "perplexity.ai", "sora.com", "prodregistryv2.org"],
+      "domain": ["api.together.xyz"]
+    },
+    {
+      "name": "Microsoft",
+      "domain_suffix": ["bing.com", "appcenter.ms"]
+    },
+    {
+      "name": "Developer",
+      "domain_suffix": ["gcr.io", "docker.com", "docker.io", "compose-spec.io", "dockerhub.com", "cloudflare.com", "apache.org", "elastic.co", "elastic.com", "gitlab.com", "gitlab.io", "jitpack.io", "maven.org", "medium.com", "mvnrepository.com", "quay.io", "reddit.com", "redhat.com", "sonatype.org", "sourcegraph.com", "spring.io", "spring.net", "stackoverflow.com"]
+    },
+    {
+      "name": "GoogleCNProxyIP",
+      "ip_cidr": ["120.232.181.162/32", "120.241.147.226/32", "120.253.253.226/32", "120.253.255.162/32", "120.253.255.34/32", "120.253.255.98/32", "180.163.150.162/32", "180.163.150.34/32", "180.163.151.162/32", "180.163.151.34/32", "203.208.39.0/24", "203.208.40.0/24", "203.208.41.0/24", "203.208.43.0/24", "203.208.50.0/24", "220.181.174.162/32", "220.181.174.226/32", "220.181.174.34/32"]
+    },
+    {
+      "name": "OneDrive",
+      "domain_keyword": ["onedrive", "skydrive"],
+      "domain_suffix": ["oneclient.sfx.ms", "photos.live.com", "spoprod-a.akamaihd.net", "storage.live.com", "storage.msn.com"]
+    },
+    {
+      "name": "Porn",
+      "domain_suffix": ["xvideos.com", "xnxx.com", "xhamster.com", "spankbang.com", "chaturbate.com", "bongacams.com", "livejasmin.com"]
+    },
+    {
+      "name": "CDN加速",
+      "domain_suffix": ["xvideos-cdn.com", "xnxx-cdn.com", "phncdn.com", "phprcdn.com", "rdtcdn.com", "sb-cd.com", "dditscdn.com", "bcvcdn.com", "ahcdn.com", "afcdn.net", "aucdn.net", "ypncdn.com", "orbsrv.com"]
+    }
+  ]
+}
