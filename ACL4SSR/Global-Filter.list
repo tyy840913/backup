@@ -36,12 +36,11 @@
 # DOMAIN-SUFFIX,pangolin-sdk-toutiao1.com
 # DOMAIN-SUFFIX,pangolin-sdk-toutiao-b.com
 # DOMAIN-SUFFIX,pglstatp-toutiao.com
-
+# DOMAIN-KEYWORD,toutiao
 
 # 字节跳动相关域名匹配（仅主域名）
 DOMAIN-KEYWORD,pangolin
 DOMAIN-KEYWORD,normal
-# DOMAIN-KEYWORD,toutiao
 DOMAIN-KEYWORD,ecombdapi
 DOMAIN-SUFFIX,zijieapi.com
 DOMAIN-SUFFIX,amemv.com
