@@ -41,7 +41,7 @@
 # 字节跳动相关域名匹配（仅主域名）
 DOMAIN-KEYWORD,pangolin
 DOMAIN-KEYWORD,normal
-DOMAIN-KEYWORD,toutiao
+# DOMAIN-KEYWORD,toutiao
 DOMAIN-KEYWORD,ecombdapi
 DOMAIN-SUFFIX,zijieapi.com
 DOMAIN-SUFFIX,amemv.com
@@ -57,4 +57,4 @@ DOMAIN-SUFFIX,byteorge.com
 DOMAIN-SUFFIX,chengzijianzhan.cn
 DOMAIN-SUFFIX,douyin.com
 DOMAIN-SUFFIX,bytedanceapi.com
-DOMAIN-REGEX,(p\d+\.douyinpic\.com|mon\d+-misc-lf\.fqnovel\.com|p\d+[^\/]*\.ecombdimg\.com)
+DOMAIN-REGEX,(p\d+\.douyinpic\.com|mon\d+-misc-lf\.fqnovel\.com|p\d+[^\/]*\.ecombdimg\.com|.*-applog-.*\.fqnovel\.com)
