@@ -57,4 +57,4 @@ DOMAIN-SUFFIX,byteorge.com
 DOMAIN-SUFFIX,chengzijianzhan.cn
 DOMAIN-SUFFIX,douyin.com
 DOMAIN-SUFFIX,bytedanceapi.com
-DOMAIN-REGEX,(p\d+\.douyinpic\.com|mon\d+-misc-lf\.fqnovel\.com|p\d+[^\/]*\.ecombdimg\.com|.*-applog-.*\.fqnovel\.com)
+DOMAIN-REGEX,(p\d+\.douyinpic\.com|mon\d+-misc-lf\.fqnovel\.com|p\d+[^\/]*\.ecombdimg\.com)
