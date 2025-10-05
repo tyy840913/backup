@@ -40,6 +40,7 @@
 
 # 字节跳动相关域名匹配（仅主域名）
 DOMAIN-KEYWORD,toutiao
+DOMAIN-KEYWORD,ecombdapi
 DOMAIN-SUFFIX,zijieapi.com
 DOMAIN-SUFFIX,amemv.com
 DOMAIN-SUFFIX,byteimg.com
