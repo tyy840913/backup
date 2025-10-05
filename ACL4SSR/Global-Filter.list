@@ -57,3 +57,6 @@ DOMAIN-SUFFIX,chengzijianzhan.cn
 DOMAIN-SUFFIX,douyin.com
 DOMAIN-SUFFIX,bytedanceapi.com
 DOMAIN-REGEX,(p\d+\.douyinpic\.com|mon\d+-misc-lf\.fqnovel\.com|p\d+[^\/]*\.ecombdimg\.com|.*-applog-.*\.fqnovel\.com)
+
+DOMAIN,pull-rtmp-l13.douyincdn.com
+DOMAIN,tnc3-alisc1.bytedance.com
