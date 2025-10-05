@@ -36,7 +36,7 @@
 # DOMAIN-SUFFIX,pangolin-sdk-toutiao1.com
 # DOMAIN-SUFFIX,pangolin-sdk-toutiao-b.com
 # DOMAIN-SUFFIX,pglstatp-toutiao.com
-# DOMAIN-KEYWORD,normal
+# DOMAIN-KEYWORD,normal   #（不能屏蔽，否则页面加载不全）
 
 # 字节跳动相关域名匹配（仅主域名）
 DOMAIN-KEYWORD,pangolin
