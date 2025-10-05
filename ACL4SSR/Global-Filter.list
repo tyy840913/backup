@@ -55,6 +55,6 @@ DOMAIN-SUFFIX,byteorge.com
 DOMAIN-SUFFIX,chengzijianzhan.cn
 DOMAIN-SUFFIX,douyin.com
 DOMAIN-SUFFIX,bytedanceapi.com
-DOMAIN-REGEX,(p\d+\.douyinpic\.com|mon\d+-misc-lf\.fqnovel\.com|p\d+[^\/]*\.ecombdimg\.com)
+DOMAIN-REGEX,(normal.*\.fqnovel\.com|p\d+\.douyinpic\.com|mon\d+-misc-lf\.fqnovel\.com|p\d+[^\/]*\.ecombdimg\.com)
 
 DOMAIN,rtlog5-applog-lf.fqnovel.com
