@@ -138,7 +138,7 @@ function main(config, profileName) {
     ...groupBaseOption,
     "name": "🎯 全球直连",
     "type": "select",
-    "proxies": ["DIRECT","REJECT","🚀 负载均衡"]
+    "proxies": ["DIRECT","REJECT","🌍 全球代理"]
   }
 ];
 
