@@ -1,18 +1,27 @@
-// 国内DNS服务器
+// ========== 国内 DoH ==========
 const domesticNameservers = [
-  "https://223.5.5.5/dns-query", // 阿里DoH
-  "https://doh.pub/dns-query", // 腾讯DoH，因腾讯云即将关闭免费版IP访问，故用域名
-  "https://1.2.4.8/dns-query", // 权威机构运行,服务器稳定
-  "https://114.114.114.114/dns-query" // 国内114稳定的DNS服务器
+  "https://223.5.5.5/dns-query",          // 阿里-A | 国内最快之一，支持 ECS
+  "https://223.6.6.6/dns-query",          // 阿里-B | 同上一致，双节点负载
+  "https://119.29.29.29/dns-query",       // 腾讯主 | DNSPod 国内入口，节点多、延迟低
+  "https://doh.pub/dns-query",            // 腾讯域 | 备案域名访问，IP 封时救场
+  "https://1.12.12.12/dns-query",         // 腾讯备 | 纯 IP 备用，延迟同 119 相近
+  "https://120.53.53.53/dns-query",       // 腾讯三 | 又一 Anycast，三节点互为兜底
+  "https://114.114.114.114/dns-query"     // 114DNS | 老牌纯净，无广告，稳定 10 年+
 ];
 
-// 国外DNS服务器
+// ========== 国外 DoH ==========
 const foreignNameservers = [
-  "https://cloudflare-dns.com/dns-query", // CloudflareDNS
-  "https://77.88.8.8/dns-query", // YandexDNS
-  "https://8.8.4.4/dns-query#ecs=1.1.1.1/24&ecs-override=true", // GoogleDNS
-  "https://208.67.222.222/dns-query#ecs=1.1.1.1/24&ecs-override=true", // OpenDNS
-  "https://9.9.9.9/dns-query", // Quad9DNS
+  "https://cloudflare-dns.com/dns-query", // CF 域名 | 全球 Anycast，隐私优先，无日志
+  "https://1.1.1.1/dns-query",            // CF-1   | 纯 IP 入口，延迟低
+  "https://1.0.0.1/dns-query",            // CF-2   | Cloudflare 备用，双 A 备份
+  "https://dns.google/dns-query",         // Google | 自动负载 8.8.8.8/8.8.4.4，支持 ECS
+  "https://8.8.8.8/dns-query",            // G-主   | 最常用，解析权威，抗污染
+  "https://8.8.4.4/dns-query",            // G-备   | 同上，双节点冗余
+  "https://dns.quad9.net/dns-query",      // Quad9  | 自带恶意域拦截，隐私认证
+  "https://9.9.9.9/dns-query",            // Q9-主  | 纯 IP，安全过滤
+  "https://dns11.quad9.net/dns-query",    // Q9-备  | 次级节点，故障自动切换
+  "https://dns.yandex.com/dns-query",     // Yandex | 东欧/中亚优化，国内偶尔抽风
+  "https://77.88.8.8/dns-query"           // Y-备   | 纯 IP 入口，兜底使用
 ];
 
 // DNS配置
