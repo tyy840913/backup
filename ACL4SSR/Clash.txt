@@ -79,7 +79,7 @@ const ruleProviders = {
 const rules = [
    "RULE-SET,Global-Filter,🛑 全球拦截",
    "RULE-SET,ProxyLite,🌍 全球代理",
-   "MATCH,🎯 全球直连"
+   "MATCH,🎯 漏网之鱼"
 ];
 
 // 代理组通用配置
@@ -136,7 +136,7 @@ function main(config, profileName) {
   },
  {
     ...groupBaseOption,
-    "name": "🎯 全球直连",
+    "name": "🎯 漏网之鱼",
     "type": "select",
     "proxies": ["DIRECT","REJECT","🌍 全球代理"]
   }
