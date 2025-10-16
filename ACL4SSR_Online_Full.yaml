@@ -24,6 +24,12 @@ proxy-groups:
     proxies:
       - DIRECT
       - REJECT
+  - name: 🌍 Ai全球代理
+    include-all: true
+    filter: (?i)美|波特兰|达拉斯|俄勒冈|凤凰城|费利蒙|硅谷|拉斯维加斯|洛杉矶|圣何塞|圣克拉拉|西雅图|芝加哥|US|United States|(?i)日本|川日|东京|大阪|泉日|埼玉|沪日|深日|JP|Japan|(?i)新加坡|坡|狮城|SG|Singapore|(?i)KR|Korea|KOR|首尔|韩|韓
+    type: url-test
+    interval: 300
+    tolerance: 50
 rule-providers:
   ProxyLite:
     url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/ProxyLite.list
@@ -39,7 +45,15 @@ rule-providers:
     interval: 86400
     format: text
     type: http
+  AI:
+    url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/AI.list
+    path: ./ruleset/AI.list
+    behavior: classical
+    interval: 86400
+    format: text
+    type: http
 rules:
   - "RULE-SET,Global-Filter,🛑 广告拦截"
+  - "RULE-SET,AI,🌍 Ai全球代理 
   - "RULE-SET,ProxyLite,🌍 全球代理"
   - "MATCH,🎯 全球直连"
