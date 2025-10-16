@@ -22,7 +22,6 @@ DOMAIN-SUFFIX,uk
 DOMAIN-KEYWORD,telegram
 DOMAIN-KEYWORD,youtube
 DOMAIN-KEYWORD,github
-DOMAIN-KEYWORD,google
 DOMAIN-KEYWORD,1e100
 DOMAIN-KEYWORD,abema
 DOMAIN-KEYWORD,appledaily
@@ -47,7 +46,8 @@ DOMAIN-KEYWORD,claude
 DOMAIN-KEYWORD,openai
 DOMAIN-KEYWORD,grok
 DOMAIN-KEYWORD,chatgpt
-DOMAIN-KEYWORD,copilot
+
+KEYWORD,copilot
 
 # Telegram
 DOMAIN-SUFFIX,t.me
@@ -79,35 +79,6 @@ DOMAIN-SUFFIX,yt.be
 DOMAIN-SUFFIX,ytimg.com
 IP-CIDR,74.125.0.0/16,no-resolve
 IP-CIDR,173.194.0.0/16,no-resolve
-
-# AI平台
-DOMAIN-SUFFIX,x.com
-DOMAIN,api.together.xyz
-DOMAIN-SUFFIX,ai.azure.com
-DOMAIN-SUFFIX,openai.com
-DOMAIN-SUFFIX,client-api.arkoselabs.com
-DOMAIN-SUFFIX,cursor.com
-DOMAIN-SUFFIX,cursor.sh
-DOMAIN-SUFFIX,events.statsigapi.net
-DOMAIN-SUFFIX,featuregates.org
-DOMAIN-SUFFIX,grazie.ai
-DOMAIN-SUFFIX,grazie.aws.intellij.net
-DOMAIN-SUFFIX,identrust.com
-DOMAIN-SUFFIX,intercom.io
-DOMAIN-SUFFIX,intercom.com
-DOMAIN-SUFFIX,intercomcdn.com
-DOMAIN-SUFFIX,meta.ai
-DOMAIN-SUFFIX,mistral.ai
-DOMAIN-SUFFIX,oaistatic.com
-DOMAIN-SUFFIX,oaiusercontent.com
-DOMAIN-SUFFIX,perplexity.ai
-DOMAIN-SUFFIX,sora.com
-DOMAIN-SUFFIX,groq.com
-DOMAIN-SUFFIX,prodregistryv2.org
-
-# Microsoft
-DOMAIN-SUFFIX,bing.com
-DOMAIN-SUFFIX,appcenter.ms
 
 # Developer 开发者常用国外网站、镜像和论坛
 DOMAIN-SUFFIX,gcr.io
