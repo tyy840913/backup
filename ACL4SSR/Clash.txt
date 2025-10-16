@@ -95,7 +95,7 @@ const ruleProviders = {
 //规则
 const rules = [
    "RULE-SET,Global-Filter,🛑 全球拦截",
-   "RULE-SET,AI,🌍 Ai全球代理"
+   "RULE-SET,AI,🌍 Ai全球代理",
    "RULE-SET,ProxyLite,🌍 全球代理",
    "MATCH,🎯 漏网之鱼"
 ];
