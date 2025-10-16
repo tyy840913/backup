@@ -144,7 +144,7 @@ function main(config, profileName) {
     ...groupBaseOption,
     "name": "🌍 Ai全球代理",
     "include-all": true,
-    "filter": (?i)美|波特兰|达拉斯|俄勒冈|凤凰城|费利蒙|硅谷|拉斯维加斯|洛杉矶|圣何塞|圣克拉拉|西雅图|芝加哥|US|United States|(?i)日本|川日|东京|大阪|泉日|埼玉|沪日|深日|JP|Japan|(?i)新加坡|坡|狮城|SG|Singapore|(?i)KR|Korea|KOR|首尔|韩|韓
+    "filter": '(?!.*(?i)(港|HK|台|TW|澳|MO|中|CN|China|俄罗斯|RU|Iran|IR|朝鲜|KP|Cuba|CU|Syria|SY|Belarus|BY))'
     "type": "url-test",
     "interval": 300,
     "tolerance": 50
