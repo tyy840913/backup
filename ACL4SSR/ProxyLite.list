@@ -84,7 +84,7 @@ IP-CIDR,173.194.0.0/16,no-resolve
 DOMAIN-SUFFIX,x.com
 DOMAIN,api.together.xyz
 DOMAIN-SUFFIX,ai.azure.com
-DOMAIN-SUFFIX,auth0.com
+DOMAIN-SUFFIX,openai.com
 DOMAIN-SUFFIX,client-api.arkoselabs.com
 DOMAIN-SUFFIX,cursor.com
 DOMAIN-SUFFIX,cursor.sh
