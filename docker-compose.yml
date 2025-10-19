@@ -18,19 +18,6 @@ services:
     ports:
       - "8888:8888"
     restart: always
-      
-  # KatelyaTV 家庭影院
-  katelyatv:
-    image: ghcr.nju.edu.cn/katelya77/katelyatv:latest
-    container_name: katelyatv
-    restart: always
-    network_mode: bridge
-    ports:
-      - "3000:3000"
-    volumes:
-      - /docker_data/katelyatv/config.json:/app/config.json:ro
-    environment:
-      - PASSWORD=421121
 
   # openlist - 文件列表服务
   openlist:
