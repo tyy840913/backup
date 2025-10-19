@@ -185,14 +185,23 @@ configure_docker_proxy_and_mirror() {
         CONFIG_CHANGED=1
         MIRRORS_JSON='"registry-mirrors": ["https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"]'
         if [ -f "$DAEMON_JSON" ]; then
-            sed -i 's/}$/,\n  '"$MIRRORS_JSON"'\n}/' "$DAEMON_JSON"
-        else
-            echo -e "{\n  $MIRRORS_JSON\n}" > "$DAEMON_JSON"
-        fi
-        echo -e "${GREEN}镜像加速器已配置到 $DAEMON_JSON${NC}"
+    # 检查文件是否包含 registry-mirrors
+    if ! grep -q "registry-mirrors" "$DAEMON_JSON"; then
+        # 临时文件保存修改结果
+        TMP_FILE=$(mktemp)
+        # 删除最后一行大括号
+        sed '$d' "$DAEMON_JSON" > "$TMP_FILE"
+        # 追加新配置
+        echo "  ,$MIRRORS_JSON" >> "$TMP_FILE"
+        echo "}" >> "$TMP_FILE"
+        mv "$TMP_FILE" "$DAEMON_JSON"
     else
-        echo -e "${YELLOW}检测到已存在的镜像加速配置，跳过。${NC}"
+        echo -e "${YELLOW}检测到已有 registry-mirrors，跳过添加。${NC}"
     fi
+else
+    echo -e "{\n  $MIRRORS_JSON\n}" > "$DAEMON_JSON"
+fi
+
 
     if [ "$OS" != "alpine" ]; then
         if [ ! -f "$PROXY_CONF_DIR/http-proxy.conf" ]; then
