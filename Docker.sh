@@ -285,14 +285,15 @@ show_config_info() {
     local DOCKER_INFO
     DOCKER_INFO=$(docker info)
     
-    echo -e "${CYAN}镜像加速器 (Registry Mirrors):${NC}"
-    local MIRRORS
-    MIRRORS=$(echo "$DOCKER_INFO" | sed -n '/Registry Mirrors:/, /^[[:space:]]*$/{ /Registry Mirrors:/d; p }' | sed 's/^[ \t]*//')
-    if [ -n "$MIRRORS" ]; then
-        echo -e "${MIRRORS}"
-    else
-        echo -e "  未配置"
-    fi
+   echo -e "${CYAN}镜像加速器 (Registry Mirrors):${NC}"
+local MIRRORS
+MIRRORS=$(echo "$DOCKER_INFO" | awk '/Registry Mirrors:/{flag=1; next} /^[[:space:]]*$/{flag=0} flag {sub(/^[ \t]+/, ""); print}')
+if [ -n "$MIRRORS" ]; then
+    echo -e "${MIRRORS}"
+else
+    echo -e "  未配置"
+fi
+
 
     echo -e "\n${CYAN}HTTP/HTTPS 代理:${NC}"
     local HTTP_PROXY HTTPS_PROXY NO_PROXY
