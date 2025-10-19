@@ -180,29 +180,45 @@ configure_docker_proxy_and_mirror() {
     echo -e "\n${CYAN}--- 配置 Docker 镜像加速与 systemd 代理 ---${NC}"
 
     mkdir -p "$(dirname "$DAEMON_JSON")"
-    
-    if [ ! -f "$DAEMON_JSON" ] || ! grep -q "registry-mirrors" "$DAEMON_JSON"; then
-        CONFIG_CHANGED=1
-        MIRRORS_JSON='"registry-mirrors": ["https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"]'
+
+    # 判断是否安装了 jq（优先使用 jq 进行 JSON 操作）
+    if command -v jq >/dev/null 2>&1; then
         if [ -f "$DAEMON_JSON" ]; then
-    # 检查文件是否包含 registry-mirrors
-    if ! grep -q "registry-mirrors" "$DAEMON_JSON"; then
-        # 临时文件保存修改结果
-        TMP_FILE=$(mktemp)
-        # 删除最后一行大括号
-        sed '$d' "$DAEMON_JSON" > "$TMP_FILE"
-        # 追加新配置
-        echo "  ,$MIRRORS_JSON" >> "$TMP_FILE"
-        echo "}" >> "$TMP_FILE"
-        mv "$TMP_FILE" "$DAEMON_JSON"
+            if ! grep -q "registry-mirrors" "$DAEMON_JSON"; then
+                jq '. + {"registry-mirrors": ["https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"]}' \
+                "$DAEMON_JSON" > "$DAEMON_JSON.tmp" && mv "$DAEMON_JSON.tmp" "$DAEMON_JSON"
+                CONFIG_CHANGED=1
+                echo -e "${GREEN}已通过 jq 添加 registry-mirrors 配置${NC}"
+            else
+                echo -e "${YELLOW}检测到已有 registry-mirrors 配置，跳过添加。${NC}"
+            fi
+        else
+            echo '{"registry-mirrors": ["https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"]}' > "$DAEMON_JSON"
+            CONFIG_CHANGED=1
+            echo -e "${GREEN}已新建 $DAEMON_JSON 并写入 registry-mirrors 配置${NC}"
+        fi
     else
-        echo -e "${YELLOW}检测到已有 registry-mirrors，跳过添加。${NC}"
+        # 没有 jq 时使用 sed 与 mktemp 兼容方式
+        if [ -f "$DAEMON_JSON" ]; then
+            if ! grep -q "registry-mirrors" "$DAEMON_JSON"; then
+                TMP_FILE=$(mktemp)
+                sed '$d' "$DAEMON_JSON" > "$TMP_FILE"
+                echo '  ,"registry-mirrors": ["https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"]' >> "$TMP_FILE"
+                echo "}" >> "$TMP_FILE"
+                mv "$TMP_FILE" "$DAEMON_JSON"
+                CONFIG_CHANGED=1
+                echo -e "${GREEN}已通过 sed 添加 registry-mirrors 配置${NC}"
+            else
+                echo -e "${YELLOW}检测到已有 registry-mirrors 配置，跳过添加。${NC}"
+            fi
+        else
+            echo '{"registry-mirrors": ["https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"]}' > "$DAEMON_JSON"
+            CONFIG_CHANGED=1
+            echo -e "${GREEN}已新建 $DAEMON_JSON 并写入 registry-mirrors 配置${NC}"
+        fi
     fi
-else
-    echo -e "{\n  $MIRRORS_JSON\n}" > "$DAEMON_JSON"
-fi
 
-
+    # systemd 代理设置（非 alpine 系统）
     if [ "$OS" != "alpine" ]; then
         if [ ! -f "$PROXY_CONF_DIR/http-proxy.conf" ]; then
             CONFIG_CHANGED=1
@@ -219,6 +235,7 @@ EOF
         fi
     fi
 
+    # 应用更改
     if [ "$CONFIG_CHANGED" -eq 1 ]; then
         echo -e "${YELLOW}正在应用配置并重启 Docker 服务...${NC}"
         if [ "$OS" = "alpine" ]; then
@@ -226,16 +243,18 @@ EOF
         else
             systemctl daemon-reload && systemctl restart docker
         fi
-        
+
         if [ $? -eq 0 ]; then
             echo -e "${GREEN}Docker 重启成功。${NC}"
         else
-            echo -e "${RED}Docker 重启失败，请手动排查问题。${NC}"; return 1;
+            echo -e "${RED}Docker 重启失败，请手动排查问题。${NC}"
+            return 1
         fi
     else
         echo -e "${GREEN}Docker 配置无变化，无需重启。${NC}"
     fi
 }
+
 
 # 验证安装
 verify_installation() {
