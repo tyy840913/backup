@@ -315,7 +315,7 @@ main() {
     detect_os
     install_dependencies
     install_docker
-    install_docker_compose
+    # install_docker_compose
     configure_docker_proxy_and_mirror
     verify_installation
     show_config_info
