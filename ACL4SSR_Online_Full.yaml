@@ -31,6 +31,7 @@ proxy-groups:
 
   - name: 💬 AI平台
     type: url-test
+    include-all: true
     interval: 300
     tolerance: 50
     filter: "^(?!.*(中|CN|港|HK|澳|MO|台|TW|俄|RU|伊|IR|朝|KP|古|CU|叙|SY|白|BY)).*"
