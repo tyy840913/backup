@@ -1,9 +1,19 @@
 proxy-groups:
-  - name: 🌍 全球代理
+  - name: ♻️ 自动选择
     type: url-test
     include-all: true
     interval: 300
     tolerance: 50
+  - name: 🚀 负载均衡
+    type: load-balance
+    include-all: true
+    interval: 300
+    strategy: round-robin
+  - name: 🌍 全球代理
+    type: select
+    proxies:
+      - ♻️ 自动选择
+      - 🚀 负载均衡
   - name: 🛑 广告拦截
     type: select
     proxies:
