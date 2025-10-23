@@ -4,63 +4,54 @@ proxy-groups:
     include-all: true
     interval: 300
     tolerance: 50
-
   - name: 🚀 负载均衡
     type: load-balance
     include-all: true
     interval: 300
     strategy: round-robin
-
   - name: 🌍 全球代理
     type: select
     proxies:
       - ♻️ 自动选择
       - 🚀 负载均衡
-
   - name: 🛑 广告拦截
     type: select
     proxies:
       - REJECT
       - DIRECT
-
   - name: 🎯 全球直连
     type: select
     proxies:
       - DIRECT
       - REJECT
-
   - name: 💬 AI平台
-    type: url-test
     include-all: true
+    filter: ^(?i)(?!.*(?:中|CN|China|港|HK|HongKong|澳|MO|Macao|台|TW|Taiwan|俄|RU|Russia|Iran|IR|朝|KP|NorthKorea|Cuba|CU|Syria|SY|Belarus|BY)).*
+    type: url-test
     interval: 300
     tolerance: 50
-    filter: "^(?!.*(中|CN|港|HK|澳|MO|台|TW|俄|RU|伊|IR|朝|KP|古|CU|叙|SY|白|BY)).*"
-
 rule-providers:
   ProxyLite:
-    type: http
-    behavior: classical
-    format: text
-    interval: 86400
     url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/ProxyLite.list
     path: ./ruleset/ProxyLite.list
-
-  Global-Filter:
-    type: http
     behavior: classical
-    format: text
     interval: 86400
+    format: text
+    type: http
+  Global-Filter:
     url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/Global-Filter.list
     path: ./ruleset/Global-Filter.list
-
-  AI:
-    type: http
     behavior: classical
-    format: text
     interval: 86400
+    format: text
+    type: http
+  AI:
     url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/AI.list
     path: ./ruleset/AI.list
-
+    behavior: classical
+    interval: 86400
+    format: text
+    type: http
 rules:
   - "RULE-SET,Global-Filter,🛑 广告拦截"
   - "RULE-SET,AI,💬 AI平台"
