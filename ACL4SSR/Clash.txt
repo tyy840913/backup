@@ -97,7 +97,7 @@ const rules = [
    "RULE-SET,Global-Filter,🛑 全球拦截",
    "RULE-SET,AI,💬 AI平台",
    "RULE-SET,ProxyLite,🌍 全球代理",
-   "MATCH,🎯 漏网之鱼"
+   "MATCH,🎯 全球直连"
 ];
 
 // 代理组通用配置
@@ -126,19 +126,11 @@ function main(config, profileName) {
   config["proxy-groups"] = [
   {
     ...groupBaseOption,
-    "name": "♻ 自动选择",
+    "name": "🌍 全球代理",
     "type": "url-test",
     "include-all": true,
     "interval": 300,
     "tolerance": 50
-  },
-  {
-    ...groupBaseOption,
-    "name": "🚀 负载均衡",
-    "type": "load-balance",
-    "include-all": true,
-    "interval": 300,
-    "strategy": "round-robin"
   },
   {
     ...groupBaseOption,
@@ -151,21 +143,15 @@ function main(config, profileName) {
   },
   {
     ...groupBaseOption,
-    "name": "🌍 全球代理",
-    "type": "select",
-    "proxies": ["🚀 负载均衡","♻ 自动选择"]
-  },
-  {
-    ...groupBaseOption,
     "name": "🛑 全球拦截",
     "type": "select",
     "proxies": ["REJECT","DIRECT"]
   },
  {
     ...groupBaseOption,
-    "name": "🎯 漏网之鱼",
+    "name": "🎯 全球直连",
     "type": "select",
-    "proxies": ["DIRECT","🌍 全球代理"]
+    "proxies": ["DIRECT","REJECT"]
   }
 ];
 
