@@ -4,16 +4,6 @@ proxy-groups:
     include-all: true
     interval: 300
     tolerance: 50
-  - name: 🚀 负载均衡
-    type: load-balance
-    include-all: true
-    interval: 300
-    strategy: round-robin
-  - name: 🌍 全球代理
-    type: select
-    proxies:
-      - ♻️ 自动选择
-      - 🚀 负载均衡
   - name: 🛑 广告拦截
     type: select
     proxies:
@@ -55,5 +45,5 @@ rule-providers:
 rules:
   - "RULE-SET,Global-Filter,🛑 广告拦截"
   - "RULE-SET,AI,💬 AI平台"
-  - "RULE-SET,ProxyLite,🌍 全球代理"
+  - "RULE-SET,ProxyLite,♻️ 自动选择"
   - "MATCH,🎯 全球直连"
