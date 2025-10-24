@@ -9,12 +9,12 @@ proxy-groups:
     proxies:
       - REJECT
       - DIRECT
-  - name: 🎯 全球直连
+  - name: 🎯 国内直连
     type: select
     proxies:
       - DIRECT
       - REJECT
-  - name: 💬 AI平台
+  - name: 💬 智能平台
     include-all: true
     filter: ^(?i)(?!.*(?:中|CN|China|港|HK|HongKong|澳|MO|Macao|台|TW|Taiwan|俄|RU|Russia|Iran|IR|朝|KP|NorthKorea|Cuba|CU|Syria|SY|Belarus|BY)).*
     type: url-test
@@ -44,6 +44,6 @@ rule-providers:
     type: http
 rules:
   - "RULE-SET,Global-Filter,🛑 广告拦截"
-  - "RULE-SET,AI,💬 AI平台"
+  - "RULE-SET,AI,💬 智能平台"
   - "RULE-SET,ProxyLite,♻️ 自动选择"
-  - "MATCH,🎯 全球直连"
+  - "MATCH,🎯 国内直连"
