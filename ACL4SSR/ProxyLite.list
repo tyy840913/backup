@@ -9,6 +9,8 @@ DOMAIN-SUFFIX,work.gd
 DOMAIN-SUFFIX,workers.dev
 DOMAIN-SUFFIX,greasyfork.org
 DOMAIN-SUFFIX,netassist.ua
+DOMAIN-SUFFIX,workers.dev
+
 # 国外域名
 DOMAIN-SUFFIX,eu
 DOMAIN-SUFFIX,hk
