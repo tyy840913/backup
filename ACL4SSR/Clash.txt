@@ -94,10 +94,10 @@ const ruleProviders = {
 
 //规则
 const rules = [
-   "RULE-SET,Global-Filter,🛑 全球拦截",
-   "RULE-SET,AI,💬 AI平台",
-   "RULE-SET,ProxyLite,🌍 全球代理",
-   "MATCH,🎯 全球直连"
+   "RULE-SET,Global-Filter,🛑 广告拦截",
+   "RULE-SET,AI,💬 智能平台",
+   "RULE-SET,ProxyLite,♻️ 自动选择",
+   "MATCH,🎯 国内直连"
 ];
 
 // 代理组通用配置
@@ -126,7 +126,7 @@ function main(config, profileName) {
   config["proxy-groups"] = [
   {
     ...groupBaseOption,
-    "name": "🌍 全球代理",
+    "name": "♻️ 自动选择",
     "type": "url-test",
     "include-all": true,
     "interval": 300,
@@ -134,7 +134,7 @@ function main(config, profileName) {
   },
   {
     ...groupBaseOption,
-    "name": "💬 AI平台",
+    "name": "💬 智能平台",
     "include-all": true,
     "filter": '^(?i)(?!.*(?:中|CN|China|港|HK|HongKong|澳|MO|Macao|台|TW|Taiwan|俄|RU|Russia|Iran|IR|朝|KP|NorthKorea|Cuba|CU|Syria|SY|Belarus|BY)).*',
     "type": "url-test",
@@ -143,13 +143,13 @@ function main(config, profileName) {
   },
   {
     ...groupBaseOption,
-    "name": "🛑 全球拦截",
+    "name": "🛑 广告拦截",
     "type": "select",
     "proxies": ["REJECT","DIRECT"]
   },
  {
     ...groupBaseOption,
-    "name": "🎯 全球直连",
+    "name": "🎯 国内直连",
     "type": "select",
     "proxies": ["DIRECT","REJECT"]
   }
