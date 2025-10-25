@@ -10,14 +10,6 @@ services:
     ports:
       - "9100:9000"
 
-  # webssh 网页终端
-  webssh:
-    image: eooce/webssh:latest
-    container_name: webssh
-    ports:
-      - "8888:8888"
-    restart: always
-
   # openlist - 文件列表服务
   openlist:
     image: ghcr.nju.edu.cn/openlistteam/openlist-git:beta-aio
