@@ -16,13 +16,14 @@ services:
     container_name: openlist
     restart: always
     network_mode: bridge
+    user: "1001:1001"
     volumes:
       - /docker_data/openlist:/opt/openlist/data
     ports:
       - "5244:5244"
     environment:
       - TZ=Asia/Shanghai
-    user: "1001:1001"  # 方案1：使用容器内置用户
+      - UMASK=022
 
   # Lucky - 反向代理工具（Host 网络）
   lucky:
