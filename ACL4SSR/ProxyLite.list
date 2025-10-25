@@ -100,6 +100,7 @@ DOMAIN-SUFFIX,spring.io
 DOMAIN-SUFFIX,spring.net
 DOMAIN-SUFFIX,nodeseek.com
 DOMAIN-SUFFIX,stackoverflow.com
+DOMAIN-SUFFIX,archive.org
 
 # GoogleCNProxyIP 谷歌中国服务 services.googleapis.cn
 IP-CIDR,120.232.181.162/32,no-resolve
