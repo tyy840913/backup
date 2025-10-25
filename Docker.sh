@@ -185,7 +185,7 @@ configure_docker_proxy_and_mirror() {
     if command -v jq >/dev/null 2>&1; then
         if [ -f "$DAEMON_JSON" ]; then
             if ! grep -q "registry-mirrors" "$DAEMON_JSON"; then
-                jq '. + {"registry-mirrors": ["https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"]}' \
+                jq '. + {"registry-mirrors": ["https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"],"live-restore": true}' \
                 "$DAEMON_JSON" > "$DAEMON_JSON.tmp" && mv "$DAEMON_JSON.tmp" "$DAEMON_JSON"
                 CONFIG_CHANGED=1
                 echo -e "${GREEN}已通过 jq 添加 registry-mirrors 配置${NC}"
