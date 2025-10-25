@@ -12,7 +12,7 @@ services:
 
   # openlist - 文件列表服务
   openlist:
-    image: ghcr.nju.edu.cn/openlistteam/openlist-git:beta-aio
+    image: openlistteam/openlist:latest
     container_name: openlist
     restart: always
     network_mode: bridge
