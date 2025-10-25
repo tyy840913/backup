@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Portainer - Docker 可视化管理
   portainer:
