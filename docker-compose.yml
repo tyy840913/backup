@@ -7,7 +7,6 @@ services:
     network_mode: bridge
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - portainer:/data
     ports:
       - "9100:9000"
 
@@ -86,6 +85,3 @@ services:
     restart: always
     tty: true
     network_mode: host
-    
-volumes:
-  portainer:
