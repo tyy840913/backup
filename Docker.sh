@@ -181,7 +181,7 @@ configure_docker_proxy_and_mirror() {
 
     mkdir -p "$(dirname "$DAEMON_JSON")"
 
-    # 判断是否安装了 jq（优先使用 jq 进行 JSON 操作）
+    # 使用 jq 处理 JSON 配置（不再使用 sed）
     if command -v jq >/dev/null 2>&1; then
         if [ -f "$DAEMON_JSON" ]; then
             if ! grep -q "registry-mirrors" "$DAEMON_JSON"; then
@@ -198,38 +198,39 @@ configure_docker_proxy_and_mirror() {
             echo -e "${GREEN}已新建 $DAEMON_JSON 并写入 registry-mirrors 配置${NC}"
         fi
     else
-        # 没有 jq 时使用 sed 与 mktemp 兼容方式
+        # 没有 jq 时的替代方案：使用简单的 echo 和重定向
+        echo -e "${YELLOW}未找到 jq 命令，使用简化方式配置${NC}"
         if [ -f "$DAEMON_JSON" ]; then
             if ! grep -q "registry-mirrors" "$DAEMON_JSON"; then
-                TMP_FILE=$(mktemp)
-                sed '$d' "$DAEMON_JSON" > "$TMP_FILE"
-                echo '  ,"registry-mirrors": ["https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"]' >> "$TMP_FILE"
-                echo "}" >> "$TMP_FILE"
-                mv "$TMP_FILE" "$DAEMON_JSON"
-                CONFIG_CHANGED=1
-                echo -e "${GREEN}已通过 sed 添加 registry-mirrors 配置${NC}"
+                echo -e "${YELLOW}已存在 $DAEMON_JSON 但无法安全修改，请手动添加 registry-mirrors 配置${NC}"
             else
                 echo -e "${YELLOW}检测到已有 registry-mirrors 配置，跳过添加。${NC}"
             fi
         else
-            echo '{"registry-mirrors": ["https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"]}' > "$DAEMON_JSON"
+            echo '{"registry-mirrors": ["https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"],"live-restore": true}' > "$DAEMON_JSON"
             CONFIG_CHANGED=1
             echo -e "${GREEN}已新建 $DAEMON_JSON 并写入 registry-mirrors 配置${NC}"
         fi
     fi
 
-    # systemd 代理设置（非 alpine 系统）
+    # systemd 代理设置（非 alpine 系统）- 添加确认步骤
     if [ "$OS" != "alpine" ]; then
         if [ ! -f "$PROXY_CONF_DIR/http-proxy.conf" ]; then
-            CONFIG_CHANGED=1
-            mkdir -p "$PROXY_CONF_DIR"
-            cat > "$PROXY_CONF_DIR/http-proxy.conf" <<EOF
+            echo -e "\n${YELLOW}是否配置 Docker systemd 代理？(默认: n) [y/N]${NC}"
+            read -r user_input
+            if [[ "$user_input" =~ ^[Yy]$ ]]; then
+                CONFIG_CHANGED=1
+                mkdir -p "$PROXY_CONF_DIR"
+                cat > "$PROXY_CONF_DIR/http-proxy.conf" <<EOF
 [Service]
 Environment="HTTP_PROXY=http://127.0.0.1:7890"
 Environment="HTTPS_PROXY=http://127.0.0.1:7890"
-Environment="NO_PROXY=localhost,127.0.0.1,docker.1ms.run,.nyc,.dpdns.org"
+Environment="NO_PROXY=localhost,127.0.0.1,docker.1ms.run,.nyc.mn,.dpdns.org"
 EOF
-            echo -e "${GREEN}systemd 代理配置已写入。${NC}"
+                echo -e "${GREEN}systemd 代理配置已写入。${NC}"
+            else
+                echo -e "${BLUE}跳过 systemd 代理配置。${NC}"
+            fi
         else
             echo -e "${YELLOW}检测到已存在的 systemd 代理配置，跳过。${NC}"
         fi
@@ -254,7 +255,6 @@ EOF
         echo -e "${GREEN}Docker 配置无变化，无需重启。${NC}"
     fi
 }
-
 
 # 验证安装
 verify_installation() {
@@ -297,7 +297,7 @@ fi
 
     echo -e "\n${CYAN}HTTP/HTTPS 代理:${NC}"
     local HTTP_PROXY HTTPS_PROXY NO_PROXY
-    HTTP_PROXY=$(echo "$DOCKER_INFO" | grep -i 'HTTP Proxy:' | awk -F': ' '{print $2}')
+    HTTP_PROXY=$(echo "$DOCKER_IFO" | grep -i 'HTTP Proxy:' | awk -F': ' '{print $2}')
     HTTPS_PROXY=$(echo "$DOCKER_INFO" | grep -i 'HTTPS Proxy:' | awk -F': ' '{print $2}')
     NO_PROXY=$(echo "$DOCKER_INFO" | grep -i 'No Proxy:' | awk -F': ' '{print $2}')
 
