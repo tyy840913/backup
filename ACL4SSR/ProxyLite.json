@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "domain_suffix": [
+        "56idc.net", "freemyip.com", "cloudns.be", "cloudns.ch", "ip-ddns.com", "ddns-ip.net",
+        "work.gd", "workers.dev", "greasyfork.org", "netassist.ua", "netlib.re", "ip6.arpa",
+        "eu", "hk", "jp", "kr", "sg", "tw", "uk",
+        "t.me", "tdesktop.com", "telegra.ph", "telesco.pe",
+        "2mdn.net", "app-measurement.net", "g.co", "ggpht.com", "goo.gl", "gstatic.cn",
+        "gstatic.com", "gvt0.com", "gvt1.com", "gvt2.com", "gvt3.com", "xn--ngstr-lra8j.com",
+        "youtu.be", "yt.be", "ytimg.com",
+        "gcr.io", "docker.com", "docker.io", "compose-spec.io", "dockerhub.com", "apache.org",
+        "elastic.co", "leaflow.net", "elastic.com", "gitlab.com", "gitlab.io", "jitpack.io",
+        "maven.org", "medium.com", "mvnrepository.com", "quay.io", "reddit.com", "huggingface.co",
+        "redhat.com", "sonatype.org", "sourcegraph.com", "spring.io", "spring.net", "nodeseek.com",
+        "stackoverflow.com", "archive.org",
+        "oneclient.sfx.ms", "photos.live.com", "spoprod-a.akamaihd.net", "storage.live.com", "storage.msn.com",
+        "xvideos.com", "xnxx.com", "xhamster.com", "spankbang.com", "chaturbate.com", "bongacams.com", "livejasmin.com",
+        "xvideos-cdn.com", "xnxx-cdn.com", "phncdn.com", "phprcdn.com", "rdtcdn.com", "sb-cd.com", "dditscdn.com",
+        "bcvcdn.com", "ahcdn.com", "afcdn.net", "aucdn.net", "ypncdn.com", "orbsrv.com"
+      ],
+      "domain_keyword": [
+        "telegram", "youtube", "github", "1e100", "abema", "appledaily", "microsoft", "avtb",
+        "beetalk", "blogspot", "dropbox", "facebook", "fbcdn", "gmail", "instagram", "pornhub",
+        "redtube", "sci-hub", "spotify", "twitter", "whatsapp", "onedrive", "skydrive"
+      ],
+      "ip_cidr": [
+        "91.108.0.0/16", "109.239.140.0/24", "149.154.160.0/20",
+        "74.125.0.0/16", "173.194.0.0/16",
+        "120.232.181.162/32", "120.241.147.226/32", "120.253.253.226/32", "120.253.255.162/32",
+        "120.253.255.34/32", "120.253.255.98/32", "180.163.150.162/32", "180.163.150.34/32",
+        "180.163.151.162/32", "180.163.151.34/32", "203.208.39.0/24", "203.208.40.0/24",
+        "203.208.41.0/24", "203.208.43.0/24", "203.208.50.0/24", "220.181.174.162/32",
+        "220.181.174.226/32", "220.181.174.34/32"
+      ],
+      "ip_cidr6": [
+        "2001:67c:4e8::/48", "2001:b28:f23d::/48", "2001:b28:f23f::/48"
+      ]
+    }
+  ]
+}
