@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "domain": [
+        "api.together.xyz",
+        "generativelanguage.googleapis.com"
+      ],
+      "domain_suffix": [
+        "ai.azure.com", "appcenter.ms", "auth0.com", "challenges.cloudflare.com",
+        "client-api.arkoselabs.com", "events.statsigapi.net", "featuregates.org",
+        "identrust.com", "openaiapi-site.azureedge.net", "prodregistryv2.org",
+        "sentry.io", "stripe.com"
+      ],
+      "domain_keyword": [
+        "anthropic", "claude", "openai", "google", "grok", "chatgpt", "x.ai", "bing",
+        "copilot", "cursor", "gemini", "grazie", "intercom", "mistral", "oaistatic",
+        "oaiusercontent", "perplexity", "sora"
+      ]
+    }
+  ]
+}
