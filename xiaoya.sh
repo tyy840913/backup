@@ -10,7 +10,7 @@ export BACKUP_USER BACKUP_PASS
 ########################  工具函数  ########################
 green=$(echo -e "\033[32m"); yellow=$(echo -e "\033[33m")
 cyan=$(echo -e "\033[36m"); reset=$(echo -e "\033[0m")
-log(){ echo ">>> $*"; }
+echo(){ echo ">>> $*"; }
 
 check_token(){      [ ${#1} -eq 32 ]; }
 check_opentoken(){  [ ${#1} -gt 334 ]; }
@@ -58,10 +58,10 @@ if [ "$NEED_INIT" -eq 1 ]; then
   choice=${choice:-1}
 
   if [ "$choice" -eq 1 ]; then
-    log "开始拉取远端配置..."
+    echo "开始拉取远端配置..."
     curl -u "$BACKUP_USER":"$BACKUP_PASS" https://backup.woskee.dpdns.org/xiaoya | tar -xf - -C /etc
   else
-    log "跳过下载，仅手动填写 Token ..."
+    echo "跳过下载，仅手动填写 Token ..."
   fi
 
   mkdir -p "$XIAOYA_DIR"/data
@@ -84,9 +84,9 @@ if [ "$NEED_INIT" -eq 1 ]; then
     [ ${#fid} -eq 40 ] || { echo "长度不为 40"; exit 1; }
     echo "$fid" > "$XIAOYA_DIR"/temp_transfer_folder_id.txt
   done
-  log "阿里云盘信息已全部填写完成。"
+  echo "阿里云盘信息已全部填写完成。"
 else
-  log "配置已存在且 Token 长度正常，直接启动容器..."
+  echo "配置已存在且 Token 长度正常，直接启动容器..."
 fi
 
 ########################  网络模式选择  ########################
