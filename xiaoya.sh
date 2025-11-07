@@ -28,13 +28,20 @@ add_cron(){
 
 add_backup_cron(){
   local user="$1" pass="$2"
-  add_cron "0 0 */3 * * tar -cf - -C /etc --exclude=xiaoya/data xiaoya | curl -u $user:$pass -T - https://backup.woskee.dpdns.org/update/xiaoya >/dev/null 2>&1" \
-           "每3天备份xiaoya目录"
+  # 修复: 使用绝对路径，并将变量直接替换为值，以确保 cron 环境下能正确执行
+  local cron_cmd="0 0 */3 * * /usr/bin/tar -cf - -C /etc --exclude=xiaoya/data xiaoya | /usr/bin/curl -u ${user}:${pass} -T - https://backup.woskee.dpdns.org/update/xiaoya >/dev/null 2>&1"
+  add_cron "$cron_cmd" "每3天备份xiaoya目录"
 }
 
 add_restart_cron(){
-  add_cron "30 2 * * * docker restart xiaoya >/dev/null 2>&1" \
-           "每天凌晨2:30重启xiaoya容器"
+  local docker_path=$(command -v docker)
+  if [ -z "$docker_path" ]; then
+    echo ">>> 错误：未找到 docker 命令，无法创建重启定时任务。" >&2
+    return 1 # 返回错误，但让脚本继续运行
+  fi
+  # 修复: 使用 command -v 获取 docker 的绝对路径，确保 cron 能找到命令
+  local cron_cmd="30 2 * * * ${docker_path} restart xiaoya >/dev/null 2>&1"
+  add_cron "$cron_cmd" "每天凌晨2:30重启xiaoya容器"
 }
 
 ########################  本地配置检查 + 交互选择  ########################
@@ -73,19 +80,31 @@ if [ "$choice" -eq 1 ]; then
 
   while ! check_token "$(cat "$XIAOYA_DIR"/mytoken.txt)"; do
     read -p "${green}输入阿里云盘 Token（32 位）:${reset} " tk
-    [ ${#tk} -eq 32 ] || { echo "长度不为 32"; exit 1; }
+    # 修复: 将 exit 1 改为 continue，允许用户重新输入
+    if [ ${#tk} -ne 32 ]; then
+      echo "长度不为 32，请重新输入。"
+      continue
+    fi
     echo "$tk" > "$XIAOYA_DIR"/mytoken.txt
   done
 
   while ! check_opentoken "$(cat "$XIAOYA_DIR"/myopentoken.txt)"; do
     read -p "${yellow}输入阿里云盘 Open Token（335 位）:${reset} " ot
-    [ ${#ot} -gt 334 ] || { echo "长度不足 335"; exit 1; }
+    # 修复: 将 exit 1 改为 continue，允许用户重新输入
+    if [ ${#ot} -le 334 ]; then
+      echo "长度不足 335，请重新输入。"
+      continue
+    fi
     echo "$ot" > "$XIAOYA_DIR"/myopentoken.txt
   done
 
   while ! check_folderid "$(cat "$XIAOYA_DIR"/temp_transfer_folder_id.txt)"; do
     read -p "${cyan}输入阿里云盘转存目录 folder_id（40 位）:${reset} " fid
-    [ ${#fid} -eq 40 ] || { echo "长度不为 40"; exit 1; }
+    # 修复: 将 exit 1 改为 continue，允许用户重新输入
+    if [ ${#fid} -ne 40 ]; then
+      echo "长度不为 40，请重新输入。"
+      continue
+    fi
     echo "$fid" > "$XIAOYA_DIR"/temp_transfer_folder_id.txt
   done
   echo "阿里云盘信息已全部填写完成。"
@@ -94,10 +113,11 @@ else
 fi
 
 ########################  网络模式选择  ########################
+# 修复: 修正了 ifconfig 和 ip 命令获取IP的逻辑，确保能正确提取IP地址
 if command -v ifconfig &>/dev/null; then
-  LOCAL_IP=$(ifconfig -a | awk '/inet/&&!/127.0.0.1|172.17/{print $2;exit}')
+  LOCAL_IP=$(ifconfig | awk '/inet [^127]/ {print $2; exit}' | cut -d: -f2)
 else
-  LOCAL_IP=$(ip addr | awk '/inet/&&!/127.0.0.1|172.17/{print $2;exit}' | cut -d/ -f1)
+  LOCAL_IP=$(ip -4 addr show scope global | awk '/inet/ {print $2; exit}' | cut -d/ -f1)
 fi
 [ -s /etc/xiaoya/docker_address.txt ] || echo "http://${LOCAL_IP}:5678" > /etc/xiaoya/docker_address.txt
 
@@ -113,10 +133,10 @@ case "$mode_choice" in
 esac
 echo ">>> 已选择 $MODE 模式"
 
-########################  定时任务模块（Docker 之前）  ########################
+########################  定时任务模块  ########################
 add_backup_cron "$BACKUP_USER" "$BACKUP_PASS"
 add_restart_cron
-########################  Docker 部署（存在才删 + 失败即退出）  ########################
+
 ########################  Docker 镜像选择（独立两行）  ########################
 IMG_BRIDGE=docker.1ms.run/xiaoyaliu/alist:latest
 IMG_HOST=docker.1ms.run/xiaoyaliu/alist:hostmode
@@ -177,12 +197,6 @@ fi
 echo ">>> 正在启动容器 ..."
 if ! docker start xiaoya; then
   echo ">>> 容器启动失败，请查看上面 Docker 报错信息" >&2; exit 1
-fi
-
-# host 模式限流（可选）
-if [ "$MODE" = "host" ]; then
-  echo ">>> 正在添加 host 模式连接限流 ..."
-  docker exec -i xiaoya iptables -A INPUT -p tcp --dport 5678 -m connlimit --connlimit-above 2 --connlimit-mask 32 -j DROP 2>&1 || true
 fi
 
 echo ">>> Docker 容器已启动，访问地址：http://${LOCAL_IP}:5678"
