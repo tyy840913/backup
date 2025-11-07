@@ -10,7 +10,6 @@ export BACKUP_USER BACKUP_PASS
 ########################  工具函数  ########################
 green=$(echo -e "\033[32m"); yellow=$(echo -e "\033[33m")
 cyan=$(echo -e "\033[36m"); reset=$(echo -e "\033[0m")
-echo(){ echo ">>> $*"; }
 
 check_token(){      [ ${#1} -eq 32 ]; }
 check_opentoken(){  [ ${#1} -gt 334 ]; }
@@ -56,10 +55,15 @@ if [ "$NEED_INIT" -eq 1 ]; then
   echo "  2) 手动输入三个 Token（跳过下载）"
   read -p "请选择： " choice
   choice=${choice:-1}
-
-  if [ "$choice" -eq 1 ]; then
-    echo "开始拉取远端配置..."
-    curl -u "$BACKUP_USER":"$BACKUP_PASS" https://backup.woskee.dpdns.org/xiaoya | tar -xf - -C /etc
+if [ "$choice" -eq 1 ]; then
+    echo ">>> 开始拉取远端配置..."
+    echo ">>> 正在从远端服务器下载配置..."
+    if ! curl -fsSL --connect-timeout 10 --max-time 30 \
+         -u "$BACKUP_USER":"$BACKUP_PASS" \
+         https://backup.woskee.dpdns.org/xiaoya 2>/dev/null | tar -xf - -C /etc 2>/dev/null; then
+        echo ">>> 下载配置失败，请检查网络或账号密码是否正确！"
+        exit 1
+    fi
   else
     echo "跳过下载，仅手动填写 Token ..."
   fi
