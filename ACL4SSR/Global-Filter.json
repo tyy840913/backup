@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "domain": [
+        "pull-rtmp-l13.douyincdn.com",
+        "tnc3-alisc1.bytedance.com"
+      ],
+      "domain_suffix": [
+        "zijieapi.com", "amemv.com", "byteimg.com", "pstatp.com", "snssdk.com", "zjurl.cn",
+        "bdurl.net", "bsccdn.net", "bytesfield.com", "fqnovelvod.com", "byteorge.com",
+        "chengzijianzhan.cn", "douyin.com", "bytedanceapi.com"
+      ],
+      "domain_keyword": [
+        "pangolin", "toutiao", "ecombdapi"
+      ],
+      "domain_regex": [
+        "(p\\d+\\.douyinpic\\.com|mon\\d+-misc-lf\\.fqnovel\\.com|p\\d+[^\\/]*\\.ecombdimg\\.com|.*-applog-.*\\.fqnovel\\.com)"
+      ]
+    }
+  ]
+}
