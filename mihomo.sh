@@ -15,7 +15,7 @@ PLAIN='\033[0m'
 SCRIPT_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
 FILES_DIR="$SCRIPT_DIR/files"
 CONF_DIR="/etc/mihomo"
-CONFIG_URL="https://route.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/mihomo-proxy/refs/heads/master/mihomo-docker/files/config.yaml"
+CONFIG_URL="https://git.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/mihomo-proxy/refs/heads/master/mihomo-docker/files/config.yaml"
 
 # 错误处理函数
 handle_error() {
@@ -100,7 +100,7 @@ download_config_file() {
 
 # 下载用户提供的脚本
 download_user_script() {
-    local user_script_url="https://route.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/mihomo_config.sh"
+    local user_script_url="https://git.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/mihomo_config.sh"
     local target_path="$CONF_DIR/user-script.sh"
 
     echo -e "${CYAN}正在下载用户脚本...${PLAIN}"
@@ -136,7 +136,7 @@ download_ui() {
     local tmp_dir=$(mktemp -d)
     cd "$tmp_dir" || return
     
-    if wget --timeout=30 --tries=3 https://route.luxxk.dpdns.org/github.com/MetaCubeX/metacubexd/releases/download/v1.187.1/compressed-dist.tgz; then
+    if wget --timeout=30 --tries=3 https://git.luxxk.dpdns.org/github.com/MetaCubeX/metacubexd/releases/download/v1.187.1/compressed-dist.tgz; then
         tar -xzf compressed-dist.tgz -C "$CONF_DIR/ui"
         echo -e "${GREEN}UI界面已设置${PLAIN}"
     else
@@ -157,8 +157,8 @@ download_geoip() {
     fi
 
     local geoip_sources=(
-        "https://route.woskee.dpdns.org/github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb"
-        "https://route.woskee.dpdns.org/github.com/Loyalsoldier/geoip/releases/latest/download/Country.mmdb"
+        "https://git.woskee.dpdns.org/github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb"
+        "https://git.woskee.dpdns.org/github.com/Loyalsoldier/geoip/releases/latest/download/Country.mmdb"
         "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
     )
     
