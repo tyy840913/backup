@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # 远端地址
-URL_TOP="https://route.woskee.dpdns.org/raw.githubusercontent.com/tyy840913/backup/main/mihomo_config.yaml"
+URL_TOP="https://git.woskee.dpdns.org/raw.githubusercontent.com/tyy840913/backup/main/mihomo_config.yaml"
 URL_BOTTOM="http://127.0.0.1:8199/sub/mihomo.yaml"
 
 # 本地目标
