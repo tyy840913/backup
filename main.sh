@@ -2,7 +2,7 @@
 
 # 基础配置
 original_url="https://raw.githubusercontent.com/tyy840913/backup/main"
-proxy_url="https://route.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main"
+proxy_url="https://git.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main"
 
 # 检查是否设置了代理
 if [ -n "$http_proxy" ] || [ -n "$https_proxy" ]; then
