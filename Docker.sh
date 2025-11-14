@@ -9,7 +9,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # GitHub 加速器代理 (脚本级别配置)
-GH_PROXY="https://ghproxy.net/"
+GH_PROXY="https://git.woskee.nyc.mn/"
 
 # 检查是否为 root 用户
 check_root() {
