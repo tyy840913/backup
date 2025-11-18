@@ -96,7 +96,7 @@ const ruleProviders = {
 const rules = [
    "RULE-SET,Global-Filter,🛑 广告拦截",
    "RULE-SET,AI,💬 智能平台",
-   "RULE-SET,ProxyLite,♻️ 自动选择",
+   "RULE-SET,ProxyLite,🌐 代理选择",
    "MATCH,🎯 国内直连"
 ];
 
@@ -126,11 +126,23 @@ function main(config, profileName) {
   config["proxy-groups"] = [
   {
     ...groupBaseOption,
+    "name": "🌐 代理选择",
+    "type": "select",
+    "proxies": ["♻️ 自动选择", "👉 手动选择"]
+  },
+  {
+    ...groupBaseOption,
     "name": "♻️ 自动选择",
     "type": "url-test",
     "include-all": true,
     "interval": 300,
-    "tolerance": 50
+    "tolerance": 30
+  },
+  {
+    ...groupBaseOption,
+    "name": "👉 手动选择",
+    "type": "select",
+    "include-all": true
   },
   {
     ...groupBaseOption,
@@ -139,7 +151,7 @@ function main(config, profileName) {
     "filter": '^(?i)(?!.*(?:中|CN|China|港|HK|HongKong|澳|MO|Macao|台|TW|Taiwan|俄|RU|Russia|Iran|IR|朝|KP|NorthKorea|Cuba|CU|Syria|SY|Belarus|BY)).*',
     "type": "url-test",
     "interval": 300,
-    "tolerance": 50
+    "tolerance": 30
   },
   {
     ...groupBaseOption,
@@ -147,7 +159,7 @@ function main(config, profileName) {
     "type": "select",
     "proxies": ["REJECT","DIRECT"]
   },
- {
+  {
     ...groupBaseOption,
     "name": "🎯 国内直连",
     "type": "select",
