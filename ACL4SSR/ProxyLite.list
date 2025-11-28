@@ -5,6 +5,7 @@ DOMAIN-SUFFIX,ipwho.is
 DOMAIN-SUFFIX,ipinfo.io
 DOMAIN-SUFFIX,ident.me
 DOMAIN-SUFFIX,ipapi.co
+DOMAIN-SUFFIX,api.myip.com
 
 # 自定义域名
 DOMAIN-SUFFIX,56idc.net
