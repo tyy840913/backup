@@ -23,7 +23,7 @@ DOMAIN-SUFFIX,netlib.re
 DOMAIN-SUFFIX,ip6.arpa
 DOMAIN-SUFFIX,nodeloc.com
 DOMAIN-SUFFIX,ggff.net
-DOMAIN-SUFFIX,sp.mux.sing-box.arpa
+DOMAIN,sp.mux.sing-box.arpa
 
 # 国外域名
 DOMAIN-SUFFIX,eu
