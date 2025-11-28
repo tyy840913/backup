@@ -1,3 +1,11 @@
+# IP地址检测
+DOMAIN-SUFFIX,api.ip.sb
+DOMAIN-SUFFIX,ip-api.com
+DOMAIN-SUFFIX,ipwho.is
+DOMAIN-SUFFIX,ipinfo.io
+DOMAIN-SUFFIX,ident.me
+DOMAIN-SUFFIX,ipapi.co
+
 # 自定义域名
 DOMAIN-SUFFIX,56idc.net
 DOMAIN-SUFFIX,freemyip.com
