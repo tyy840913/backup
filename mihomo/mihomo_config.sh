@@ -4,7 +4,7 @@
 # 模板配置文件（前半部分）
 BASE_CONFIG="/etc/mihomo/mihomo_config.yaml"
 # 如果模板不存在，从这个 URL 下载
-TEMPLATE_URL="https://route.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/mihomo_config.yaml"
+TEMPLATE_URL="https://cdn.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/mihomo_config.yaml"
 # 最终生成的完整配置文件
 FINAL_CONFIG="/etc/mihomo/config.yaml"
 # 用于获取订阅配置的 URL 地址（后半部分）
