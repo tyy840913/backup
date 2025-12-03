@@ -220,7 +220,7 @@ start_mihomo_container() {
             -p 7892:7892 \
             -p 9090:9090 \
             -v "$CONF_DIR:/root/.config/mihomo" \
-            metacubex/mihomo:latest >/dev/null 2>&1; then
+            docker.lms.run/metacubex/mihomo:latest >/dev/null 2>&1; then
             
             sleep 5
             if docker ps --filter "name=mihomo" --format "{{.Status}}" | grep -q "Up"; then
