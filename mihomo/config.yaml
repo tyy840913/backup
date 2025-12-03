@@ -1,0 +1,260 @@
+# 通用代理端口：同时支持HTTP和SOCKS5协议，一般软件都可以使用这个端口
+mixed-port: 7890
+
+# 仅HTTP协议专用端口（如果你的软件只支持HTTP代理，用这个）
+port: 7891
+
+# 仅SOCKS5协议专用端口（如果你的软件只支持SOCKS5代理，用这个）
+socks-port: 7892
+
+
+# 指定 Clash 应绑定的网络接口。
+# 此设置决定 Clash 将使用哪个网络接口进行所有网络操作。
+# 在这里设置为 "eth0"，这通常是 Linux 系统上的主要以太网接口。
+# interface-name: 192.168.88.6
+
+# 是否允许来自局域网的连接（开启后，其他设备可以通过你的电脑上网）
+allow-lan: true
+
+# 监听地址，"*"表示监听所有地址，这样局域网内其他设备才能连接
+bind-address: "*"
+mode: rule
+
+# 日志设置：silent=不显示日志，info=显示基本信息，warning=显示警告
+# error=只显示错误，debug=显示所有调试信息（日志会占用内存，一般保持静默即可）
+log-level: silent
+
+# 控制面板访问地址和端口，可以通过浏览器访问查看连接状态
+external-controller: 0.0.0.0:9090
+
+
+# 远程控制面板UI，无需下载就能使用（如果想用就取消注释）
+#external-ui: https://yacd.haishan.me
+
+# MetaCubeX界面，比上面那个更漂亮（目前启用的是这个）
+external-ui: ui
+
+# 访问控制面板的密码，设置后别人就不能随意访问你的控制面板了
+secret: "1234567890"
+
+
+# DNS设置（处理域名解析的方式，很重要！）
+dns:
+  enable: true
+  listen: 0.0.0.0:53
+  cache: true
+  cache-size: 8192
+  ipv6: false # 关闭IPv6，大多数情况下不需要
+
+  # 国内DNS服务器，用于解析常规域名
+  default-nameserver:
+    - 223.5.5.5  # 阿里DNS
+    - 119.29.29.29  # 114DNS
+  enhanced-mode: fake-ip # 加速DNS解析的模式
+  fake-ip-range: 198.18.0.0/16 # 虚拟IP地址池
+
+  # 下面这些域名将使用真实IP而非虚拟IP，这样可以避免一些服务无法正常工作
+  # 比如网易云音乐、游戏服务器等需要真实IP的服务
+  fake-ip-filter:
+    - '*.lan'
+    - '*.localdomain'
+    - '*.example'
+    - '*.invalid'
+    - '*.localhost'
+    - '*.test'
+    - '*.local'
+    - '*.home.arpa'
+    - 'time.*.com'
+    - 'time.*.gov'
+    - 'time.*.edu.cn'
+    - 'time.*.apple.com'
+    - 'time1.*.com'
+    - 'time2.*.com'
+    - 'time3.*.com'
+    - 'time4.*.com'
+    - 'time5.*.com'
+    - 'time6.*.com'
+    - 'time7.*.com'
+    - 'ntp.*.com'
+    - 'ntp1.*.com'
+    - 'ntp2.*.com'
+    - 'ntp3.*.com'
+    - 'ntp4.*.com'
+    - 'ntp5.*.com'
+    - 'ntp6.*.com'
+    - 'ntp7.*.com'
+    - '*.time.edu.cn'
+    - '*.ntp.org.cn'
+    - '+.pool.ntp.org'
+    - 'time1.cloud.tencent.com'
+    - 'music.163.com'
+    - '*.music.163.com'
+    - '*.126.net'
+    - 'musicapi.taihe.com'
+    - 'music.taihe.com'
+    - 'songsearch.kugou.com'
+    - 'trackercdn.kugou.com'
+    - '*.kuwo.cn'
+    - 'api-jooxtt.sanook.com'
+    - 'api.joox.com'
+    - 'joox.com'
+    - 'y.qq.com'
+    - '*.y.qq.com'
+    - 'streamoc.music.tc.qq.com'
+    - 'mobileoc.music.tc.qq.com'
+    - 'isure.stream.qqmusic.qq.com'
+    - 'dl.stream.qqmusic.qq.com'
+    - 'aqqmusic.tc.qq.com'
+    - 'amobile.music.tc.qq.com'
+    - '*.xiami.com'
+    - '*.music.migu.cn'
+    - 'music.migu.cn'
+    - '*.msftconnecttest.com'
+    - '*.msftncsi.com'
+    - 'msftconnecttest.com'
+    - 'msftncsi.com'
+    - 'localhost.ptlogin2.qq.com'
+    - 'localhost.sec.qq.com'
+    - '+.srv.nintendo.net'
+    - '+.stun.playstation.net'
+    - 'xbox.*.microsoft.com'
+    - 'xnotify.xboxlive.com'
+    - '+.battlenet.com.cn'
+    - '+.wotgame.cn'
+    - '+.wggames.cn'
+    - '+.wowsgame.cn'
+    - '+.wargaming.net'
+    - 'proxy.golang.org'
+    - 'stun.*.*'
+    - 'stun.*.*.*'
+    - '+.stun.*.*'
+    - '+.stun.*.*.*'
+    - '+.stun.*.*.*.*'
+    - 'heartbeat.belkin.com'
+    - '*.linksys.com'
+    - '*.linksyssmartwifi.com'
+    - '*.router.asus.com'
+    - 'mesu.apple.com'
+    - 'swscan.apple.com'
+    - 'swquery.apple.com'
+    - 'swdownload.apple.com'
+    - 'swcdn.apple.com'
+    - 'swdist.apple.com'
+    - 'lens.l.google.com'
+    - 'stun.l.google.com'
+    - '+.nflxvideo.net'
+    - '*.square-enix.com'
+    - '*.finalfantasyxiv.com'
+    - '*.ffxiv.com'
+    - '*.mcdn.bilivideo.cn'
+
+  # 国内DNS服务器（加密连接，更安全）
+  nameserver:
+    - https://doh.pub/dns-query      # 腾讯DNS
+    - https://dns.alidns.com/dns-query  # 阿里DNS
+
+  # 国外DNS服务器，用于解析被污染的域名
+  fallback:
+     - https://dns.google/dns-query     # 谷歌DNS
+     - https://cloudflare-dns.com/dns-query  # Cloudflare DNS
+
+  # 哪些情况下会使用国外DNS
+  fallback-filter:
+    geoip: false
+    ipcidr:
+      # 以下是内网IP段，不会使用国外DNS
+      - 0.0.0.0/8
+      - 10.0.0.0/8
+      - 100.64.0.0/10
+      - 127.0.0.0/8
+      - 169.254.0.0/16
+      - 172.16.0.0/12
+      - 192.0.0.0/24
+      - 192.0.2.0/24
+      - 192.88.99.0/24
+      - 192.168.0.0/16
+      - 198.18.0.0/15
+      - 198.51.100.0/24
+      - 203.0.113.0/24
+      - 224.0.0.0/4
+      - 240.0.0.0/4
+      - 255.255.255.255/32
+    domain:
+      # 这些网站强制使用国外DNS解析，避免被污染
+      - '+.google.com'
+      - '+.facebook.com'
+      - '+.youtube.com'
+      - '+.githubusercontent.com'
+      - '+.googlevideo.com'
+
+# TUN模式设置（让系统所有流量都经过Clash，无需单独为每个软件设置代理）
+tun:
+  enable: false # 开启后所有流量都会通过Clash，无需在软件里单独设置代理
+  stack: system # 使用系统网络栈
+  dns-hijack:
+    - tcp://any:53  # 接管所有DNS请求，防止DNS泄露
+    - udp://any:53  # 接管所有DNS请求，防止DNS泄露
+
+# ===== 代理节点配置 =====
+
+proxies:
+  - {name: "56IDC-DE xtls-reality", type: vless, server: 77.90.28.131, port: 55900, uuid: 32a50fee-9d90-45f6-9987-0ad4f16c7212, network: tcp, udp: true, tls: true, flow: xtls-rprx-vision, servername: addons.mozilla.org, client-fingerprint: firefox, reality-opts: {public-key: lWDzjYSQb1XszkIyP4LcihmHWm4rFdhNOIF7J-REjF4, short-id: ""}, smux: { enabled: false, protocol: 'h2mux', padding: false, max-connections: '8', min-streams: '16', statistic: true, only-tcp: false }, brutal-opts: { enabled: false, up: '1000 Mbps', down: '1000 Mbps' } }
+  - {name: "56IDC-DE hysteria2", type: hysteria2, server: 77.90.28.131, port: 55901, ports: 55910-55990, HopInterval: 60, up: "200 Mbps", down: "1000 Mbps", password: 32a50fee-9d90-45f6-9987-0ad4f16c7212, skip-cert-verify: false, fingerprint: 49:48:FD:E4:FC:C0:7F:7B:FA:64:7E:52:94:67:57:48:37:14:2E:99:16:CF:95:FB:79:BD:83:11:53:24:73:7A}
+  - {name: "56IDC-DE tuic", type: tuic, server: 77.90.28.131, port: 55902, uuid: 32a50fee-9d90-45f6-9987-0ad4f16c7212, password: 32a50fee-9d90-45f6-9987-0ad4f16c7212, alpn: [h3], disable-sni: true, reduce-rtt: true, request-timeout: 8000, udp-relay-mode: native, congestion-controller: bbr, skip-cert-verify: false, fingerprint: 49:48:FD:E4:FC:C0:7F:7B:FA:64:7E:52:94:67:57:48:37:14:2E:99:16:CF:95:FB:79:BD:83:11:53:24:73:7A}
+  - {name: "56IDC-DE ShadowTLS", type: ss, server: 77.90.28.131, port: 55903, cipher: 2022-blake3-aes-128-gcm, password: loTMykUq3RYgvVenxJ207g==, plugin: shadow-tls, client-fingerprint: firefox, plugin-opts: {host: addons.mozilla.org, password: "32a50fee-9d90-45f6-9987-0ad4f16c7212", version: 3}, smux: { enabled: true, protocol: 'h2mux', padding: true, max-connections: '8', min-streams: '16', statistic: true, only-tcp: false }, brutal-opts: { enabled: false, up: '1000 Mbps', down: '1000 Mbps' } }
+  - {name: "56IDC-DE trojan", type: trojan, server: 77.90.28.131, port: 55904, password: 32a50fee-9d90-45f6-9987-0ad4f16c7212, client-fingerprint: firefox, skip-cert-verify: false, fingerprint: 49:48:FD:E4:FC:C0:7F:7B:FA:64:7E:52:94:67:57:48:37:14:2E:99:16:CF:95:FB:79:BD:83:11:53:24:73:7A, smux: { enabled: true, protocol: 'h2mux', padding: true, max-connections: '8', min-streams: '16', statistic: true, only-tcp: false }, brutal-opts: { enabled: false, up: '1000 Mbps', down: '1000 Mbps' } }
+  - {name: "56IDC-DE grpc-reality", type: vless, server: 77.90.28.131, port: 55905, uuid: 32a50fee-9d90-45f6-9987-0ad4f16c7212, network: grpc, tls: true, udp: true, flow: , client-fingerprint: firefox, servername: addons.mozilla.org, grpc-opts: {  grpc-service-name: "grpc" }, reality-opts: { public-key: lWDzjYSQb1XszkIyP4LcihmHWm4rFdhNOIF7J-REjF4, short-id: "" }, smux: { enabled: true, protocol: 'h2mux', padding: true, max-connections: '8', min-streams: '16', statistic: true, only-tcp: false }, brutal-opts: { enabled: false, up: '1000 Mbps', down: '1000 Mbps' } }
+  - {name: "56IDC-DE anytls", type: anytls, server: 77.90.28.131, port: 55906, password: 32a50fee-9d90-45f6-9987-0ad4f16c7212, client-fingerprint: firefox, udp: true, idle-session-check-interval: 30, idle-session-timeout: 30, skip-cert-verify: false, fingerprint: 49:48:FD:E4:FC:C0:7F:7B:FA:64:7E:52:94:67:57:48:37:14:2E:99:16:CF:95:FB:79:BD:83:11:53:24:73:7A }
+  - {name: "56IDC-LOS xtls-reality", type: vless, server: 107.175.54.18, port: 40400, uuid: 79ca9c03-c655-4490-9f04-f4728b64c00b, network: tcp, udp: true, tls: true, flow: xtls-rprx-vision, servername: addons.mozilla.org, client-fingerprint: firefox, reality-opts: {public-key: vmB9u4lDEkkUADUfztDV2SV0HH7sdVU7Y4uxRQDCpj4, short-id: ""}, smux: { enabled: false, protocol: 'h2mux', padding: false, max-connections: '8', min-streams: '16', statistic: true, only-tcp: false }, brutal-opts: { enabled: false, up: '1000 Mbps', down: '1000 Mbps' } }
+  - {name: "56IDC-LOS hysteria2", type: hysteria2, server: 107.175.54.18, port: 40401, ports: 40415-40490, HopInterval: 60, up: "200 Mbps", down: "1000 Mbps", password: 79ca9c03-c655-4490-9f04-f4728b64c00b, skip-cert-verify: false, fingerprint: E8:12:FB:D1:A9:3E:60:F1:38:CD:7A:C3:2C:B3:C7:2F:3C:76:38:27:5D:10:5E:9F:B2:72:37:47:1E:4C:C0:AD}
+  - {name: "56IDC-LOS tuic", type: tuic, server: 107.175.54.18, port: 40402, uuid: 79ca9c03-c655-4490-9f04-f4728b64c00b, password: 79ca9c03-c655-4490-9f04-f4728b64c00b, alpn: [h3], disable-sni: true, reduce-rtt: true, request-timeout: 8000, udp-relay-mode: native, congestion-controller: bbr, skip-cert-verify: false, fingerprint: E8:12:FB:D1:A9:3E:60:F1:38:CD:7A:C3:2C:B3:C7:2F:3C:76:38:27:5D:10:5E:9F:B2:72:37:47:1E:4C:C0:AD}
+  - {name: "56IDC-LOS ShadowTLS", type: ss, server: 107.175.54.18, port: 40403, cipher: 2022-blake3-aes-128-gcm, password: Ko65bcTS2aSc+awu0GeJXg==, plugin: shadow-tls, client-fingerprint: firefox, plugin-opts: {host: addons.mozilla.org, password: "79ca9c03-c655-4490-9f04-f4728b64c00b", version: 3}, smux: { enabled: true, protocol: 'h2mux', padding: true, max-connections: '8', min-streams: '16', statistic: true, only-tcp: false }, brutal-opts: { enabled: false, up: '1000 Mbps', down: '1000 Mbps' } }
+  - {name: "56IDC-LOS shadowsocks", type: ss, server: 107.175.54.18, port: 40404, cipher: aes-128-gcm, password: 79ca9c03-c655-4490-9f04-f4728b64c00b, smux: { enabled: true, protocol: 'h2mux', padding: true, max-connections: '8', min-streams: '16', statistic: true, only-tcp: false }, brutal-opts: { enabled: false, up: '1000 Mbps', down: '1000 Mbps' } }
+  - {name: "56IDC-LOS trojan", type: trojan, server: 107.175.54.18, port: 40405, password: 79ca9c03-c655-4490-9f04-f4728b64c00b, client-fingerprint: firefox, skip-cert-verify: false, fingerprint: E8:12:FB:D1:A9:3E:60:F1:38:CD:7A:C3:2C:B3:C7:2F:3C:76:38:27:5D:10:5E:9F:B2:72:37:47:1E:4C:C0:AD, smux: { enabled: true, protocol: 'h2mux', padding: true, max-connections: '8', min-streams: '16', statistic: true, only-tcp: false }, brutal-opts: { enabled: false, up: '1000 Mbps', down: '1000 Mbps' } }
+  - {name: "56IDC-LOS vmess-ws", type: vmess, server: cfip.xxxxxxxx.tk, port: 80, uuid: 79ca9c03-c655-4490-9f04-f4728b64c00b, udp: true, tls: false, alterId: 0, cipher: auto, network: ws, ws-opts: { path: "/79ca9c03-c655-4490-9f04-f4728b64c00b-vmess", headers: {Host: nearly-generations-lasting-little.trycloudflare.com} }, smux: { enabled: true, protocol: 'h2mux', padding: true, max-connections: '8', min-streams: '16', statistic: true, only-tcp: false }, brutal-opts: { enabled: false, up: '1000 Mbps', down: '1000 Mbps' } }
+  - {name: "56IDC-LOS vless-ws-tls", type: vless, server: cfip.xxxxxxxx.tk, port: 443, uuid: 79ca9c03-c655-4490-9f04-f4728b64c00b, udp: true, tls: true, servername: nearly-generations-lasting-little.trycloudflare.com, network: ws, skip-cert-verify: false, ws-opts: { path: "/79ca9c03-c655-4490-9f04-f4728b64c00b-vless", headers: {Host: nearly-generations-lasting-little.trycloudflare.com}, max-early-data: 2560, early-data-header-name: Sec-WebSocket-Protocol }, smux: { enabled: true, protocol: 'h2mux', padding: true, max-connections: '8', min-streams: '16', statistic: true, only-tcp: false }, brutal-opts: { enabled: false, up: '1000 Mbps', down: '1000 Mbps' } }
+  - {name: "56IDC-LOS h2-reality", type: vless, server: 107.175.54.18, port: 40408, uuid: 79ca9c03-c655-4490-9f04-f4728b64c00b, network: http, tls: true, servername: addons.mozilla.org, client-fingerprint: firefox, reality-opts: { public-key: vmB9u4lDEkkUADUfztDV2SV0HH7sdVU7Y4uxRQDCpj4, short-id: "" }, smux: { enabled: true, protocol: 'h2mux', padding: true, max-connections: '8', min-streams: '16', statistic: true, only-tcp: false }, brutal-opts: { enabled: false, up: '1000 Mbps', down: '1000 Mbps' } }
+  - {name: "56IDC-LOS grpc-reality", type: vless, server: 107.175.54.18, port: 40409, uuid: 79ca9c03-c655-4490-9f04-f4728b64c00b, network: grpc, tls: true, udp: true, flow: , client-fingerprint: firefox, servername: addons.mozilla.org, grpc-opts: {  grpc-service-name: "grpc" }, reality-opts: { public-key: vmB9u4lDEkkUADUfztDV2SV0HH7sdVU7Y4uxRQDCpj4, short-id: "" }, smux: { enabled: true, protocol: 'h2mux', padding: true, max-connections: '8', min-streams: '16', statistic: true, only-tcp: false }, brutal-opts: { enabled: false, up: '1000 Mbps', down: '1000 Mbps' } }
+  - {name: "56IDC-LOS anytls", type: anytls, server: 107.175.54.18, port: 40410, password: 79ca9c03-c655-4490-9f04-f4728b64c00b, client-fingerprint: firefox, udp: true, idle-session-check-interval: 30, idle-session-timeout: 30, skip-cert-verify: false, fingerprint: E8:12:FB:D1:A9:3E:60:F1:38:CD:7A:C3:2C:B3:C7:2F:3C:76:38:27:5D:10:5E:9F:B2:72:37:47:1E:4C:C0:AD }
+
+# ===== 代理组和规则配置 =====
+
+proxy-groups:
+  - name: ♻️ 自动选择
+    type: url-test
+    include-all: true
+    interval: 300
+    tolerance: 50
+  - name: 💬 智能平台
+    include-all: true
+    filter: ^(?i)(?!.*(?:中|CN|China|港|HK|HongKong|澳|MO|Macao|台|TW|Taiwan|俄|RU|Russia|Iran|IR|朝|KP|NorthKorea|Cuba|CU|Syria|SY|Belarus|BY)).*
+    type: url-test
+    interval: 300
+    tolerance: 50
+rule-providers:
+  ProxyLite:
+    url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/ProxyLite.list
+    path: ./ruleset/ProxyLite.list
+    behavior: classical
+    interval: 86400
+    format: text
+    type: http
+  Global-Filter:
+    url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/Global-Filter.list
+    path: ./ruleset/Global-Filter.list
+    behavior: classical
+    interval: 86400
+    format: text
+    type: http
+  AI:
+    url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/AI.list
+    path: ./ruleset/AI.list
+    behavior: classical
+    interval: 86400
+    format: text
+    type: http
+rules:
+  - "RULE-SET,Global-Filter,REJECT"
+  - "RULE-SET,AI,💬 智能平台"
+  - "RULE-SET,ProxyLite,♻️ 自动选择"
+  - "MATCH,DIRECT"
