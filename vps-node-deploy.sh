@@ -206,8 +206,9 @@ system_dd() {
         echo -e "${YELLOW}使用方法:${NC}"
         echo -e "  1. 直接运行: ${GREEN}./reinstall.sh${NC}"
         echo -e "  2. 查看帮助: ${GREEN}./reinstall.sh -h${NC}"
-        echo -e "  3. 快速安装Debian 11: ${GREEN}./reinstall.sh debian 11${NC}"
-        echo -e "  4. 快速安装Ubuntu 20.04: ${GREEN}./reinstall.sh ubuntu 20.04${NC}"
+        echo -e "  3. 快速安装Debian 12: ${GREEN}./reinstall.sh debian 12${NC}"
+        echo -e "  4. 快速安装alpine 3.22: ${GREEN}./reinstall.sh alpine 3.22${NC}"
+        echo -e "  5. 快速安装Ubuntu 22.04: ${GREEN}./reinstall.sh ubuntu 22.04${NC}"
         echo ""
         echo -e "${YELLOW}正在启动DD脚本...${NC}"
         bash reinstall.sh
