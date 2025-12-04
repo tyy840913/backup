@@ -1,8 +1,8 @@
 # 📋 点击右侧复制按钮直接复制
 
-# ubuntu 22.04 APT换源
+# VPS代理节点部署
 ```bash
-sudo sed -i.bak 's/archive.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list && sudo sed -i 's/security.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list && sudo apt update
+bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/vps-node-deploy.sh)
 ```
 # ACL4SSR
 ```bash
