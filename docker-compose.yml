@@ -33,6 +33,7 @@ services:
     network_mode: host
     volumes:
       - /docker_data/luckyconf:/goodluck
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Asia/Shanghai
 
