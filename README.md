@@ -8,6 +8,10 @@ bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/ma
 ```bash
 https://github.com/ACL4SSR/ACL4SSR/tree/master
 ```
+# acme-ssl证书
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/acme.sh)
+```
 
 # 主脚本
 ```bash
