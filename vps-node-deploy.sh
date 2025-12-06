@@ -1,5 +1,5 @@
 #!/bin/bash
-# 节点部署合集脚本 - 重构完整版（仅支持KVM/完整系统DD）
+# 节点部署合集脚本
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -237,14 +237,15 @@ show_menu() {
     
     local menu_groups=(
         "====== Sing-box 多合一 =====" "1|F佬Sing-box一键脚本" "2|老王Sing-box四合一" "3|勇哥Sing-box四合一" "4|233boy.sing-box一键脚本"
-        "========= Argo隧道 =========" "5|老王Xray-2go一键脚本" "6|F佬ArgoX一键脚本" "7|Suoha一键Argo脚本"
-        "========= 单协议节点 =======" "8|Hysteria2一键脚本" "9|Juicity一键脚本" "10|Tuic-v5一键脚本" "11|Snell一键安装" "12|Reality一键脚本" "13|ShadowTLS一键脚本"
-        "========== 面板工具 ========" "14|新版X-UI面板" "15|伊朗版3X-UI面板" "16|Sui面板(Sing-box面板)"
-        "========= 系统性能优化 ======" "17|BBR加速脚本" "GREEN|18|系统清理 (清理垃圾文件)" "RED|19|一键DD (重装系统)"
-        "========== 监控与探针 =======" "20|哪吒监控面板+探针"
-        "========== 网络与检测 =======" "21|DNS流媒体解锁脚本" "22|流媒体解锁检测工具" "23|证书自动续签脚本" "24|网络测速与Bench测试"
-        "========== 开发环境 ========" "25|Docker全家桶安装" "26|Python环境配置" "27|Node.js环境部署"
-        "========== 其他代理 ========" "28|OpenVPN一键安装" "29|Telegram代理(MTProto)" "30|Cloudflare WARP安装"
+        "========= WARP 脚本 ========" "5|fscarmen WARP脚本" "6|P3TERX WARP脚本" "7|WARP-GO脚本" "8|MISAKA WARP脚本"
+        "========= Argo隧道 =========" "9|老王Xray-2go一键脚本" "10|F佬ArgoX一键脚本" "11|Suoha一键Argo脚本"
+        "========= 单协议节点 =======" "12|Hysteria2一键脚本" "13|Juicity一键脚本" "14|Tuic-v5一键脚本" "15|Snell一键安装" "16|Reality一键脚本" "17|ShadowTLS一键脚本"
+        "========== 面板工具 ========" "18|新版X-UI面板" "19|伊朗版3X-UI面板" "20|Sui面板(Sing-box面板)"
+        "========= 系统性能优化 ======" "21|BBR加速脚本" "GREEN|22|系统清理 (清理垃圾文件)" "RED|23|一键DD (重装系统)"
+        "========== 监控与探针 =======" "24|哪吒监控面板+探针"
+        "========== 网络与检测 =======" "25|DNS流媒体解锁脚本" "26|流媒体解锁检测工具" "27|证书自动续签脚本" "28|网络测速与Bench测试"
+        "========== 开发环境 ========" "29|Docker全家桶安装" "30|Python环境配置" "31|Node.js环境部署"
+        "========== 其他代理 ========" "32|OpenVPN一键安装" "33|Telegram代理(MTProto)"
     )
     
     for item in "${menu_groups[@]}"; do
@@ -284,32 +285,35 @@ execute_choice() {
         2) echo -e "${YELLOW}执行老王Sing-box四合一脚本...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/sing-box/main/sing-box.sh) ;;
         3) echo -e "${YELLOW}执行勇哥Sing-box四合一脚本...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/yonggekkk/sing-box-yg/main/sb.sh) ;;
         4) echo -e "${YELLOW}执行233boy.sing-box一键脚本...${NC}"; bash <(wget -qO- -o- https://github.com/233boy/sing-box/raw/main/install.sh) ;;
-        5) echo -e "${YELLOW}执行老王Xray-2go一键脚本...${NC}"; bash <(curl -Ls https://github.com/eooce/xray-2go/raw/main/xray_2go.sh) ;;
-        6) echo -e "${YELLOW}执行F佬ArgoX一键脚本...${NC}"; bash <(wget -qO- https://raw.githubusercontent.com/fscarmen/argox/main/argox.sh) ;;
-        7) echo -e "${YELLOW}执行Suoha一键Argo脚本...${NC}"; bash <(curl -Ls https://www.baipiao.eu.org/suoha.sh) ;;
-        8) echo -e "${YELLOW}执行Hysteria2一键脚本...${NC}"; [ -f "/etc/alpine-release" ] && bash -c "$(curl -L https://raw.githubusercontent.com/eooce/scripts/master/containers-shell/hy2.sh)" || bash -c "$(curl -L https://raw.githubusercontent.com/eooce/scripts/master/Hysteria2.sh)" ;;
-        9) echo -e "${YELLOW}执行Juicity一键脚本...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/juicity.sh) ;;
-        10) echo -e "${YELLOW}执行Tuic-v5一键脚本...${NC}"; bash -c "$(curl -L https://raw.githubusercontent.com/eooce/scripts/master/tuic.sh)" ;;
-        11) echo -e "${YELLOW}执行Snell一键安装...${NC}"; wget -O snell.sh --no-check-certificate https://git.io/Snell.sh && chmod +x snell.sh && ./snell.sh ;;
-        12) echo -e "${YELLOW}执行Reality一键脚本...${NC}"; [ -f "/etc/alpine-release" ] && bash -c "$(curl -L https://raw.githubusercontent.com/eooce/scripts/master/test.sh)" || bash -c "$(curl -L https://raw.githubusercontent.com/eooce/xray-reality/master/reality.sh)" ;;
-        13) echo -e "${YELLOW}执行ShadowTLS一键脚本...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/shadowtls.sh) ;;
-        14) echo -e "${YELLOW}执行新版X-UI面板安装...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/slobys/x-ui/main/install.sh) ;;
-        15) echo -e "${YELLOW}执行伊朗版3X-UI面板安装...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh) ;;
-        16) echo -e "${YELLOW}执行Sui面板安装...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/Misaka-blog/s-ui/master/install.sh) ;;
-        17) echo -e "${YELLOW}执行BBR加速脚本...${NC}"; bash <(curl -Lso- https://git.io/kernel.sh) ;;
-        18) system_clean ;;
-        19) system_dd ;;
-        20) echo -e "${YELLOW}执行哪吒监控面板+探针...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/naiba/nezha/master/script/install.sh) ;;
-        21) echo -e "${YELLOW}执行DNS流媒体解锁脚本...${NC}"; wget -N https://raw.githubusercontent.com/fscarmen/warp/main/warp.sh && chmod +x warp.sh && ./warp.sh menu ;;
-        22) echo -e "${YELLOW}执行流媒体解锁检测工具...${NC}"; bash <(curl -L -s https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/main/check.sh) ;;
-        23) echo -e "${YELLOW}执行证书自动续签脚本...${NC}"; curl https://get.acme.sh | sh ;;
-        24) echo -e "${YELLOW}执行网络测速与Bench测试...${NC}"; wget -qO- bench.sh | bash ;;
-        25) echo -e "${YELLOW}执行Docker全家桶安装...${NC}"; curl -fsSL https://get.docker.com | bash && curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose ;;
-        26) echo -e "${YELLOW}执行Python环境配置...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/python_setup.sh) ;;
-        27) echo -e "${YELLOW}执行Node.js环境部署...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/nodejs_setup.sh) ;;
-        28) echo -e "${YELLOW}执行OpenVPN一键安装...${NC}"; wget https://git.io/vpn -O openvpn-install.sh && chmod +x openvpn-install.sh && bash openvpn-install.sh ;;
-        29) echo -e "${YELLOW}执行Telegram代理(MTProto)...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/mtp.sh) ;;
-        30) echo -e "${YELLOW}执行Cloudflare WARP安装...${NC}"; wget -N https://raw.githubusercontent.com/fscarmen/warp/main/warp.sh && chmod +x warp.sh && ./warp.sh ;;
+        5) echo -e "${YELLOW}执行fscarmen WARP脚本...${NC}"; wget -N https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh && bash menu.sh ;;
+        6) echo -e "${YELLOW}执行P3TERX WARP脚本...${NC}"; bash <(curl -fsSL git.io/warp.sh) menu ;;
+        7) echo -e "${YELLOW}执行WARP-GO脚本...${NC}"; wget -N https://raw.githubusercontent.com/fscarmen/warp/main/warp-go.sh && bash warp-go.sh ;;
+        8) echo -e "${YELLOW}执行MISAKA WARP脚本...${NC}"; wget -N https://gitlab.com/Misaka-blog/warp-script/-/raw/main/warp.sh && bash warp.sh ;;
+        9) echo -e "${YELLOW}执行老王Xray-2go一键脚本...${NC}"; bash <(curl -Ls https://github.com/eooce/xray-2go/raw/main/xray_2go.sh) ;;
+        10) echo -e "${YELLOW}执行F佬ArgoX一键脚本...${NC}"; bash <(wget -qO- https://raw.githubusercontent.com/fscarmen/argox/main/argox.sh) ;;
+        11) echo -e "${YELLOW}执行Suoha一键Argo脚本...${NC}"; bash <(curl -Ls https://www.baipiao.eu.org/suoha.sh) ;;
+        12) echo -e "${YELLOW}执行Hysteria2一键脚本...${NC}"; [ -f "/etc/alpine-release" ] && bash -c "$(curl -L https://raw.githubusercontent.com/eooce/scripts/master/containers-shell/hy2.sh)" || bash -c "$(curl -L https://raw.githubusercontent.com/eooce/scripts/master/Hysteria2.sh)" ;;
+        13) echo -e "${YELLOW}执行Juicity一键脚本...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/juicity.sh) ;;
+        14) echo -e "${YELLOW}执行Tuic-v5一键脚本...${NC}"; bash -c "$(curl -L https://raw.githubusercontent.com/eooce/scripts/master/tuic.sh)" ;;
+        15) echo -e "${YELLOW}执行Snell一键安装...${NC}"; wget -O snell.sh --no-check-certificate https://git.io/Snell.sh && chmod +x snell.sh && ./snell.sh ;;
+        16) echo -e "${YELLOW}执行Reality一键脚本...${NC}"; [ -f "/etc/alpine-release" ] && bash -c "$(curl -L https://raw.githubusercontent.com/eooce/scripts/master/test.sh)" || bash -c "$(curl -L https://raw.githubusercontent.com/eooce/xray-reality/master/reality.sh)" ;;
+        17) echo -e "${YELLOW}执行ShadowTLS一键脚本...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/shadowtls.sh) ;;
+        18) echo -e "${YELLOW}执行新版X-UI面板安装...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/slobys/x-ui/main/install.sh) ;;
+        19) echo -e "${YELLOW}执行伊朗版3X-UI面板安装...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh) ;;
+        20) echo -e "${YELLOW}执行Sui面板安装...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/Misaka-blog/s-ui/master/install.sh) ;;
+        21) echo -e "${YELLOW}执行BBR加速脚本...${NC}"; bash <(curl -Lso- https://git.io/kernel.sh) ;;
+        22) system_clean ;;
+        23) system_dd ;;
+        24) echo -e "${YELLOW}执行哪吒监控面板+探针...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/naiba/nezha/master/script/install.sh) ;;
+        25) echo -e "${YELLOW}执行DNS流媒体解锁脚本...${NC}"; wget -N https://raw.githubusercontent.com/fscarmen/warp/main/warp.sh && chmod +x warp.sh && ./warp.sh menu ;;
+        26) echo -e "${YELLOW}执行流媒体解锁检测工具...${NC}"; bash <(curl -L -s https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/main/check.sh) ;;
+        27) echo -e "${YELLOW}执行证书自动续签脚本...${NC}"; curl https://get.acme.sh | sh ;;
+        28) echo -e "${YELLOW}执行网络测速与Bench测试...${NC}"; wget -qO- bench.sh | bash ;;
+        29) echo -e "${YELLOW}执行Docker全家桶安装...${NC}"; curl -fsSL https://get.docker.com | bash && curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose ;;
+        30) echo -e "${YELLOW}执行Python环境配置...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/python_setup.sh) ;;
+        31) echo -e "${YELLOW}执行Node.js环境部署...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/nodejs_setup.sh) ;;
+        32) echo -e "${YELLOW}执行OpenVPN一键安装...${NC}"; wget https://git.io/vpn -O openvpn-install.sh && chmod +x openvpn-install.sh && bash openvpn-install.sh ;;
+        33) echo -e "${YELLOW}执行Telegram代理(MTProto)...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/mtp.sh) ;;
         0) echo -e "${GREEN}退出脚本${NC}"; exit 0 ;;
         *) echo -e "${RED}无效选择，请重新输入${NC}"; sleep 2; return 1 ;;
     esac
@@ -334,7 +338,7 @@ main() {
             continue
         fi
         
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [[ $choice -ge 0 && $choice -le 30 ]]; then
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [[ $choice -ge 0 && $choice -le 33 ]]; then
             execute_choice $choice
             # 如果选择的是退出(0)，则直接退出，否则显示返回提示
             if [[ $choice -eq 0 ]]; then
