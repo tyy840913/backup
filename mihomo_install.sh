@@ -69,7 +69,7 @@ else
 fi
 
 # 清理空行并应用
-echo -e "${CURRENT_CRONTAB}" | grep -v '^$' | sudo crontab -
+echo -e "${CURRENT_CRONTAB}" | grep -v '^$' | crontab -
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}定时任务配置成功。${PLAIN}
 "
