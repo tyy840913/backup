@@ -78,15 +78,15 @@ install_dependencies() {
     
     case $os_id in
         ubuntu|debian)
-            sudo apt-get update
-            sudo apt-get install -y "$@"
+            apt-get update
+            apt-get install -y "$@"
             ;;
         centos|rhel|fedora)
-            sudo yum install -y epel-release
-            sudo yum install -y "$@"
+            yum install -y epel-release
+            yum install -y "$@"
             ;;
         alpine)
-            sudo apk add --no-cache "$@"
+            apk add --no-cache "$@"
             ;;
         *)
             log_message "${RED}不支持的Linux发行版，请手动安装依赖。${NC}"
@@ -408,7 +408,7 @@ http_validation() {
     
     read -rp "请选择: " server_type
     
-    local certbot_cmd="sudo certbot certonly --agree-tos --no-eff-email --register-unsafely-without-email"
+    local certbot_cmd="certbot certonly --agree-tos --no-eff-email --register-unsafely-without-email"
     
     case $server_type in
         1|2)
@@ -419,8 +419,8 @@ http_validation() {
                 echo -e "${YELLOW}目录不存在，是否创建? (y/n): ${NC}"
                 read -r create_dir
                 if [[ "$create_dir" =~ ^[Yy]$ ]]; then
-                    sudo mkdir -p "$webroot"
-                    sudo chown -R "$USER":"$USER" "$webroot"
+                    mkdir -p "$webroot"
+                    chown -R "$USER":"$USER" "$webroot"
                 else
                     echo -e "${RED}Web根目录不存在，请检查路径${NC}"
                     return 1
@@ -446,9 +446,9 @@ http_validation() {
             echo -e "${CYAN}请确保80端口未被占用，或同意脚本停止相关服务${NC}"
             
             # 检查端口占用
-            if sudo lsof -i :80 | grep LISTEN; then
+            if lsof -i :80 | grep LISTEN; then
                 echo -e "${RED}80端口已被占用:${NC}"
-                sudo lsof -i :80
+                lsof -i :80
                 echo -e "${YELLOW}是否尝试停止占用80端口的服务? (y/n): ${NC}"
                 read -r stop_service
                 if [[ "$stop_service" =~ ^[Yy]$ ]]; then
@@ -524,7 +524,7 @@ choose_dns_provider() {
     fi
     
     # 构建certbot命令
-    local certbot_cmd="sudo certbot certonly --agree-tos --no-eff-email --register-unsafely-without-email"
+    local certbot_cmd="certbot certonly --agree-tos --no-eff-email --register-unsafely-without-email"
     certbot_cmd+=" --dns-$selected_api"
     
     if [[ -f "$DNS_API_DIR/$selected_api.ini" ]]; then
@@ -555,14 +555,14 @@ stop_port_80() {
     for service in "${services[@]}"; do
         if systemctl is-active --quiet "$service" 2>/dev/null; then
             echo -e "${YELLOW}停止 $service 服务${NC}"
-            sudo systemctl stop "$service"
+            systemctl stop "$service"
         fi
     done
     
     # 检查是否还有进程占用80端口
-    if sudo lsof -i :80 | grep LISTEN; then
+    if lsof -i :80 | grep LISTEN; then
         echo -e "${RED}仍有进程占用80端口，请手动处理:${NC}"
-        sudo lsof -i :80
+        lsof -i :80
         return 1
     fi
     
@@ -616,7 +616,7 @@ show_certificate_info() {
     
     # 查找最新的证书
     local cert_dir="/etc/letsencrypt/live"
-    local latest_cert=$(sudo ls -t "$cert_dir" | head -1)
+    local latest_cert=$(ls -t "$cert_dir" | head -1)
     
     if [[ -n "$latest_cert" ]]; then
         local cert_path="$cert_dir/$latest_cert/fullchain.pem"
@@ -624,15 +624,15 @@ show_certificate_info() {
         echo -e "${YELLOW}证书位置:${NC} $cert_path"
         
         # 显示证书详细信息
-        if sudo openssl x509 -in "$cert_path" -noout -text 2>/dev/null | grep -A1 "Subject:"; then
+        if openssl x509 -in "$cert_path" -noout -text 2>/dev/null | grep -A1 "Subject:"; then
             echo -e "${YELLOW}有效期:${NC}"
-            sudo openssl x509 -in "$cert_path" -noout -dates | sed 's/notBefore=//; s/notAfter=//'
+            openssl x509 -in "$cert_path" -noout -dates | sed 's/notBefore=//; s/notAfter=//'
             
             echo -e "${YELLOW}证书链:${NC}"
-            sudo openssl x509 -in "$cert_path" -noout -issuer
+            openssl x509 -in "$cert_path" -noout -issuer
             
             # 显示SAN信息
-            local san_info=$(sudo openssl x509 -in "$cert_path" -noout -text 2>/dev/null | grep -A1 "Subject Alternative Name:")
+            local san_info=$(openssl x509 -in "$cert_path" -noout -text 2>/dev/null | grep -A1 "Subject Alternative Name:")
             if [[ -n "$san_info" ]]; then
                 echo -e "${YELLOW}备用名称(SAN):${NC}"
                 echo "$san_info"
@@ -685,7 +685,7 @@ EOF
         chmod +x "$renew_script"
         
         # 添加到crontab
-        (sudo crontab -l 2>/dev/null; echo "$cron_schedule $renew_script") | sudo crontab -
+        (crontab -l 2>/dev/null; echo "$cron_schedule $renew_script") | crontab -
         
         echo -e "${GREEN}自动续期已设置完成！${NC}"
         echo -e "${YELLOW}续期脚本位置:${NC} $renew_script"
@@ -708,7 +708,7 @@ install_to_webserver() {
         
         # 查找最新的证书
         local cert_dir="/etc/letsencrypt/live"
-        local latest_cert=$(sudo ls -t "$cert_dir" | head -1)
+        local latest_cert=$(ls -t "$cert_dir" | head -1)
         
         if [[ -n "$latest_cert" ]]; then
             local cert_path="$cert_dir/$latest_cert"
@@ -790,16 +790,16 @@ server {
 EOF
         
         # 启用配置
-        sudo ln -sf "$config_file" "$nginx_enabled/"
+        ln -sf "$config_file" "$nginx_enabled/"
         
         # 测试Nginx配置
         echo -e "${CYAN}测试Nginx配置...${NC}"
-        if sudo nginx -t; then
+        if nginx -t; then
             echo -e "${GREEN}Nginx配置测试通过${NC}"
             echo -e "${CYAN}是否重启Nginx使配置生效? (y/n): ${NC}"
             read -r restart_nginx
             if [[ "$restart_nginx" =~ ^[Yy]$ ]]; then
-                sudo systemctl restart nginx
+                systemctl restart nginx
                 echo -e "${GREEN}Nginx已重启，SSL证书已生效${NC}"
             fi
         else
@@ -882,15 +882,15 @@ manage_renewals() {
     case $renew_choice in
         1)
             echo -e "${YELLOW}正在续期所有证书...${NC}"
-            sudo certbot renew --force-renewal
+            certbot renew --force-renewal
             ;;
         2)
             echo -e "${YELLOW}测试续期（干运行）...${NC}"
-            sudo certbot renew --dry-run
+            certbot renew --dry-run
             ;;
         3)
             echo -e "${YELLOW}即将过期的证书:${NC}"
-            sudo certbot certificates | grep -E "(VALID|EXPIRED)"
+            certbot certificates | grep -E "(VALID|EXPIRED)"
             ;;
         4)
             setup_renewal_notifications
@@ -907,7 +907,7 @@ revoke_certificate() {
     
     # 列出所有证书
     echo -e "${YELLOW}现有证书:${NC}"
-    sudo certbot certificates
+    certbot certificates
     
     read -rp "请输入要吊销的域名: " revoke_domain
     
@@ -916,13 +916,13 @@ revoke_certificate() {
         read -rp "确定要吊销 $revoke_domain 的证书吗? (y/n): " confirm_revoke
         
         if [[ "$confirm_revoke" =~ ^[Yy]$ ]]; then
-            sudo certbot revoke --cert-name "$revoke_domain"
+            certbot revoke --cert-name "$revoke_domain"
             
             # 询问是否删除证书文件
             echo -e "${CYAN}是否删除证书文件? (y/n): ${NC}"
             read -r delete_files
             if [[ "$delete_files" =~ ^[Yy]$ ]]; then
-                sudo certbot delete --cert-name "$revoke_domain"
+                certbot delete --cert-name "$revoke_domain"
             fi
         fi
     fi
@@ -1073,19 +1073,19 @@ check_system_status() {
     fi
     
     # 检查证书目录
-    local cert_count=$(sudo ls /etc/letsencrypt/live 2>/dev/null | wc -l)
+    local cert_count=$(ls /etc/letsencrypt/live 2>/dev/null | wc -l)
     echo -e "${YELLOW}现有证书数量: $cert_count${NC}"
     
     # 检查续期状态
     echo -e "${YELLOW}续期状态:${NC}"
-    sudo certbot renew --dry-run 2>&1 | tail -5
+    certbot renew --dry-run 2>&1 | tail -5
     
     # 检查端口占用
     echo -e "${YELLOW}端口占用情况:${NC}"
     for port in 80 443; do
-        if sudo lsof -i :$port &> /dev/null; then
+        if lsof -i :$port &> /dev/null; then
             echo -e "端口 $port: ${RED}已占用${NC}"
-            sudo lsof -i :$port | grep LISTEN | head -1
+            lsof -i :$port | grep LISTEN | head -1
         else
             echo -e "端口 $port: ${GREEN}空闲${NC}"
         fi
@@ -1167,7 +1167,7 @@ check_ports() {
         # 检查本地防火墙
         if command -v firewall-cmd &> /dev/null; then
             echo -e "${YELLOW}检查防火墙...${NC}"
-            sudo firewall-cmd --list-ports | grep "$check_port"
+            firewall-cmd --list-ports | grep "$check_port"
         fi
         
         # 检查SELinux
@@ -1196,10 +1196,10 @@ view_logs() {
             fi
             ;;
         2)
-            sudo journalctl -u certbot -n 50 --no-pager
+            journalctl -u certbot -n 50 --no-pager
             ;;
         3)
-            sudo tail -50 /var/log/syslog | grep -i certbot
+            tail -50 /var/log/syslog | grep -i certbot
             ;;
         4)
             echo -e "${YELLOW}清除7天前的日志...${NC}"
@@ -1223,9 +1223,10 @@ reset_configuration() {
 # 脚本入口
 main() {
     # 检查是否是root用户
-    if [[ $EUID -eq 0 ]]; then
-        echo -e "${RED}请不要直接使用root用户运行本脚本${NC}"
-        echo -e "${YELLOW}请使用普通用户运行，脚本会在需要时请求sudo权限${NC}"
+    if [[ $EUID -ne 0 ]]; then
+        echo "错误：本脚本必须在root用户下运行！"
+        echo "请先切换到root用户：sudo su -"
+        echo "然后执行：bash $(basename $0)"
         exit 1
     fi
     
