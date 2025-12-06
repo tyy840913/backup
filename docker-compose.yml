@@ -1,7 +1,10 @@
 services:
-  # Portainer - Docker 可视化管理
+  # Portainer - Docker 可视化管理（添加加速器）
   portainer:
-    image: portainer/portainer-ce:latest
+    image: cdn.luxxk.dpdns.org/portainer/portainer-ce:latest
+    # 或者使用其他两个：
+    # image: cdn.woskee.dpdns.org/portainer/portainer-ce:latest
+    # image: cdn.woskee.nyc.mn/portainer/portainer-ce:latest
     container_name: portainer
     restart: always
     network_mode: bridge
@@ -10,9 +13,11 @@ services:
     ports:
       - "9100:9000"
 
-  # openlist - 文件列表服务
+  # openlist - 文件列表服务（添加加速器）
   openlist:
-    image: openlistteam/openlist:latest
+    image: cdn.luxxk.dpdns.org/openlistteam/openlist:latest
+    # image: cdn.woskee.dpdns.org/openlistteam/openlist:latest
+    # image: cdn.woskee.nyc.mn/openlistteam/openlist:latest
     container_name: openlist
     restart: always
     network_mode: bridge
@@ -25,9 +30,11 @@ services:
       - TZ=Asia/Shanghai
       - UMASK=022
 
-  # Lucky - 反向代理工具（Host 网络）
+  # Lucky - 反向代理工具（添加加速器）
   lucky:
-    image: gdy666/lucky:latest
+    image: cdn.luxxk.dpdns.org/gdy666/lucky:latest
+    # image: cdn.woskee.dpdns.org/gdy666/lucky:latest
+    # image: cdn.woskee.nyc.mn/gdy666/lucky:latest
     container_name: lucky
     restart: always
     network_mode: host
@@ -37,9 +44,11 @@ services:
     environment:
       - TZ=Asia/Shanghai
 
-  # Vaultwarden - 密码管理服务
+  # Vaultwarden - 密码管理服务（添加加速器）
   vaultwarden:
-    image: vaultwarden/server:latest
+    image: cdn.luxxk.dpdns.org/vaultwarden/server:latest
+    # image: cdn.woskee.dpdns.org/vaultwarden/server:latest
+    # image: cdn.woskee.nyc.mn/vaultwarden/server:latest
     container_name: vaultwarden
     restart: always
     network_mode: bridge
@@ -52,9 +61,11 @@ services:
       - WEB_VAULT_ENABLED=true
       - SIGNUPS_ALLOWED=true
    
-  # Watchtower - 自动更新容器
+  # Watchtower - 自动更新容器（添加加速器）
   watchtower:
-    image: containrrr/watchtower:latest
+    image: cdn.luxxk.dpdns.org/containrrr/watchtower:latest
+    # image: cdn.woskee.dpdns.org/containrrr/watchtower:latest
+    # image: cdn.woskee.nyc.mn/containrrr/watchtower:latest
     container_name: watchtower
     restart: always
     network_mode: host
@@ -64,7 +75,7 @@ services:
       - TZ=Asia/Shanghai
     command: --schedule "0 30 5 * * *" --cleanup --remove-volumes
 
-  # subs-check 代理池（订阅合并）
+  # subs-check 代理池（已经使用镜像加速器，保持不变）
   subs-check:
     image: ghcr.nju.edu.cn/beck-8/subs-check:latest
     container_name: subs-check
