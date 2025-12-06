@@ -245,7 +245,7 @@ show_menu() {
         "========== 监控与探针 =======" "24|哪吒监控面板+探针"
         "========== 网络与检测 =======" "25|DNS流媒体解锁脚本" "26|流媒体解锁检测工具" "27|证书自动续签脚本" "28|网络测速与Bench测试"
         "========== 开发环境 ========" "29|Docker全家桶安装" "30|Python环境配置" "31|Node.js环境部署"
-        "========== 其他代理 ========" "32|OpenVPN一键安装" "33|Telegram代理(MTProto)" "34|HUPproxy代理（docker和github加速）
+        "========== 其他代理 ========" "32|OpenVPN一键安装" "33|Telegram代理(MTProto)" "34|HUPproxy代理(docker和github加速)"
     )
     
     for item in "${menu_groups[@]}"; do
