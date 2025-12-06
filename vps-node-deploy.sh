@@ -245,7 +245,7 @@ show_menu() {
         "========== 监控与探针 =======" "24|哪吒监控面板+探针"
         "========== 网络与检测 =======" "25|DNS流媒体解锁脚本" "26|流媒体解锁检测工具" "27|证书自动续签脚本" "28|网络测速与Bench测试"
         "========== 开发环境 ========" "29|Docker全家桶安装" "30|Python环境配置" "31|Node.js环境部署"
-        "========== 其他代理 ========" "32|OpenVPN一键安装" "33|Telegram代理(MTProto)"
+        "========== 其他代理 ========" "32|OpenVPN一键安装" "33|Telegram代理(MTProto)" "34|HUPproxy代理（docker和github加速）
     )
     
     for item in "${menu_groups[@]}"; do
@@ -314,6 +314,7 @@ execute_choice() {
         31) echo -e "${YELLOW}执行Node.js环境部署...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/nodejs_setup.sh) ;;
         32) echo -e "${YELLOW}执行OpenVPN一键安装...${NC}"; wget https://git.io/vpn -O openvpn-install.sh && chmod +x openvpn-install.sh && bash openvpn-install.sh ;;
         33) echo -e "${YELLOW}执行Telegram代理(MTProto)...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/mtp.sh) ;;
+        34) echo -e "${YELLOW}执行HUPproxy代理加速器...${NC}"; curl -fsSL https://raw.githubusercontent.com/sky22333/hubproxy/main/install.sh | bash ;;
         0) echo -e "${GREEN}退出脚本${NC}"; exit 0 ;;
         *) echo -e "${RED}无效选择，请重新输入${NC}"; sleep 2; return 1 ;;
     esac
@@ -338,7 +339,7 @@ main() {
             continue
         fi
         
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [[ $choice -ge 0 && $choice -le 33 ]]; then
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [[ $choice -ge 0 && $choice -le 34 ]]; then
             execute_choice $choice
             # 如果选择的是退出(0)，则直接退出，否则显示返回提示
             if [[ $choice -eq 0 ]]; then
