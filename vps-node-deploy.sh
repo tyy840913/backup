@@ -232,7 +232,7 @@ show_dd_menu() {
 # --- 主菜单与执行函数 ---
 show_menu() {
     clear && echo -e "${LINE_COLOR}========================================${NC}"
-    echo -e "${YELLOW}          节点部署合集脚本 (重构完整版)${NC}"
+    echo -e "${YELLOW}               节点部署合集脚本${NC}"
     echo -e "${LINE_COLOR}========================================${NC}"
     
     local menu_groups=(
