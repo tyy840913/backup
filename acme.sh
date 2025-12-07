@@ -1289,10 +1289,14 @@ setup_auto_renew() {
     echo -e "${YELLOW}当前自动续期状态:${NC}"
     
     local acme_cmd=$(get_acme_cmd)
-    if crontab -l | grep -q "$acme_cmd.*--cron"; then
-        echo -e "${GREEN}✓ cron任务已安装${NC}"
+    if ! check_command "crontab"; then
+        echo -e "${RED}✗ cron工具未安装${NC}"
     else
-        echo -e "${YELLOW}⚠ cron任务未安装${NC}"
+        if crontab -l 2>/dev/null | grep -q "$acme_cmd.*--cron"; then
+            echo -e "${GREEN}✓ cron任务已安装${NC}"
+        else
+            echo -e "${YELLOW}⚠ cron任务未安装${NC}"
+        fi
     fi
     
     echo ""
