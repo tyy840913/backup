@@ -89,8 +89,7 @@ check_dependencies() {
     
     if [ ${#missing_deps[@]} -gt 0 ]; then
         log_message "${RED}缺少必要的依赖: ${missing_deps[*]}${NC}"
-        echo -e "${YELLOW}是否要自动安装缺少的依赖? (y/n): ${NC}"
-        read -r install_choice
+        read -rp "$(echo -e "${YELLOW}是否要自动安装缺少的依赖? (y/n): ${NC}")" install_choice
         if [[ "$install_choice" =~ ^[Yy]$ ]]; then
             install_dependencies "${missing_deps[@]}"
         else
