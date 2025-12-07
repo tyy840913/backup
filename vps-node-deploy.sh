@@ -307,7 +307,7 @@ execute_choice() {
         24) echo -e "${YELLOW}执行哪吒监控面板+探针...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/naiba/nezha/master/script/install.sh) ;;
         25) echo -e "${YELLOW}执行DNS流媒体解锁脚本...${NC}"; wget -N https://raw.githubusercontent.com/fscarmen/warp/main/warp.sh && chmod +x warp.sh && ./warp.sh menu ;;
         26) echo -e "${YELLOW}执行流媒体解锁检测工具...${NC}"; bash <(curl -L -s https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/main/check.sh) ;;
-        27) echo -e "${YELLOW}执行证书自动续签脚本...${NC}"; bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/acme.sh) ;;
+        27) echo -e "${YELLOW}执行证书自动续签脚本...${NC}"; curl https://get.acme.sh | sh ;;
         28) echo -e "${YELLOW}执行网络测速与Bench测试...${NC}"; wget -qO- bench.sh | bash ;;
         29) echo -e "${YELLOW}执行Docker全家桶安装...${NC}"; curl -fsSL https://get.docker.com | bash && curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose ;;
         30) echo -e "${YELLOW}执行Python环境配置...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/python_setup.sh) ;;
