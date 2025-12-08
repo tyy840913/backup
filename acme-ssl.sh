@@ -107,81 +107,113 @@ install_acme() {
     return 1
 }
 
-# 统一的证书查找函数
-find_all_certificates() {
-    local certs=()
-    local cert_dirs=()
-    local index=1
+# ============ 统一的证书查找函数 ============
+# 合并 find_all_certificates 和 find_certificate_files 的功能
+# 用法：
+#   1. 不传参数：查找所有证书，结果在 _CERT_ARRAY 和 _CERT_DIR_ARRAY
+#   2. 传域名参数：查找该域名的证书文件，结果在 _CERT_PATH, _KEY_PATH 等
+find_certificates() {
+    local target_domain="$1"  # 可选：如果指定域名，只查找该域名的文件
     
-    # 搜索所有可能的证书位置
-    echo -e "${BLUE}[*] 搜索证书...${NC}" >&2
+    # 清空所有全局变量
+    _CERT_ARRAY=()
+    _CERT_DIR_ARRAY=()
+    _CERT_PATH=""
+    _KEY_PATH=""
+    _CA_PATH=""
+    _FULLCHAIN_PATH=""
+    _CERT_DIR=""
     
-    # 首先搜索 ACME_DIR 目录
-    if [ -d "$ACME_DIR" ]; then
-        for cert_dir in "$ACME_DIR"/*; do
-            if [ -d "$cert_dir" ]; then
-                local dir_name=$(basename "$cert_dir")
-                # 检查是否是证书目录
-                if [[ "$dir_name" =~ _ecc$ ]] || [[ ! "$dir_name" =~ ^[0-9a-f]{32}$ ]]; then
-                    local cert_domain=$(echo "$dir_name" | sed 's/_ecc$//')
-                    
-                    # 检查证书文件是否存在
-                    local cert_file="$cert_dir/$cert_domain.cer"
-                    local cert_file2="$cert_dir/$cert_domain.crt"
-                    
-                    if [ -f "$cert_file" ] && [ -f "$cert_dir/$cert_domain.key" ]; then
-                        certs+=("$cert_domain")
-                        cert_dirs+=("$cert_dir")
-                        echo -e "${GREEN}[✓] 找到证书: $cert_domain (在acme.sh目录)${NC}" >&2
-                    elif [ -f "$cert_file2" ] && [ -f "$cert_dir/$cert_domain.key" ]; then
-                        certs+=("$cert_domain")
-                        cert_dirs+=("$cert_dir")
-                        echo -e "${GREEN}[✓] 找到证书: $cert_domain (在acme.sh目录)${NC}" >&2
+    # 搜索的目录顺序（按优先级）
+    local search_roots=("$ACME_DIR" "$CERT_DIR")
+    
+    # 遍历所有搜索根目录
+    for root_dir in "${search_roots[@]}"; do
+        if [ ! -d "$root_dir" ]; then
+            continue
+        fi
+        
+        # 遍历根目录下的所有子目录
+        for cert_dir in "$root_dir"/*; do
+            if [ ! -d "$cert_dir" ]; then
+                continue
+            fi
+            
+            # 获取目录名并提取域名
+            local dir_name=$(basename "$cert_dir")
+            local domain=""
+            
+            # 简单的域名提取规则
+            if [[ "$dir_name" =~ _ecc$ ]]; then
+                domain="${dir_name%_ecc}"  # 去掉 _ecc 后缀
+            else
+                domain="$dir_name"  # 直接使用目录名
+            fi
+            
+            # 检查是否有证书文件
+            local cert_file=""
+            if [ -f "$cert_dir/$domain.cer" ]; then
+                cert_file="$cert_dir/$domain.cer"
+            elif [ -f "$cert_dir/$domain.crt" ]; then
+                cert_file="$cert_dir/$domain.crt"
+            elif [ -f "$cert_dir/fullchain.cer" ]; then
+                cert_file="$cert_dir/fullchain.cer"
+            elif [ -f "$cert_dir/fullchain.crt" ]; then
+                cert_file="$cert_dir/fullchain.crt"
+            fi
+            
+            # 如果有证书文件
+            if [ -n "$cert_file" ]; then
+                # 如果指定了目标域名
+                if [ -n "$target_domain" ]; then
+                    if [ "$domain" = "$target_domain" ]; then
+                        # 找到目标域名的证书
+                        _CERT_DIR="$cert_dir"
+                        _CERT_PATH="$cert_file"
+                        
+                        # 查找私钥
+                        if [ -f "$cert_dir/$domain.key" ]; then
+                            _KEY_PATH="$cert_dir/$domain.key"
+                        fi
+                        
+                        # 查找CA证书
+                        if [ -f "$cert_dir/ca.cer" ]; then
+                            _CA_PATH="$cert_dir/ca.cer"
+                        elif [ -f "$cert_dir/ca.crt" ]; then
+                            _CA_PATH="$cert_dir/ca.crt"
+                        fi
+                        
+                        # 查找完整链证书
+                        if [ -f "$cert_dir/fullchain.cer" ]; then
+                            _FULLCHAIN_PATH="$cert_dir/fullchain.cer"
+                        elif [ -f "$cert_dir/fullchain.crt" ]; then
+                            _FULLCHAIN_PATH="$cert_dir/fullchain.crt"
+                        fi
+                        
+                        return 0  # 找到目标，直接返回
                     fi
+                else
+                    # 添加到证书列表
+                    _CERT_ARRAY+=("$domain")
+                    _CERT_DIR_ARRAY+=("$cert_dir")
                 fi
             fi
         done
-    fi
+    done
     
-    # 然后搜索 CERT_DIR 目录
-    if [ -d "$CERT_DIR" ]; then
-        for cert in "$CERT_DIR"/*; do
-            if [ -d "$cert" ]; then
-                local cert_name=$(basename "$cert")
-                # 检查是否已经在列表中
-                local found=0
-                for existing_cert in "${certs[@]}"; do
-                    if [ "$existing_cert" = "$cert_name" ]; then
-                        found=1
-                        break
-                    fi
-                done
-                
-                if [ $found -eq 0 ]; then
-                    # 检查证书文件是否存在
-                    local cert_file="$cert/$cert_name.cer"
-                    local cert_file2="$cert/$cert_name.crt"
-                    
-                    if [ -f "$cert_file" ] || [ -f "$cert_file2" ]; then
-                        certs+=("$cert_name")
-                        cert_dirs+=("$cert")
-                        echo -e "${GREEN}[✓] 找到证书: $cert_name (在certs目录)${NC}" >&2
-                    fi
-                fi
-            fi
-        done
-    fi
-    
-    # 返回结果（通过全局变量）
-    _CERT_ARRAY=("${certs[@]}")
-    _CERT_DIR_ARRAY=("${cert_dirs[@]}")
-    
-    if [ ${#certs[@]} -eq 0 ]; then
-        echo -e "${YELLOW}[!] 未找到任何证书${NC}" >&2
+    # 根据调用类型返回结果
+    if [ -n "$target_domain" ]; then
+        # 查找特定域名但没找到
+        echo -e "${YELLOW}[!] 未找到域名 $target_domain 的证书${NC}" >&2
         return 1
+    else
+        # 查找所有证书
+        if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
+            echo -e "${YELLOW}[!] 未找到任何证书${NC}" >&2
+            return 1
+        fi
+        return 0
     fi
-    
-    return 0
 }
 
 # 检查DNS记录
@@ -356,9 +388,9 @@ issue_certificate() {
         # 显示TXT记录给用户
         echo -e "\n${GREEN}[✓] DNS验证信息获取成功${NC}"
         echo -e "${BLUE}==========================================${NC}"
-        echo -e "${BLUE}主机名: _acme-challenge.$domain${NC}"
-        echo -e "${BLUE}记录类型: TXT${NC}"
-        echo -e "${BLUE}记录值: $txt_record${NC}"
+        echo -e "${YELLOW}主机名: _acme-challenge.$domain${NC}"
+        echo -e "${YELLOW}记录类型: TXT${NC}"
+        echo -e "${YELLOW}记录值: $txt_record${NC}"
         echo -e "${BLUE}==========================================${NC}"
         echo ""
         echo -e "${YELLOW}[!] 请到您的DNS服务商处添加上述TXT记录${NC}"
@@ -437,84 +469,6 @@ issue_certificate() {
             return 1
         fi
     fi
-}
-
-# 查找证书文件 - 修复版
-find_certificate_files() {
-    local domain="$1"
-    local cert_path="" key_path="" ca_path="" fullchain_path="" cert_dir=""
-    
-    # 搜索可能的所有证书位置
-    local possible_dirs=(
-        "$ACME_DIR/${domain}_ecc"
-        "$ACME_DIR/$domain"
-        "$CERT_DIR/$domain"
-    )
-    
-    for test_dir in "${possible_dirs[@]}"; do
-        if [ -d "$test_dir" ]; then
-            # 检查标准证书文件
-            local test_cert="$test_dir/$domain.cer"
-            local test_key="$test_dir/$domain.key"
-            
-            if [ -f "$test_cert" ] && [ -f "$test_key" ]; then
-                cert_path="$test_cert"
-                key_path="$test_key"
-                cert_dir="$test_dir"
-                
-                [ -f "$test_dir/ca.cer" ] && ca_path="$test_dir/ca.cer"
-                [ -f "$test_dir/fullchain.cer" ] && fullchain_path="$test_dir/fullchain.cer"
-                
-                break
-            fi
-            
-            # 检查.crt扩展名
-            test_cert="$test_dir/$domain.crt"
-            if [ -f "$test_cert" ] && [ -f "$test_key" ]; then
-                cert_path="$test_cert"
-                key_path="$test_key"
-                cert_dir="$test_dir"
-                
-                [ -f "$test_dir/ca.crt" ] && ca_path="$test_dir/ca.crt"
-                [ -f "$test_dir/fullchain.crt" ] && fullchain_path="$test_dir/fullchain.crt"
-                
-                break
-            fi
-        fi
-    done
-    
-    # 如果没找到，尝试模糊查找
-    if [ -z "$cert_path" ]; then
-        # 查找所有可能的证书文件
-        local cert_files=()
-        while IFS= read -r -d '' file; do
-            cert_files+=("$file")
-        done < <(find "$ACME_DIR" -name "*$domain*.cer" -o -name "*$domain*.crt" 2>/dev/null | head -5)
-        
-        local key_files=()
-        while IFS= read -r -d '' file; do
-            key_files+=("$file")
-        done < <(find "$ACME_DIR" -name "*$domain*.key" 2>/dev/null | head -5)
-        
-        if [ ${#cert_files[@]} -gt 0 ] && [ ${#key_files[@]} -gt 0 ]; then
-            cert_path="${cert_files[0]}"
-            key_path="${key_files[0]}"
-            cert_dir=$(dirname "$cert_path")
-            
-            # 查找其他相关文件
-            [ -f "$cert_dir/ca.cer" ] && ca_path="$cert_dir/ca.cer"
-            [ -f "$cert_dir/ca.crt" ] && ca_path="$cert_dir/ca.crt"
-            [ -f "$cert_dir/fullchain.cer" ] && fullchain_path="$cert_dir/fullchain.cer"
-            [ -f "$cert_dir/fullchain.crt" ] && fullchain_path="$cert_dir/fullchain.crt"
-        fi
-    fi
-    
-    # 返回找到的路径（通过全局变量）
-    _CERT_PATH="$cert_path"
-    _KEY_PATH="$key_path"
-    _CA_PATH="$ca_path"
-    _FULLCHAIN_PATH="$fullchain_path"
-    _CERT_DIR="$cert_dir"
 }
 
 # 证书申请子菜单（保持不变）
