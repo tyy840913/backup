@@ -107,6 +107,83 @@ install_acme() {
     return 1
 }
 
+# 统一的证书查找函数
+find_all_certificates() {
+    local certs=()
+    local cert_dirs=()
+    local index=1
+    
+    # 搜索所有可能的证书位置
+    echo -e "${BLUE}[*] 搜索证书...${NC}" >&2
+    
+    # 首先搜索 ACME_DIR 目录
+    if [ -d "$ACME_DIR" ]; then
+        for cert_dir in "$ACME_DIR"/*; do
+            if [ -d "$cert_dir" ]; then
+                local dir_name=$(basename "$cert_dir")
+                # 检查是否是证书目录
+                if [[ "$dir_name" =~ _ecc$ ]] || [[ ! "$dir_name" =~ ^[0-9a-f]{32}$ ]]; then
+                    local cert_domain=$(echo "$dir_name" | sed 's/_ecc$//')
+                    
+                    # 检查证书文件是否存在
+                    local cert_file="$cert_dir/$cert_domain.cer"
+                    local cert_file2="$cert_dir/$cert_domain.crt"
+                    
+                    if [ -f "$cert_file" ] && [ -f "$cert_dir/$cert_domain.key" ]; then
+                        certs+=("$cert_domain")
+                        cert_dirs+=("$cert_dir")
+                        echo -e "${GREEN}[✓] 找到证书: $cert_domain (在acme.sh目录)${NC}" >&2
+                    elif [ -f "$cert_file2" ] && [ -f "$cert_dir/$cert_domain.key" ]; then
+                        certs+=("$cert_domain")
+                        cert_dirs+=("$cert_dir")
+                        echo -e "${GREEN}[✓] 找到证书: $cert_domain (在acme.sh目录)${NC}" >&2
+                    fi
+                fi
+            fi
+        done
+    fi
+    
+    # 然后搜索 CERT_DIR 目录
+    if [ -d "$CERT_DIR" ]; then
+        for cert in "$CERT_DIR"/*; do
+            if [ -d "$cert" ]; then
+                local cert_name=$(basename "$cert")
+                # 检查是否已经在列表中
+                local found=0
+                for existing_cert in "${certs[@]}"; do
+                    if [ "$existing_cert" = "$cert_name" ]; then
+                        found=1
+                        break
+                    fi
+                done
+                
+                if [ $found -eq 0 ]; then
+                    # 检查证书文件是否存在
+                    local cert_file="$cert/$cert_name.cer"
+                    local cert_file2="$cert/$cert_name.crt"
+                    
+                    if [ -f "$cert_file" ] || [ -f "$cert_file2" ]; then
+                        certs+=("$cert_name")
+                        cert_dirs+=("$cert")
+                        echo -e "${GREEN}[✓] 找到证书: $cert_name (在certs目录)${NC}" >&2
+                    fi
+                fi
+            fi
+        done
+    fi
+    
+    # 返回结果（通过全局变量）
+    _CERT_ARRAY=("${certs[@]}")
+    _CERT_DIR_ARRAY=("${cert_dirs[@]}")
+    
+    if [ ${#certs[@]} -eq 0 ]; then
+        echo -e "${YELLOW}[!] 未找到任何证书${NC}" >&2
+        return 1
+    fi
+    
+    return 0
+}
+
 # 检查DNS记录
 check_dns_record() {
     local domain="$1"
@@ -503,59 +580,58 @@ install_certificate_menu() {
     if [ -z "$domain" ]; then
         echo -e "\n${BLUE}=== 安装证书 ===${NC}"
         
-        # 搜索所有证书目录
-        local certs=()
-        local cert_dirs=()
-        local expiry_dates=()
-        local cert_index=0
+        # 使用统一的证书查找函数
+        find_all_certificates
         
-        # 搜索acme.sh目录中的所有证书
-        for cert_dir in "$ACME_DIR"/*; do
-            if [ -d "$cert_dir" ]; then
-                local dir_name=$(basename "$cert_dir")
-                # 检查是否是证书目录（包含_ecc或以域名命名）
-                if [[ "$dir_name" =~ _ecc$ ]] || [[ ! "$dir_name" =~ ^[0-9a-f]{32}$ ]]; then
-                    local cert_domain=$(echo "$dir_name" | sed 's/_ecc$//')
-                    
-                    # 检查证书文件是否存在
-                    local cert_file="$cert_dir/$cert_domain.cer"
-                    if [ -f "$cert_file" ] && [ -f "$cert_dir/$cert_domain.key" ]; then
-                        ((cert_index++))
-                        certs[$cert_index]="$cert_domain"
-                        cert_dirs[$cert_index]="$cert_dir"
-                        
-                        # 获取到期时间
-                        local expiry_date=""
-                        if [ -f "$cert_file" ]; then
-                            expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
-                        fi
-                        expiry_dates[$cert_index]="$expiry_date"
-                        
-                        if [ -n "$expiry_date" ]; then
-                            echo "$cert_index) $cert_domain - 到期时间: $expiry_date"
-                        else
-                            echo "$cert_index) $cert_domain"
-                        fi
-                    fi
-                fi
-            fi
-        done
-        
-        if [ $cert_index -eq 0 ]; then
+        if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
             echo -e "${YELLOW}[!] 没有找到证书${NC}"
             echo -e "${YELLOW}[!] 请先申请证书或检查acme.sh安装${NC}"
             return 1
         fi
         
+        local certs=("${_CERT_ARRAY[@]}")
+        local cert_dirs=("${_CERT_DIR_ARRAY[@]}")
+        
+        # 显示证书列表供选择
+        for i in "${!certs[@]}"; do
+            local cert_name="${certs[$i]}"
+            local cert_dir="${cert_dirs[$i]}"
+            local cert_file="$cert_dir/$cert_name.cer"
+            if [ ! -f "$cert_file" ]; then
+                cert_file="$cert_dir/$cert_name.crt"
+            fi
+            
+            local expiry_date=""
+            if [ -f "$cert_file" ]; then
+                expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+            fi
+            
+            if [ -n "$expiry_date" ]; then
+                echo "$((i+1))) $cert_name - 到期时间: $expiry_date"
+            else
+                echo "$((i+1))) $cert_name"
+            fi
+        done
+        
         read -p "请选择要安装的证书序号: " selected_index
-        if ! [[ "$selected_index" =~ ^[0-9]+$ ]] || [ "$selected_index" -lt 1 ] || [ "$selected_index" -gt $cert_index ]; then
+        if ! [[ "$selected_index" =~ ^[0-9]+$ ]] || [ "$selected_index" -lt 1 ] || [ "$selected_index" -gt ${#certs[@]} ]; then
             echo -e "${RED}[✗] 无效的序号${NC}"
             return 1
         fi
         
-        domain="${certs[$selected_index]}"
-        cert_dir="${cert_dirs[$selected_index]}"
-        expiry_date="${expiry_dates[$selected_index]}"
+        domain="${certs[$((selected_index-1))]}"
+        cert_dir="${cert_dirs[$((selected_index-1))]}"
+        
+        # 获取到期时间
+        local cert_file="$cert_dir/$domain.cer"
+        if [ ! -f "$cert_file" ]; then
+            cert_file="$cert_dir/$domain.crt"
+        fi
+        
+        expiry_date=""
+        if [ -f "$cert_file" ]; then
+            expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+        fi
     else
         # 查找指定域名的证书文件
         find_certificate_files "$domain"
@@ -585,7 +661,7 @@ install_certificate_menu() {
     fullchain_path="$_FULLCHAIN_PATH"
     
     echo -e "\n${BLUE}安装证书: $domain${NC}"
-    
+ 
     # 只显示到期时间（如果获取到的话）
     if [ -n "$expiry_date" ]; then
         echo -e "${GREEN}[✓] 证书到期时间: $expiry_date${NC}"
@@ -697,22 +773,20 @@ install_certificate_menu() {
 renew_certificate() {
     echo -e "\n${BLUE}=== 证书续期 ===${NC}"
     
-    local certs=()
-    local index=1
+    # 使用统一的证书查找函数
+    find_all_certificates
     
-    for cert in "$CERT_DIR"/*; do
-        if [ -d "$cert" ]; then
-            cert_name=$(basename "$cert")
-            certs+=("$cert_name")
-            echo "$index) $cert_name"
-            ((index++))
-        fi
-    done
-    
-    if [ ${#certs[@]} -eq 0 ]; then
+    if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
         echo -e "${YELLOW}[!] 没有找到证书${NC}"
         return 1
     fi
+    
+    local certs=("${_CERT_ARRAY[@]}")
+    
+    # 显示证书列表
+    for i in "${!certs[@]}"; do
+        echo "$((i+1))) ${certs[$i]}"
+    done
     
     read -p "请选择要续期的证书序号: " cert_index
     if [ -z "$cert_index" ] || ! [[ "$cert_index" =~ ^[0-9]+$ ]] || [ "$cert_index" -lt 1 ] || [ "$cert_index" -gt ${#certs[@]} ]; then
@@ -737,22 +811,40 @@ renew_certificate() {
 delete_certificate() {
     echo -e "\n${BLUE}=== 删除证书 ===${NC}"
     
-    local certs=()
-    local index=1
+    # 使用统一的证书查找函数
+    find_all_certificates
     
-    for cert in "$CERT_DIR"/*; do
-        if [ -d "$cert" ]; then
-            cert_name=$(basename "$cert")
-            certs+=("$cert_name")
-            echo "$index) $cert_name"
-            ((index++))
-        fi
-    done
-    
-    if [ ${#certs[@]} -eq 0 ]; then
+    if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
         echo -e "${YELLOW}[!] 没有找到证书${NC}"
         return 1
     fi
+    
+    local certs=("${_CERT_ARRAY[@]}")
+    local cert_dirs=("${_CERT_DIR_ARRAY[@]}")
+    local index=1
+    
+    # 显示证书列表
+    for i in "${!certs[@]}"; do
+        local cert_name="${certs[$i]}"
+        local cert_dir="${cert_dirs[$i]}"
+        local cert_file="$cert_dir/$cert_name.cer"
+        if [ ! -f "$cert_file" ]; then
+            cert_file="$cert_dir/$cert_name.crt"
+        fi
+        
+        if [ -f "$cert_file" ]; then
+            local expiry_date
+            expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+            if [ -n "$expiry_date" ]; then
+                echo "$index) $cert_name - 到期时间: $expiry_date - 位置: $(basename "$(dirname "$cert_dir")")/$(basename "$cert_dir")"
+            else
+                echo "$index) $cert_name - 位置: $(basename "$(dirname "$cert_dir")")/$(basename "$cert_dir")"
+            fi
+        else
+            echo "$index) $cert_name - 位置: $(basename "$(dirname "$cert_dir")")/$(basename "$cert_dir")"
+        fi
+        ((index++))
+    done
     
     read -p "请选择要删除的证书序号: " cert_index
     if ! [[ "$cert_index" =~ ^[0-9]+$ ]] || [ "$cert_index" -lt 1 ] || [ "$cert_index" -gt ${#certs[@]} ]; then
@@ -761,6 +853,7 @@ delete_certificate() {
     fi
     
     local domain="${certs[$((cert_index-1))]}"
+    local cert_dir="${cert_dirs[$((cert_index-1))]}"
     
     read -p "确定要删除证书 $domain 吗？(y/n): " confirm
     if ! [[ $confirm =~ ^[Yy]$ ]]; then
@@ -769,44 +862,78 @@ delete_certificate() {
     fi
     
     # 删除证书
-    if "$ACME_DIR/acme.sh" --remove --domain "$domain"; then
-        # 清理残留文件 - 添加删除acme.sh目录中的证书
-        rm -rf "$CERT_DIR/$domain"
-        rm -rf "$ACME_DIR/${domain}_ecc" "$ACME_DIR/$domain" 2>/dev/null
-        echo -e "${GREEN}[✓] 证书删除成功${NC}"
-        return 0
+    echo -e "${BLUE}[*] 删除证书: $domain${NC}"
+    
+    # 尝试使用acme.sh删除
+    if "$ACME_DIR/acme.sh" --remove --domain "$domain" 2>/dev/null; then
+        echo -e "${GREEN}[✓] 证书从acme.sh中移除${NC}"
     else
-        echo -e "${RED}[✗] 证书删除失败${NC}"
-        return 1
+        echo -e "${YELLOW}[!] 无法通过acme.sh移除证书，尝试手动删除文件${NC}"
     fi
+    
+    # 清理所有可能的位置
+    echo -e "${BLUE}[*] 清理证书文件...${NC}"
+    rm -rf "$CERT_DIR/$domain" 2>/dev/null
+    rm -rf "$ACME_DIR/${domain}_ecc" 2>/dev/null
+    rm -rf "$ACME_DIR/$domain" 2>/dev/null
+    rm -rf "$cert_dir" 2>/dev/null
+    
+    echo -e "${GREEN}[✓] 证书删除成功${NC}"
+    return 0
 }
 
 # 列出证书
 list_certificates() {
     echo -e "\n${BLUE}=== 证书列表 ===${NC}"
     
-    local certs=()
-    local index=1
+    # 使用统一的证书查找函数
+    find_all_certificates
     
-    for cert in "$CERT_DIR"/*; do
-        if [ -d "$cert" ]; then
-            cert_name=$(basename "$cert")
-            certs+=("$cert_name")
-            
-            local cert_file="$cert/$cert_name.cer"
-            if [ -f "$cert_file" ]; then
-                local expiry_date
-                expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
-                echo "$index) $cert_name - 到期时间: $expiry_date"
-            else
-                echo "$index) $cert_name"
-            fi
-            ((index++))
-        fi
-    done
-    if [ ${#certs[@]} -eq 0 ]; then
+    if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
         echo -e "${YELLOW}[!] 没有找到证书${NC}"
+        return 1
     fi
+    
+    local certs=("${_CERT_ARRAY[@]}")
+    local cert_dirs=("${_CERT_DIR_ARRAY[@]}")
+    
+    for i in "${!certs[@]}"; do
+        local cert_name="${certs[$i]}"
+        local cert_dir="${cert_dirs[$i]}"
+        
+        # 查找证书文件
+        local cert_file="$cert_dir/$cert_name.cer"
+        if [ ! -f "$cert_file" ]; then
+            cert_file="$cert_dir/$cert_name.crt"
+        fi
+        
+        if [ -f "$cert_file" ]; then
+            local expiry_date
+            expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+            
+            local file_type="证书"
+            if [[ "$cert_dir" == *"_ecc" ]]; then
+                file_type="ECC证书"
+            elif [ -f "$cert_dir/fullchain.cer" ] || [ -f "$cert_dir/fullchain.crt" ]; then
+                file_type="完整链证书"
+            fi
+            
+            if [ -n "$expiry_date" ]; then
+                echo "$((i+1))) $cert_name - $file_type"
+                echo "    到期时间: $expiry_date"
+                echo "    位置: $(basename "$(dirname "$cert_dir")")/$(basename "$cert_dir")"
+            else
+                echo "$((i+1))) $cert_name - $file_type"
+                echo "    位置: $(basename "$(dirname "$cert_dir")")/$(basename "$cert_dir")"
+            fi
+        else
+            echo "$((i+1))) $cert_name"
+            echo "    位置: $(basename "$(dirname "$cert_dir")")/$(basename "$cert_dir")"
+        fi
+        echo ""
+    done
+    
+    return 0
 }
 
 # 重新安装acme.sh
