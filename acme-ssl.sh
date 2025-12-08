@@ -952,7 +952,6 @@ list_certificates() {
     return 0
 }
 
-# 重新安装acme.sh
 # 重新安装acme.sh - 修复版
 reinstall_acme() {
     echo -e "\n${BLUE}=== 重新安装acme.sh ===${NC}"
