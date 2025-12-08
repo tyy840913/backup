@@ -613,6 +613,7 @@ install_certificate_menu() {
             fi
         done
         
+        echo ""
         read -p "请选择要安装的证书序号: " selected_index
         if ! [[ "$selected_index" =~ ^[0-9]+$ ]] || [ "$selected_index" -lt 1 ] || [ "$selected_index" -gt ${#certs[@]} ]; then
             echo -e "${RED}[✗] 无效的序号${NC}"
@@ -788,6 +789,7 @@ renew_certificate() {
         echo "$((i+1))) ${certs[$i]}"
     done
     
+    echo ""
     read -p "请选择要续期的证书序号: " cert_index
     if [ -z "$cert_index" ] || ! [[ "$cert_index" =~ ^[0-9]+$ ]] || [ "$cert_index" -lt 1 ] || [ "$cert_index" -gt ${#certs[@]} ]; then
         echo -e "${RED}[✗] 无效的序号${NC}"
@@ -846,6 +848,7 @@ delete_certificate() {
         ((index++))
     done
     
+    echo ""
     read -p "请选择要删除的证书序号: " cert_index
     if ! [[ "$cert_index" =~ ^[0-9]+$ ]] || [ "$cert_index" -lt 1 ] || [ "$cert_index" -gt ${#certs[@]} ]; then
         echo -e "${RED}[✗] 无效的序号${NC}"
