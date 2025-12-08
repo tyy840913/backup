@@ -107,7 +107,11 @@ install_acme() {
     return 1
 }
 
-# 统一的证书查找函数
+# ============ 统一的证书查找函数 ============
+# 合并 find_all_certificates 和 find_certificate_files 的功能
+# 用法：
+#   1. 不传参数：查找所有证书，结果在 _CERT_ARRAY 和 _CERT_DIR_ARRAY
+#   2. 传域名参数：查找该域名的证书文件，结果在 _CERT_PATH, _KEY_PATH 等
 find_certificates() {
     local target_domain="$1"  # 可选：如果指定域名，只查找该域名的文件
     
@@ -533,7 +537,7 @@ install_certificate_menu() {
         echo -e "\n${BLUE}=== 安装证书 ===${NC}"
         
         # 使用统一的证书查找函数
-        find_all_certificates
+        find_certificates  # 查找所有证书
         
         if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
             echo -e "${YELLOW}[!] 没有找到证书${NC}"
@@ -587,7 +591,13 @@ install_certificate_menu() {
         fi
     else
         # 查找指定域名的证书文件
-        find_certificate_files "$domain"
+        find_certificates "$domain"  # 查找特定域名的证书
+        
+        if [ -z "$_CERT_PATH" ]; then
+            echo -e "${RED}[✗] 无法找到证书: $domain${NC}"
+            return 1
+        fi
+        
         cert_dir="$_CERT_DIR"
         
         # 获取到期时间
@@ -596,12 +606,6 @@ install_certificate_menu() {
         if [ -f "$cert_file" ]; then
             expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
         fi
-    fi
-    
-    if [ -z "$cert_dir" ]; then
-        find_certificate_files "$domain"
-        cert_dir="$_CERT_DIR"
-    fi
     
     if [ -z "$cert_dir" ]; then
         echo -e "${RED}[✗] 无法找到证书: $domain${NC}"
@@ -727,7 +731,7 @@ renew_certificate() {
     echo -e "\n${BLUE}=== 证书续期 ===${NC}"
     
     # 使用统一的证书查找函数
-    find_all_certificates
+    find_certificates  # 查找所有证书
     
     if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
         echo -e "${YELLOW}[!] 没有找到证书${NC}"
@@ -826,7 +830,7 @@ delete_certificate() {
     echo -e "\n${BLUE}=== 删除证书 ===${NC}"
     
     # 使用统一的证书查找函数
-    find_all_certificates
+    find_certificates  # 查找所有证书
     
     if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
         echo -e "${YELLOW}[!] 没有找到证书${NC}"
@@ -902,7 +906,7 @@ list_certificates() {
     echo -e "\n${BLUE}=== 证书列表 ===${NC}"
     
     # 使用统一的证书查找函数
-    find_all_certificates
+    find_certificates  # 查找所有证书
     
     if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
         echo -e "${YELLOW}[!] 没有找到证书${NC}"
@@ -916,12 +920,10 @@ list_certificates() {
         local cert_name="${certs[$i]}"
         local cert_dir="${cert_dirs[$i]}"
         
-        # 查找证书文件
-        local cert_file="$cert_dir/$cert_name.cer"
-        if [ ! -f "$cert_file" ]; then
-            cert_file="$cert_dir/$cert_name.crt"
-        fi
+        # 查找具体文件获取到期时间
+        find_certificates "$cert_name"  # 查找该域名的证书文件
         
+        local cert_file="$_CERT_PATH"
         if [ -f "$cert_file" ]; then
             local expiry_date
             expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
