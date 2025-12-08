@@ -45,18 +45,18 @@ check_dependencies() {
     echo -e "${BLUE}[*] 尝试安装缺失依赖...${NC}"
     
     if command -v apt-get &> /dev/null; then
-        sudo apt-get update
-        sudo apt-get install -y "${missing[@]}" || {
+        apt-get update
+        apt-get install -y "${missing[@]}" || {
             echo -e "${RED}[✗] 依赖安装失败${NC}"
             return 1
         }
     elif command -v yum &> /dev/null; then
-        sudo yum install -y "${missing[@]}" || {
+        yum install -y "${missing[@]}" || {
             echo -e "${RED}[✗] 依赖安装失败${NC}"
             return 1
         }
     elif command -v dnf &> /dev/null; then
-        sudo dnf install -y "${missing[@]}" || {
+        dnf install -y "${missing[@]}" || {
             echo -e "${RED}[✗] 依赖安装失败${NC}"
             return 1
         }
@@ -111,27 +111,35 @@ install_acme() {
 check_dns_record() {
     local domain="$1"
     local txt_record="$2"
-    local max_attempts=60  # 5分钟，每5秒一次
+    local max_attempts=36  # 3分钟，每5秒一次
     local attempt=1
     
     echo -e "${BLUE}[*] 开始检查DNS记录传播...${NC}"
     
     while [ $attempt -le $max_attempts ]; do
-        echo -e "${YELLOW}[!] 尝试 $attempt/$max_attempts...${NC}"
+        echo -ne "${YELLOW}[!] 尝试 $attempt/$max_attempts...\r${NC}"
         
         # 使用多个DNS服务器检查
-        local dns_servers=("8.8.8.8" "1.1.1.1" "208.67.222.222" "8.8.4.4")
+        local dns_servers=("8.8.8.8" "1.1.1.1" "1.0.0.1" "8.8.4.4")
         local success=0
         
         for dns_server in "${dns_servers[@]}"; do
-            if dig +short TXT "_acme-challenge.$domain" @"$dns_server" | grep -q "$txt_record"; then
-                echo -e "${GREEN}[✓] DNS服务器 $dns_server 已生效${NC}"
+            # 使用dig查询TXT记录，支持不同格式的输出
+            local query_result
+            query_result=$(dig +short TXT "_acme-challenge.$domain" @"$dns_server" 2>/dev/null)
+            
+            # 清理查询结果，移除引号
+            local cleaned_result
+            cleaned_result=$(echo "$query_result" | sed 's/"//g')
+            
+            # 检查是否包含TXT记录
+            if [[ "$cleaned_result" == *"$txt_record"* ]]; then
                 ((success++))
             fi
         done
         
         if [ $success -ge 2 ]; then
-            echo -e "${GREEN}[✓] DNS记录已生效${NC}"
+            echo -e "\n${GREEN}[✓] DNS记录已在 $success/$# DNS服务器生效${NC}"
             return 0
         fi
         
@@ -139,8 +147,17 @@ check_dns_record() {
         ((attempt++))
     done
     
-    echo -e "${RED}[✗] DNS记录检查超时${NC}"
-    return 1
+    echo -e "\n${YELLOW}[!] DNS记录检查超时，可能还未完全传播${NC}"
+    
+    # 询问是否继续
+    read -p "是否继续尝试验证？(y/n): " continue_anyway
+    if [[ $continue_anyway =~ ^[Yy]$ ]]; then
+        return 0
+    else
+        echo -e "${YELLOW}[!] 您可以选择稍后手动执行续期命令:${NC}"
+        echo "  $ACME_DIR/acme.sh --renew -d $domain --force"
+        return 1
+    fi
 }
 
 # 注册证书颁发机构
@@ -177,114 +194,253 @@ register_ca() {
     return 0
 }
 
-# 申请证书
+# 申请证书 - 优化版本
 issue_certificate() {
     local domain="$1"
     local ca="$2"
     local mode="$3"
-    local keylength="$4"
-    local email="$5"
+    local email="$4"
     
     echo -e "${BLUE}[*] 开始申请证书: $domain${NC}"
     
-    # 检查是否已注册
-    if [ "$ca" != "letsencrypt" ]; then
-        if ! "$ACME_DIR/acme.sh" --list-accounts | grep -q "$email"; then
-            echo -e "${YELLOW}[!] 需要注册到 $ca${NC}"
-            register_ca "$ca" "$email" || return 1
-        fi
-    fi
-    
-    # 申请证书
     if [ "$mode" = "manual" ]; then
         echo -e "${YELLOW}[!] 使用手动DNS验证模式${NC}"
         
-        # 申请并获取TXT记录
-        local output
-        output=$("$ACME_DIR/acme.sh" --issue \
-            --domain "$domain" \
-            --server "$ca" \
-            --dns \
-            --keylength "$keylength" \
-            --dnssleep 0 2>&1)
+        # 创建临时日志文件
+        local log_file="/tmp/acme_manual_$(date +%s).log"
         
-        # 提取TXT记录
-        local txt_record
-        txt_record=$(echo "$output" | grep -oP 'TXT value: \K[^"]+' | head -1)
+        echo -e "${BLUE}[*] 正在获取DNS验证信息...${NC}"
+        echo -e "${YELLOW}[!] 请稍等，正在与证书颁发机构通信...${NC}"
+        
+        # 构建acme.sh命令
+        local get_txt_cmd="$ACME_DIR/acme.sh --issue --dns -d $domain"
+        
+        if [ -n "$email" ]; then
+            get_txt_cmd="$get_txt_cmd -m $email"
+        fi
+        
+        get_txt_cmd="$get_txt_cmd --server $ca --yes-I-know-dns-manual-mode-enough-go-ahead-please --log-level 2"
+        
+        # 执行命令并保存日志
+        echo -e "${BLUE}[*] 执行命令...${NC}"
+        eval "$get_txt_cmd" 2>&1 | tee "$log_file"
+        
+        # 分析执行结果
+        local exit_code=${PIPESTATUS[0]}
+        
+        # 从日志中提取TXT记录（多种可能的格式）
+        local txt_record=""
+        
+        # 尝试多种匹配模式
+        txt_record=$(grep -i "txt value:" "$log_file" | tail -1 | sed -n "s/.*TXT value:[[:space:]]*['\"]\?\([^'\"]*\)['\"]\?/\1/p")
         
         if [ -z "$txt_record" ]; then
-            txt_record=$(echo "$output" | grep -oP 'TXT=\K[^ ]+' | head -1)
+            txt_record=$(grep -i "txt value:" "$log_file" | tail -1 | sed -n 's/.*TXT value:[[:space:]]*\([^[:space:]]*\).*/\1/p')
         fi
         
         if [ -z "$txt_record" ]; then
-            echo -e "${RED}[✗] 无法提取TXT记录${NC}"
-            return 1
+            txt_record=$(grep -i "txt record:" "$log_file" | tail -1 | sed -n "s/.*TXT record:[[:space:]]*['\"]\?\([^'\"]*\)['\"]\?/\1/p")
         fi
         
-        echo -e "${GREEN}[✓] 请添加DNS TXT记录:${NC}"
+        # 删除日志文件
+        rm -f "$log_file"
+        
+        # 如果无法提取TXT记录
+        if [ -z "$txt_record" ]; then
+            echo -e "${RED}[✗] 无法获取TXT记录值${NC}"
+            echo -e "${YELLOW}[!] 可能的原因:${NC}"
+            echo "  1. 域名已存在证书，无需重新验证"
+            echo "  2. DNS记录已添加但未生效"
+            echo "  3. 网络连接问题"
+            echo ""
+            
+            # 尝试检查是否已有证书
+            if [ -d "$ACME_DIR/${domain}_ecc" ] || [ -d "$ACME_DIR/$domain" ]; then
+                echo -e "${YELLOW}[!] 检测到该域名可能已有证书${NC}"
+                echo -e "${YELLOW}[!] 尝试续期现有证书...${NC}"
+                local renew_cmd="$ACME_DIR/acme.sh --renew -d $domain --force"
+                if [ "$ca" != "letsencrypt" ]; then
+                    renew_cmd="$renew_cmd --server $ca"
+                fi
+                
+                if eval "$renew_cmd"; then
+                    echo -e "${GREEN}[✓] 证书续期成功${NC}"
+                    return 0
+                fi
+            fi
+            
+            read -p "请输入手动获取的TXT记录值: " txt_record
+            if [ -z "$txt_record" ]; then
+                echo -e "${RED}[✗] 未提供TXT记录，终止申请${NC}"
+                return 1
+            fi
+        fi
+        
+        # 显示TXT记录给用户
+        echo -e "\n${GREEN}[✓] DNS验证信息获取成功${NC}"
+        echo -e "${BLUE}==========================================${NC}"
         echo -e "${BLUE}主机名: _acme-challenge.$domain${NC}"
+        echo -e "${BLUE}记录类型: TXT${NC}"
         echo -e "${BLUE}记录值: $txt_record${NC}"
-        echo -e "${YELLOW}添加完成后按回车键继续...${NC}"
-        read -r
+        echo -e "${BLUE}==========================================${NC}"
+        echo ""
+        echo -e "${YELLOW}[!] 请到您的DNS服务商处添加上述TXT记录${NC}"
+        echo -e "${YELLOW}[!] 添加完成后，等待1-2分钟让DNS生效${NC}"
+        echo -e "${YELLOW}[!] 您可以使用以下命令检查DNS记录:${NC}"
+        echo "  dig +short TXT _acme-challenge.$domain @8.8.8.8"
+        echo "  nslookup -type=TXT _acme-challenge.$domain"
+        echo ""
         
-        # 检查DNS记录
-        check_dns_record "$domain" "$txt_record" || return 1
+        # 合并等待提示，只询问一次
+        read -p "DNS记录添加完成并等待生效后，按回车键继续验证..."
         
-        # 完成证书申请
-        if "$ACME_DIR/acme.sh" --renew --domain "$domain" --force; then
-            echo -e "${GREEN}[✓] 证书申请成功${NC}"
-            return 0
-        else
-            echo -e "${RED}[✗] 证书申请失败${NC}"
+        # 检查DNS记录是否已生效
+        if ! check_dns_record "$domain" "$txt_record"; then
             return 1
         fi
+        
+        # 步骤2：完成证书申请
+        echo -e "\n${BLUE}[*] DNS验证通过，正在签发证书...${NC}"
+        
+        local renew_cmd="$ACME_DIR/acme.sh --renew -d $domain --force --yes-I-know-dns-manual-mode-enough-go-ahead-please"
+        if [ "$ca" != "letsencrypt" ]; then
+            renew_cmd="$renew_cmd --server $ca"
+        fi
+        
+        echo -e "${YELLOW}[!] 执行命令: $renew_cmd${NC}"
+        
+        if eval "$renew_cmd"; then
+            echo -e "${GREEN}[✓] 证书申请成功！${NC}"
+            return 0
+        else
+            echo -e "${RED}[✗] 证书签发失败${NC}"
+            return 1
+        fi
+        
     else
-        # API自动验证
-        echo -e "${YELLOW}[!] 使用API自动验证${NC}"
+        # Cloudflare API自动验证（保持不变）
+        echo -e "${YELLOW}[!] 使用Cloudflare API自动验证${NC}"
         
-        # 选择DNS API
-        echo "选择DNS服务商："
-        echo "1) Cloudflare"
-        echo "2) Aliyun"
-        echo "3) DNSPod"
-        echo "4) CloudXNS"
-        echo "5) GoDaddy"
-        echo "6) Namecheap"
-        read -p "请选择(1-6): " dns_choice
+        read -p "请输入Cloudflare API Token: " cf_token
         
-        case $dns_choice in
-            1) dns_api="dns_cf" ;;
-            2) dns_api="dns_ali" ;;
-            3) dns_api="dns_dp" ;;
-            4) dns_api="dns_cx" ;;
-            5) dns_api="dns_gd" ;;
-            6) dns_api="dns_nc" ;;
-            *) echo -e "${RED}[✗] 无效选择${NC}"; return 1 ;;
-        esac
+        if [ -z "$cf_token" ]; then
+            echo -e "${YELLOW}[!] 尝试使用传统API Key...${NC}"
+            read -p "请输入Cloudflare邮箱: " cf_email
+            read -p "请输入Cloudflare Global API Key: " cf_key
+            
+            if [ -z "$cf_email" ] || [ -z "$cf_key" ]; then
+                echo -e "${RED}[✗] Cloudflare API凭证不能为空${NC}"
+                return 1
+            fi
+            
+            export CF_Key="$cf_key"
+            export CF_Email="$cf_email"
+            dns_api="dns_cf"
+        else
+            export CF_Token="$cf_token"
+            dns_api="dns_cf"
+        fi
         
-        # 设置API凭证
-        read -p "请输入API Key: " api_key
-        read -p "请输入API Secret: " api_secret
+        local cmd="$ACME_DIR/acme.sh --issue --dns $dns_api -d $domain"
+        cmd="$cmd --server $ca"
         
-        export "${dns_api#dns_}_Key"="$api_key"
-        export "${dns_api#dns_}_Secret"="$api_secret"
+        if [ -n "$email" ]; then
+            cmd="$cmd -m $email"
+        fi
         
-        # 申请证书
-        if "$ACME_DIR/acme.sh" --issue \
-            --domain "$domain" \
-            --server "$ca" \
-            --dns "$dns_api" \
-            --keylength "$keylength"; then
+        echo -e "${BLUE}[*] 正在申请证书...${NC}"
+        
+        if eval "$cmd"; then
             echo -e "${GREEN}[✓] 证书申请成功${NC}"
+            unset CF_Key CF_Email CF_Token 2>/dev/null
             return 0
         else
             echo -e "${RED}[✗] 证书申请失败${NC}"
+            unset CF_Key CF_Email CF_Token 2>/dev/null
             return 1
         fi
     fi
 }
 
-# 证书申请子菜单
+# 查找证书文件 - 修复版
+find_certificate_files() {
+    local domain="$1"
+    local cert_path="" key_path="" ca_path="" fullchain_path="" cert_dir=""
+    
+    # 搜索可能的所有证书位置
+    local possible_dirs=(
+        "$ACME_DIR/${domain}_ecc"
+        "$ACME_DIR/$domain"
+        "$CERT_DIR/$domain"
+    )
+    
+    for test_dir in "${possible_dirs[@]}"; do
+        if [ -d "$test_dir" ]; then
+            # 检查标准证书文件
+            local test_cert="$test_dir/$domain.cer"
+            local test_key="$test_dir/$domain.key"
+            
+            if [ -f "$test_cert" ] && [ -f "$test_key" ]; then
+                cert_path="$test_cert"
+                key_path="$test_key"
+                cert_dir="$test_dir"
+                
+                [ -f "$test_dir/ca.cer" ] && ca_path="$test_dir/ca.cer"
+                [ -f "$test_dir/fullchain.cer" ] && fullchain_path="$test_dir/fullchain.cer"
+                
+                break
+            fi
+            
+            # 检查.crt扩展名
+            test_cert="$test_dir/$domain.crt"
+            if [ -f "$test_cert" ] && [ -f "$test_key" ]; then
+                cert_path="$test_cert"
+                key_path="$test_key"
+                cert_dir="$test_dir"
+                
+                [ -f "$test_dir/ca.crt" ] && ca_path="$test_dir/ca.crt"
+                [ -f "$test_dir/fullchain.crt" ] && fullchain_path="$test_dir/fullchain.crt"
+                
+                break
+            fi
+        fi
+    done
+    
+    # 如果没找到，尝试模糊查找
+    if [ -z "$cert_path" ]; then
+        # 查找所有可能的证书文件
+        local cert_files=()
+        while IFS= read -r -d '' file; do
+            cert_files+=("$file")
+        done < <(find "$ACME_DIR" -name "*$domain*.cer" -o -name "*$domain*.crt" 2>/dev/null | head -5)
+        
+        local key_files=()
+        while IFS= read -r -d '' file; do
+            key_files+=("$file")
+        done < <(find "$ACME_DIR" -name "*$domain*.key" 2>/dev/null | head -5)
+        
+        if [ ${#cert_files[@]} -gt 0 ] && [ ${#key_files[@]} -gt 0 ]; then
+            cert_path="${cert_files[0]}"
+            key_path="${key_files[0]}"
+            cert_dir=$(dirname "$cert_path")
+            
+            # 查找其他相关文件
+            [ -f "$cert_dir/ca.cer" ] && ca_path="$cert_dir/ca.cer"
+            [ -f "$cert_dir/ca.crt" ] && ca_path="$cert_dir/ca.crt"
+            [ -f "$cert_dir/fullchain.cer" ] && fullchain_path="$cert_dir/fullchain.cer"
+            [ -f "$cert_dir/fullchain.crt" ] && fullchain_path="$cert_dir/fullchain.crt"
+        fi
+    fi
+    
+    # 返回找到的路径（通过全局变量）
+    _CERT_PATH="$cert_path"
+    _KEY_PATH="$key_path"
+    _CA_PATH="$ca_path"
+    _FULLCHAIN_PATH="$fullchain_path"
+    _CERT_DIR="$cert_dir"
+}
+
+# 证书申请子菜单（保持不变）
 cert_issue_menu() {
     echo -e "\n${BLUE}=== 证书申请 ===${NC}"
     
@@ -294,7 +450,6 @@ cert_issue_menu() {
         return 1
     fi
     
-    # 选择CA
     echo "选择证书颁发机构："
     echo "1) Let's Encrypt (默认)"
     echo "2) ZeroSSL (需要注册)"
@@ -308,7 +463,6 @@ cert_issue_menu() {
         *) echo -e "${RED}[✗] 无效选择${NC}"; return 1 ;;
     esac
     
-    # 选择验证模式
     echo "选择验证模式："
     echo "1) 手动DNS验证 (默认)"
     echo "2) DNS API自动验证"
@@ -320,31 +474,21 @@ cert_issue_menu() {
         *) echo -e "${RED}[✗] 无效选择${NC}"; return 1 ;;
     esac
     
-    # 选择密钥类型
-    echo "选择密钥类型："
-    echo "1) RSA 2048"
-    echo "2) ECC 256 (默认)"
-    echo "3) ECC 384"
-    read -p "请选择(1-3): " key_choice
-    
-    case $key_choice in
-        1) keylength="2048" ;;
-        2|"") keylength="ec-256" ;;
-        3) keylength="ec-384" ;;
-        *) echo -e "${RED}[✗] 无效选择${NC}"; return 1 ;;
-    esac
-    
-    read -p "请输入邮箱地址: " email
-    if [ -z "$email" ]; then
-        echo -e "${RED}[✗] 邮箱不能为空${NC}"
-        return 1
+    local email=""
+    if [ "$ca" != "letsencrypt" ]; then
+        read -p "请输入邮箱地址: " email
+        if [ -z "$email" ]; then
+            echo -e "${RED}[✗] $ca 需要邮箱地址${NC}"
+            return 1
+        fi
+    else
+        read -p "请输入邮箱地址 (可选，建议填写): " email
     fi
     
     # 执行证书申请
-    issue_certificate "$domain" "$ca" "$mode" "$keylength" "$email"
+    issue_certificate "$domain" "$ca" "$mode" "$email"
     
     if [ $? -eq 0 ]; then
-        # 自动安装证书
         read -p "证书申请成功，是否立即安装？(y/n): " install_now
         if [[ $install_now =~ ^[Yy]$ ]]; then
             install_certificate_menu "$domain"
@@ -352,11 +496,207 @@ cert_issue_menu() {
     fi
 }
 
+# 安装证书到Web服务 - 优化版
+install_certificate_menu() {
+    local domain="$1"
+    
+    if [ -z "$domain" ]; then
+        echo -e "\n${BLUE}=== 安装证书 ===${NC}"
+        
+        # 搜索所有证书目录
+        local certs=()
+        local cert_dirs=()
+        local expiry_dates=()
+        local cert_index=0
+        
+        # 搜索acme.sh目录中的所有证书
+        for cert_dir in "$ACME_DIR"/*; do
+            if [ -d "$cert_dir" ]; then
+                local dir_name=$(basename "$cert_dir")
+                # 检查是否是证书目录（包含_ecc或以域名命名）
+                if [[ "$dir_name" =~ _ecc$ ]] || [[ ! "$dir_name" =~ ^[0-9a-f]{32}$ ]]; then
+                    local cert_domain=$(echo "$dir_name" | sed 's/_ecc$//')
+                    
+                    # 检查证书文件是否存在
+                    local cert_file="$cert_dir/$cert_domain.cer"
+                    if [ -f "$cert_file" ] && [ -f "$cert_dir/$cert_domain.key" ]; then
+                        ((cert_index++))
+                        certs[$cert_index]="$cert_domain"
+                        cert_dirs[$cert_index]="$cert_dir"
+                        
+                        # 获取到期时间
+                        local expiry_date=""
+                        if [ -f "$cert_file" ]; then
+                            expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+                        fi
+                        expiry_dates[$cert_index]="$expiry_date"
+                        
+                        if [ -n "$expiry_date" ]; then
+                            echo "$cert_index) $cert_domain - 到期时间: $expiry_date"
+                        else
+                            echo "$cert_index) $cert_domain"
+                        fi
+                    fi
+                fi
+            fi
+        done
+        
+        if [ $cert_index -eq 0 ]; then
+            echo -e "${YELLOW}[!] 没有找到证书${NC}"
+            echo -e "${YELLOW}[!] 请先申请证书或检查acme.sh安装${NC}"
+            return 1
+        fi
+        
+        read -p "请选择要安装的证书序号: " selected_index
+        if ! [[ "$selected_index" =~ ^[0-9]+$ ]] || [ "$selected_index" -lt 1 ] || [ "$selected_index" -gt $cert_index ]; then
+            echo -e "${RED}[✗] 无效的序号${NC}"
+            return 1
+        fi
+        
+        domain="${certs[$selected_index]}"
+        cert_dir="${cert_dirs[$selected_index]}"
+        expiry_date="${expiry_dates[$selected_index]}"
+    else
+        # 查找指定域名的证书文件
+        find_certificate_files "$domain"
+        cert_dir="$_CERT_DIR"
+        
+        # 获取到期时间
+        local cert_file="$_CERT_PATH"
+        expiry_date=""
+        if [ -f "$cert_file" ]; then
+            expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+        fi
+    fi
+    
+    if [ -z "$cert_dir" ]; then
+        find_certificate_files "$domain"
+        cert_dir="$_CERT_DIR"
+    fi
+    
+    if [ -z "$cert_dir" ]; then
+        echo -e "${RED}[✗] 无法找到证书: $domain${NC}"
+        return 1
+    fi
+    
+    cert_path="$_CERT_PATH"
+    key_path="$_KEY_PATH"
+    ca_path="$_CA_PATH"
+    fullchain_path="$_FULLCHAIN_PATH"
+    
+    echo -e "\n${BLUE}安装证书: $domain${NC}"
+    
+    # 只显示到期时间（如果获取到的话）
+    if [ -n "$expiry_date" ]; then
+        echo -e "${GREEN}[✓] 证书到期时间: $expiry_date${NC}"
+    fi
+    
+    echo "选择Web服务："
+    echo "1) Nginx"
+    echo "2) X-UI"
+    echo "3) 自定义路径"
+    read -p "请选择(1-3): " service_choice
+
+    case $service_choice in
+        1) # Nginx
+            local nginx_conf="/etc/nginx/conf.d/$domain.conf"
+            if [ ! -f "$nginx_conf" ]; then
+                nginx_conf="/etc/nginx/sites-available/$domain"
+            fi
+            
+            if [ ! -f "$nginx_conf" ]; then
+                read -p "请输入Nginx配置文件路径: " nginx_conf
+            fi
+            
+            if [ -f "$nginx_conf" ]; then
+                cp "$nginx_conf" "$nginx_conf.bak"
+                local cert_to_use="$cert_path"
+                if [ -n "$fullchain_path" ]; then
+                    cert_to_use="$fullchain_path"
+                    echo -e "${GREEN}[✓] 使用完整链证书 (推荐)${NC}"
+                fi
+                
+                sed -i "s|ssl_certificate .*|ssl_certificate $cert_to_use;|" "$nginx_conf"
+                sed -i "s|ssl_certificate_key .*|ssl_certificate_key $key_path;|" "$nginx_conf"
+                
+                echo -e "${GREEN}[✓] Nginx配置已更新${NC}"
+                echo -e "${YELLOW}[!] 请执行: nginx -t && systemctl reload nginx${NC}"
+            else
+                echo -e "${YELLOW}[!] Nginx配置文件不存在，证书文件位置:${NC}"
+                echo "证书: $cert_path"
+                [ -n "$fullchain_path" ] && echo "完整链证书: $fullchain_path"
+                echo "私钥: $key_path"
+            fi
+            ;;
+            
+        2) # X-UI
+            local xui_config="/etc/x-ui/config.json"
+            if [ ! -f "$xui_config" ]; then
+                xui_config="/usr/local/x-ui/config.json"
+            fi
+            
+            if [ ! -f "$xui_config" ]; then
+                read -p "请输入X-UI配置文件路径: " xui_config
+            fi
+            
+            if [ -f "$xui_config" ]; then
+                echo -e "${GREEN}[✓] 请手动更新X-UI配置:${NC}"
+                echo "证书路径: $cert_path"
+                [ -n "$fullchain_path" ] && echo "完整链证书: $fullchain_path"
+                echo "私钥路径: $key_path"
+                echo ""
+                echo "在X-UI面板中："
+                echo "1. 进入入站列表"
+                echo "2. 编辑相关入站"
+                echo "3. 在TLS设置中更新证书路径"
+            else
+                echo -e "${YELLOW}[!] X-UI配置文件不存在，证书文件位置:${NC}"
+                echo "证书: $cert_path"
+                [ -n "$fullchain_path" ] && echo "完整链证书: $fullchain_path"
+                echo "私钥: $key_path"
+            fi
+            ;;
+            
+        3) # 自定义路径
+            echo -e "${GREEN}[✓] 证书文件位置:${NC}"
+            echo "证书: $cert_path"
+            [ -n "$fullchain_path" ] && echo "完整链证书: $fullchain_path (推荐)"
+            echo "私钥: $key_path"
+            [ -f "$ca_path" ] && echo "CA证书: $ca_path"
+            
+            read -p "请输入目标证书路径: " target_cert
+            read -p "请输入目标私钥路径: " target_key
+            
+            if [ -n "$target_cert" ]; then
+                mkdir -p "$(dirname "$target_cert")"
+                local source_cert="$cert_path"
+                [ -n "$fullchain_path" ] && source_cert="$fullchain_path"
+                cp "$source_cert" "$target_cert"
+                chmod 644 "$target_cert"
+                echo -e "${GREEN}[✓] 证书复制到: $target_cert${NC}"
+            fi
+            
+            if [ -n "$target_key" ]; then
+                mkdir -p "$(dirname "$target_key")"
+                cp "$key_path" "$target_key"
+                chmod 600 "$target_key"
+                echo -e "${GREEN}[✓] 私钥复制到: $target_key${NC}"
+            fi
+            ;;
+            
+        *)
+            echo -e "${RED}[✗] 无效的选择${NC}"
+            return 1
+            ;;
+    esac
+    
+    return 0
+}
+
 # 证书续期
 renew_certificate() {
     echo -e "\n${BLUE}=== 证书续期 ===${NC}"
     
-    # 列出所有证书
     local certs=()
     local index=1
     
@@ -375,7 +715,7 @@ renew_certificate() {
     fi
     
     read -p "请选择要续期的证书序号: " cert_index
-    if ! [[ "$cert_index" =~ ^[0-9]+$ ]] || [ "$cert_index" -lt 1 ] || [ "$cert_index" -gt ${#certs[@]} ]; then
+    if [ -z "$cert_index" ] || ! [[ "$cert_index" =~ ^[0-9]+$ ]] || [ "$cert_index" -lt 1 ] || [ "$cert_index" -gt ${#certs[@]} ]; then
         echo -e "${RED}[✗] 无效的序号${NC}"
         return 1
     fi
@@ -384,18 +724,6 @@ renew_certificate() {
     
     echo -e "${BLUE}[*] 续期证书: $domain${NC}"
     
-    # 检查原验证方式
-    local cert_info="$CERT_DIR/$domain/$domain.conf"
-    if [ -f "$cert_info" ]; then
-        local original_mode=$(grep "Le_DNSSleep" "$cert_info")
-        if [ -n "$original_mode" ] && [ "$original_mode" = "Le_DNSSleep='0'" ]; then
-            echo -e "${YELLOW}[!] 检测到手动DNS验证模式${NC}"
-            echo "请确保DNS记录已正确设置"
-            read -p "按回车键开始续期..."
-        fi
-    fi
-    
-    # 执行续期
     if "$ACME_DIR/acme.sh" --renew --domain "$domain" --force; then
         echo -e "${GREEN}[✓] 证书续期成功${NC}"
         return 0
@@ -409,7 +737,6 @@ renew_certificate() {
 delete_certificate() {
     echo -e "\n${BLUE}=== 删除证书 ===${NC}"
     
-    # 列出所有证书
     local certs=()
     local index=1
     
@@ -443,8 +770,9 @@ delete_certificate() {
     
     # 删除证书
     if "$ACME_DIR/acme.sh" --remove --domain "$domain"; then
-        # 清理残留文件
+        # 清理残留文件 - 添加删除acme.sh目录中的证书
         rm -rf "$CERT_DIR/$domain"
+        rm -rf "$ACME_DIR/${domain}_ecc" "$ACME_DIR/$domain" 2>/dev/null
         echo -e "${GREEN}[✓] 证书删除成功${NC}"
         return 0
     else
@@ -465,7 +793,6 @@ list_certificates() {
             cert_name=$(basename "$cert")
             certs+=("$cert_name")
             
-            # 获取证书信息
             local cert_file="$cert/$cert_name.cer"
             if [ -f "$cert_file" ]; then
                 local expiry_date
@@ -477,300 +804,9 @@ list_certificates() {
             ((index++))
         fi
     done
-    
     if [ ${#certs[@]} -eq 0 ]; then
         echo -e "${YELLOW}[!] 没有找到证书${NC}"
     fi
-}
-
-# 安装证书到Web服务
-install_certificate_menu() {
-    local domain="$1"
-    
-    if [ -z "$domain" ]; then
-        echo -e "\n${BLUE}=== 安装证书 ===${NC}"
-        
-        # 列出证书供选择
-        local certs=()
-        local index=1
-        
-        for cert in "$CERT_DIR"/*; do
-            if [ -d "$cert" ]; then
-                cert_name=$(basename "$cert")
-                certs+=("$cert_name")
-                echo "$index) $cert_name"
-                ((index++))
-            fi
-        done
-        
-        if [ ${#certs[@]} -eq 0 ]; then
-            echo -e "${YELLOW}[!] 没有找到证书${NC}"
-            return 1
-        fi
-        
-        read -p "请选择要安装的证书序号: " cert_index
-        if ! [[ "$cert_index" =~ ^[0-9]+$ ]] || [ "$cert_index" -lt 1 ] || [ "$cert_index" -gt ${#certs[@]} ]; then
-            echo -e "${RED}[✗] 无效的序号${NC}"
-            return 1
-        fi
-        
-        domain="${certs[$((cert_index-1))]}"
-    fi
-    
-    echo -e "\n${BLUE}安装证书: $domain${NC}"
-    echo "选择Web服务："
-    echo "1) Nginx"
-    echo "2) Apache"
-    echo "3) X-UI"
-    echo "4) Caddy"
-    echo "5) Haproxy"
-    echo "6) Trojan"
-    echo "7) V2Ray"
-    echo "8) 自定义路径"
-    read -p "请选择(1-8): " service_choice
-    
-    local cert_path="$CERT_DIR/$domain/$domain.cer"
-    local key_path="$CERT_DIR/$domain/$domain.key"
-    local ca_path="$CERT_DIR/$domain/ca.cer"
-    
-    if [ ! -f "$cert_path" ] || [ ! -f "$key_path" ]; then
-        echo -e "${RED}[✗] 证书文件不存在${NC}"
-        return 1
-    fi
-    
-    case $service_choice in
-        1) # Nginx
-            local nginx_conf="/etc/nginx/conf.d/$domain.conf"
-            if [ ! -f "$nginx_conf" ]; then
-                nginx_conf="/etc/nginx/sites-available/$domain"
-            fi
-            
-            if [ ! -f "$nginx_conf" ]; then
-                read -p "请输入Nginx配置文件路径: " nginx_conf
-            fi
-            
-            if [ -f "$nginx_conf" ]; then
-                # 备份原配置
-                cp "$nginx_conf" "$nginx_conf.bak"
-                
-                # 更新证书路径
-                sed -i "s|ssl_certificate .*|ssl_certificate $cert_path;|" "$nginx_conf"
-                sed -i "s|ssl_certificate_key .*|ssl_certificate_key $key_path;|" "$nginx_conf"
-                
-                echo -e "${GREEN}[✓] Nginx配置已更新${NC}"
-                echo -e "${YELLOW}[!] 请执行: nginx -t && systemctl reload nginx${NC}"
-            else
-                echo -e "${YELLOW}[!] Nginx配置文件不存在，证书文件位置:${NC}"
-                echo "证书: $cert_path"
-                echo "私钥: $key_path"
-            fi
-            ;;
-            
-        2) # Apache
-            local apache_conf="/etc/apache2/sites-available/$domain.conf"
-            if [ ! -f "$apache_conf" ]; then
-                apache_conf="/etc/httpd/conf.d/$domain.conf"
-            fi
-            
-            if [ ! -f "$apache_conf" ]; then
-                read -p "请输入Apache配置文件路径: " apache_conf
-            fi
-            
-            if [ -f "$apache_conf" ]; then
-                # 备份原配置
-                cp "$apache_conf" "$apache_conf.bak"
-                
-                # 更新证书路径
-                sed -i "s|SSLCertificateFile .*|SSLCertificateFile $cert_path|" "$apache_conf"
-                sed -i "s|SSLCertificateKeyFile .*|SSLCertificateKeyFile $key_path|" "$apache_conf"
-                
-                if [ -f "$ca_path" ]; then
-                    sed -i "s|SSLCertificateChainFile .*|SSLCertificateChainFile $ca_path|" "$apache_conf"
-                fi
-                
-                echo -e "${GREEN}[✓] Apache配置已更新${NC}"
-                echo -e "${YELLOW}[!] 请执行: apachectl configtest && systemctl reload apache2${NC}"
-            else
-                echo -e "${YELLOW}[!] Apache配置文件不存在，证书文件位置:${NC}"
-                echo "证书: $cert_path"
-                echo "私钥: $key_path"
-            fi
-            ;;
-            
-        3) # X-UI
-            local xui_config="/etc/x-ui/config.json"
-            if [ ! -f "$xui_config" ]; then
-                xui_config="/usr/local/x-ui/config.json"
-            fi
-            
-            if [ ! -f "$xui_config" ]; then
-                read -p "请输入X-UI配置文件路径: " xui_config
-            fi
-            
-            if [ -f "$xui_config" ]; then
-                # 备份原配置
-                cp "$xui_config" "$xui_config.bak"
-                
-                # 读取证书内容
-                local cert_content
-                cert_content=$(sed ':a;N;$!ba;s/\n/\\n/g' "$cert_path")
-                local key_content
-                key_content=$(sed ':a;N;$!ba;s/\n/\\n/g' "$key_path")
-                
-                # 更新JSON配置
-                python3 -c "
-import json
-with open('$xui_config', 'r') as f:
-    config = json.load(f)
-if 'inbounds' in config:
-    for inbound in config['inbounds']:
-        if 'streamSettings' in inbound and 'security' in inbound['streamSettings']:
-            if inbound['streamSettings']['security'] == 'tls':
-                inbound['streamSettings']['tlsSettings'] = inbound['streamSettings'].get('tlsSettings', {})
-                inbound['streamSettings']['tlsSettings']['certificates'] = [{
-                    'certificateFile': '$cert_path',
-                    'keyFile': '$key_path'
-                }]
-with open('$xui_config', 'w') as f:
-    json.dump(config, f, indent=2)
-" 2>/dev/null || {
-                    echo -e "${YELLOW}[!] Python不可用，手动更新X-UI配置:${NC}"
-                    echo "证书: $cert_path"
-                    echo "私钥: $key_path"
-                }
-                
-                echo -e "${GREEN}[✓] X-UI配置已更新${NC}"
-                echo -e "${YELLOW}[!] 请重启X-UI服务${NC}"
-            else
-                echo -e "${YELLOW}[!] X-UI配置文件不存在，证书文件位置:${NC}"
-                echo "证书: $cert_path"
-                echo "私钥: $key_path"
-            fi
-            ;;
-            
-        4) # Caddy
-            local caddyfile="/etc/caddy/Caddyfile"
-            if [ ! -f "$caddyfile" ]; then
-                caddyfile="/usr/local/etc/caddy/Caddyfile"
-            fi
-            
-            if [ ! -f "$caddyfile" ]; then
-                read -p "请输入Caddyfile路径: " caddyfile
-            fi
-            
-            if [ -f "$caddyfile" ]; then
-                echo -e "${YELLOW}[!] Caddy通常自动管理证书，如需手动配置:${NC}"
-                echo "将以下内容添加到Caddyfile:"
-                echo "$domain {"
-                echo "    tls $cert_path $key_path"
-                echo "    ...其他配置..."
-                echo "}"
-            fi
-            ;;
-            
-        5) # Haproxy
-            local haproxy_cfg="/etc/haproxy/haproxy.cfg"
-            if [ ! -f "$haproxy_cfg" ]; then
-                read -p "请输入HAProxy配置文件路径: " haproxy_cfg
-            fi
-            
-            if [ -f "$haproxy_cfg" ]; then
-                # 合并证书链
-                local combined_cert="/etc/haproxy/certs/$domain.pem"
-                mkdir -p /etc/haproxy/certs
-                cat "$cert_path" "$ca_path" 2>/dev/null > "$combined_cert"
-                
-                echo -e "${GREEN}[✓] HAProxy证书已合并到: $combined_cert${NC}"
-                echo -e "${YELLOW}[!] 在配置中添加: bind :443 ssl crt $combined_cert${NC}"
-            fi
-            ;;
-            
-        6) # Trojan
-            local trojan_config="/etc/trojan/config.json"
-            if [ ! -f "$trojan_config" ]; then
-                read -p "请输入Trojan配置文件路径: " trojan_config
-            fi
-            
-            if [ -f "$trojan_config" ]; then
-                cp "$trojan_config" "$trojan_config.bak"
-                
-                # 更新Trojan配置
-                sed -i "s|\"cert\":.*|\"cert\": \"$cert_path\",|" "$trojan_config"
-                sed -i "s|\"key\":.*|\"key\": \"$key_path\",|" "$trojan_config"
-                
-                echo -e "${GREEN}[✓] Trojan配置已更新${NC}"
-                echo -e "${YELLOW}[!] 请重启Trojan服务${NC}"
-            fi
-            ;;
-            
-        7) # V2Ray
-            local v2ray_config="/etc/v2ray/config.json"
-            if [ ! -f "$v2ray_config" ]; then
-                v2ray_config="/usr/local/etc/v2ray/config.json"
-            fi
-            
-            if [ ! -f "$v2ray_config" ]; then
-                read -p "请输入V2Ray配置文件路径: " v2ray_config
-            fi
-            
-            if [ -f "$v2ray_config" ]; then
-                cp "$v2ray_config" "$v2ray_config.bak"
-                
-                # 更新V2Ray配置
-                python3 -c "
-import json
-with open('$v2ray_config', 'r') as f:
-    config = json.load(f)
-for inbound in config.get('inbounds', []):
-    if 'streamSettings' in inbound and 'security' in inbound['streamSettings']:
-        if inbound['streamSettings']['security'] == 'tls':
-            inbound['streamSettings']['tlsSettings'] = inbound['streamSettings'].get('tlsSettings', {})
-            inbound['streamSettings']['tlsSettings']['certificates'] = [{
-                'certificateFile': '$cert_path',
-                'keyFile': '$key_path'
-            }]
-with open('$v2ray_config', 'w') as f:
-    json.dump(config, f, indent=2)
-" 2>/dev/null || {
-                    echo -e "${YELLOW}[!] Python不可用，手动更新V2Ray配置:${NC}"
-                    echo "证书: $cert_path"
-                    echo "私钥: $key_path"
-                }
-                
-                echo -e "${GREEN}[✓] V2Ray配置已更新${NC}"
-                echo -e "${YELLOW}[!] 请重启V2Ray服务${NC}"
-            fi
-            ;;
-            
-        8) # 自定义路径
-            echo -e "${GREEN}[✓] 证书文件位置:${NC}"
-            echo "完整证书链: $cert_path"
-            echo "私钥文件: $key_path"
-            if [ -f "$ca_path" ]; then
-                echo "CA证书: $ca_path"
-            fi
-            
-            read -p "请输入目标证书路径: " target_cert
-            read -p "请输入目标私钥路径: " target_key
-            
-            if [ -n "$target_cert" ]; then
-                cp "$cert_path" "$target_cert"
-                echo -e "${GREEN}[✓] 证书复制到: $target_cert${NC}"
-            fi
-            
-            if [ -n "$target_key" ]; then
-                cp "$key_path" "$target_key"
-                echo -e "${GREEN}[✓] 私钥复制到: $target_key${NC}"
-            fi
-            ;;
-            
-        *)
-            echo -e "${RED}[✗] 无效的选择${NC}"
-            return 1
-            ;;
-    esac
-    
-    return 0
 }
 
 # 重新安装acme.sh
@@ -783,24 +819,19 @@ reinstall_acme() {
         return 0
     fi
     
-    # 备份证书
-    echo -e "${BLUE}[*] 备份证书...${NC}"
     local backup_dir="/tmp/acme_backup_$(date +%s)"
     mkdir -p "$backup_dir"
     cp -r "$CERT_DIR" "$backup_dir/certs"
     cp -r "$CONFIG_DIR" "$backup_dir/config"
     
-    # 卸载旧版本
     echo -e "${BLUE}[*] 卸载旧版本...${NC}"
     if [ -f "$ACME_DIR/acme.sh" ]; then
         "$ACME_DIR/acme.sh" --uninstall || true
     fi
     rm -rf "$ACME_DIR"
     
-    # 重新安装
     echo -e "${BLUE}[*] 重新安装...${NC}"
     if install_acme; then
-        # 恢复备份
         echo -e "${BLUE}[*] 恢复证书...${NC}"
         cp -r "$backup_dir/certs"/* "$CERT_DIR/" 2>/dev/null || true
         cp -r "$backup_dir/config"/* "$CONFIG_DIR/" 2>/dev/null || true
@@ -852,34 +883,25 @@ main_menu() {
 
 # 主程序
 main() {
-    # 检查root权限
-    if [ "$EUID" -eq 0 ]; then
-        echo -e "${YELLOW}[!] 不建议使用root用户运行，建议使用普通用户${NC}"
-        read -p "是否继续？(y/n): " continue_as_root
-        if ! [[ $continue_as_root =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
+    if [ "$EUID" -ne 0 ]; then
+        echo -e "${YELLOW}[!] 请使用sudo重新运行脚本${NC}"
+        exit 1
     fi
     
-    # 初始化
     init_directories
     
-    # 检查依赖
     if ! check_dependencies; then
         echo -e "${RED}[✗] 依赖检查失败，请手动安装缺失的依赖${NC}"
         exit 1
     fi
     
-    # 安装acme.sh
     if ! install_acme; then
         echo -e "${RED}[✗] acme.sh安装失败${NC}"
         exit 1
     fi
     
-    # 设置alias
     alias acme.sh="$ACME_DIR/acme.sh"
     
-    # 显示主菜单
     main_menu
 }
 
