@@ -783,14 +783,33 @@ renew_certificate() {
     fi
     
     local certs=("${_CERT_ARRAY[@]}")
+    local cert_dirs=("${_CERT_DIR_ARRAY[@]}")
     
-    # 显示证书列表
+    # 显示证书列表（带到期时间）
     for i in "${!certs[@]}"; do
-        echo "$((i+1))) ${certs[$i]}"
+        local cert_name="${certs[$i]}"
+        local cert_dir="${cert_dirs[$i]}"
+        local cert_file="$cert_dir/$cert_name.cer"
+        if [ ! -f "$cert_file" ]; then
+            cert_file="$cert_dir/$cert_name.crt"
+        fi
+        
+        local expiry_date=""
+        if [ -f "$cert_file" ]; then
+            expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+        fi
+        
+        if [ -n "$expiry_date" ]; then
+            echo "$((i+1))) $cert_name - 到期时间: $expiry_date"
+        else
+            echo "$((i+1))) $cert_name"
+        fi
     done
     
     echo ""
     read -p "请选择要续期的证书序号: " cert_index
+    
+    # 验证输入
     if [ -z "$cert_index" ] || ! [[ "$cert_index" =~ ^[0-9]+$ ]] || [ "$cert_index" -lt 1 ] || [ "$cert_index" -gt ${#certs[@]} ]; then
         echo -e "${RED}[✗] 无效的序号${NC}"
         return 1
@@ -800,11 +819,52 @@ renew_certificate() {
     
     echo -e "${BLUE}[*] 续期证书: $domain${NC}"
     
+    # 显示证书详情
+    local cert_dir="${cert_dirs[$((cert_index-1))]}"
+    local cert_file="$cert_dir/$domain.cer"
+    if [ ! -f "$cert_file" ]; then
+        cert_file="$cert_dir/$domain.crt"
+    fi
+    
+    if [ -f "$cert_file" ]; then
+        local expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+        local start_date=$(openssl x509 -startdate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+        
+        echo -e "${GREEN}[✓] 证书详情:${NC}"
+        echo "域名: $domain"
+        echo "开始时间: $start_date"
+        echo "到期时间: $expiry_date"
+        echo "证书位置: $cert_dir"
+        echo ""
+    fi
+    
+    echo -e "${YELLOW}[!] 即将开始证书续期...${NC}"
+    read -p "是否继续？(y/n): " confirm
+    if ! [[ $confirm =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}[!] 取消续期${NC}"
+        return 0
+    fi
+    
+    echo -e "${BLUE}[*] 正在续期证书...${NC}"
+    
+    # 执行续期
     if "$ACME_DIR/acme.sh" --renew --domain "$domain" --force; then
         echo -e "${GREEN}[✓] 证书续期成功${NC}"
+        
+        # 显示续期后的到期时间
+        if [ -f "$cert_file" ]; then
+            local new_expiry=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+            echo -e "${GREEN}[✓] 新到期时间: $new_expiry${NC}"
+        fi
+        
         return 0
     else
         echo -e "${RED}[✗] 证书续期失败${NC}"
+        
+        # 提供手动续期建议
+        echo -e "${YELLOW}[!] 您可以尝试手动续期:${NC}"
+        echo "  $ACME_DIR/acme.sh --renew -d $domain --force --debug"
+        
         return 1
     fi
 }
