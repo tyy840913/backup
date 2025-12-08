@@ -8,19 +8,11 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 配置文件
-CONFIG_DIR="$HOME/.acme_script"
-CONFIG_FILE="$CONFIG_DIR/config"
 ACME_DIR="$HOME/.acme.sh"
-CERT_DIR="$CONFIG_DIR/certs"
 
 # 初始化目录
 init_directories() {
-    mkdir -p "$CONFIG_DIR" "$CERT_DIR"
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo "DEFAULT_CA=letsencrypt" > "$CONFIG_FILE"
-        echo "DEFAULT_MODE=manual" >> "$CONFIG_FILE"
-        echo "DEFAULT_KEY_LENGTH=ec-256" >> "$CONFIG_FILE"
-    fi
+    mkdir -p "$ACME_DIR"
 }
 
 # 检查并安装依赖
@@ -93,9 +85,7 @@ install_acme() {
     if git clone https://github.com/acmesh-official/acme.sh.git "$ACME_DIR"; then
         cd "$ACME_DIR" || return 1
         ./acme.sh --install \
-            --home "$ACME_DIR" \
-            --config-home "$CONFIG_DIR" \
-            --cert-home "$CERT_DIR" || {
+            --home "$ACME_DIR" || {
             echo -e "${RED}[✗] GitHub安装失败${NC}"
             return 1
         }
@@ -121,7 +111,7 @@ find_certificates() {
     _CERT_DIR=""
     
     # 搜索的目录顺序（按优先级）
-    local search_roots=("$ACME_DIR" "$CERT_DIR")
+    local search_roots=("$ACME_DIR")
     
     # 遍历所有搜索根目录
     for root_dir in "${search_roots[@]}"; do
@@ -888,7 +878,6 @@ delete_certificate() {
     
     # 清理所有可能的位置
     echo -e "${BLUE}[*] 清理证书文件...${NC}"
-    rm -rf "$CERT_DIR/$domain" 2>/dev/null
     rm -rf "$ACME_DIR/${domain}_ecc" 2>/dev/null
     rm -rf "$ACME_DIR/$domain" 2>/dev/null
     rm -rf "$cert_dir" 2>/dev/null
@@ -967,19 +956,6 @@ reinstall_acme() {
     
     echo -e "${BLUE}[*] 备份证书和配置...${NC}"
     
-    # 1. 备份证书文件（从两个位置）
-    mkdir -p "$backup_dir/certs_backup"
-    
-    # 备份 ~/.acme_script/certs/ 中的证书
-    if [ -d "$CERT_DIR" ] && [ -n "$(ls -A "$CERT_DIR" 2>/dev/null)" ]; then
-        echo -e "${BLUE}[*] 备份证书目录: $CERT_DIR${NC}"
-        # 直接复制证书文件，不复制目录本身
-        cp -r "$CERT_DIR" "$backup_dir/certs_backup/" 2>/dev/null
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}[✓] 证书目录备份成功 ($(ls -1 "$CERT_DIR" 2>/dev/null | wc -l) 个证书)${NC}"
-        fi
-    fi
-    
     # 备份 ~/.acme.sh/ 中的证书
     if [ -d "$ACME_DIR" ]; then
         echo -e "${BLUE}[*] 扫描acme.sh目录中的证书...${NC}"
@@ -1014,7 +990,7 @@ reinstall_acme() {
         fi
     fi
     
-    # 2. 备份账户配置
+    # 备份账户配置
     if [ -d "$ACME_DIR" ]; then
         echo -e "${BLUE}[*] 备份账户信息...${NC}"
         
@@ -1036,13 +1012,6 @@ reinstall_acme() {
         fi
     fi
     
-    # 3. 备份脚本配置
-    if [ -d "$CONFIG_DIR" ]; then
-        echo -e "${BLUE}[*] 备份脚本配置...${NC}"
-        cp -r "$CONFIG_DIR" "$backup_dir/config_backup" 2>/dev/null
-        echo -e "${GREEN}[✓] 脚本配置备份成功${NC}"
-    fi
-    
     echo -e "${BLUE}[*] 卸载旧版本...${NC}"
     if [ -f "$ACME_DIR/acme.sh" ]; then
         "$ACME_DIR/acme.sh" --uninstall 2>/dev/null || true
@@ -1059,26 +1028,7 @@ reinstall_acme() {
         
         echo -e "${BLUE}[*] 恢复证书和配置...${NC}"
         
-        # 1. 恢复证书到 ~/.acme_script/certs/
-        if [ -d "$backup_dir/certs_backup" ] && [ -n "$(ls -A "$backup_dir/certs_backup" 2>/dev/null)" ]; then
-            echo -e "${BLUE}[*] 恢复证书到 $CERT_DIR...${NC}"
-            mkdir -p "$CERT_DIR"
-            
-            # 遍历备份的证书目录
-            for cert_domain_dir in "$backup_dir/certs_backup"/*; do
-                if [ -d "$cert_domain_dir" ]; then
-                    local domain=$(basename "$cert_domain_dir")
-                    echo -e "${BLUE}  - 恢复证书: $domain${NC}"
-                    
-                    # 复制到目标位置
-                    mkdir -p "$CERT_DIR/$domain"
-                    cp -r "$cert_domain_dir"/* "$CERT_DIR/$domain/" 2>/dev/null
-                fi
-            done
-            echo -e "${GREEN}[✓] 证书恢复完成${NC}"
-        fi
-        
-        # 2. 恢复证书到 ~/.acme.sh/
+        # 恢复证书到 ~/.acme.sh/
         if [ -d "$backup_dir/acme_certs_backup" ] && [ -n "$(ls -A "$backup_dir/acme_certs_backup" 2>/dev/null)" ]; then
             echo -e "${BLUE}[*] 恢复证书到 $ACME_DIR...${NC}"
             mkdir -p "$ACME_DIR"
@@ -1095,7 +1045,7 @@ reinstall_acme() {
             echo -e "${GREEN}[✓] acme.sh证书恢复完成${NC}"
         fi
         
-        # 3. 恢复账户配置
+        # 恢复账户配置
         if [ -f "$backup_dir/account.conf" ]; then
             echo -e "${BLUE}[*] 恢复账户配置...${NC}"
             cp "$backup_dir/account.conf" "$ACME_DIR/" 2>/dev/null
@@ -1106,14 +1056,6 @@ reinstall_acme() {
             echo -e "${BLUE}[*] 恢复CA证书...${NC}"
             cp -r "$backup_dir/ca" "$ACME_DIR/" 2>/dev/null
             echo -e "${GREEN}[✓] CA证书恢复完成${NC}"
-        fi
-        
-        # 4. 恢复脚本配置
-        if [ -d "$backup_dir/config_backup" ]; then
-            echo -e "${BLUE}[*] 恢复脚本配置...${NC}"
-            mkdir -p "$CONFIG_DIR"
-            cp -r "$backup_dir/config_backup"/* "$CONFIG_DIR/" 2>/dev/null
-            echo -e "${GREEN}[✓] 脚本配置恢复完成${NC}"
         fi
         
         # 清理备份
@@ -1140,8 +1082,7 @@ reinstall_acme() {
         echo -e "${YELLOW}[!] 备份文件保存在: $backup_dir${NC}"
         echo -e "${YELLOW}[!] 您可以手动恢复:${NC}"
         echo "  1. 检查备份: ls -la $backup_dir/"
-        echo "  2. 手动复制: cp -r $backup_dir/certs_backup/* $CERT_DIR/"
-        echo "  3. 重新运行脚本"
+        echo "  2. 重新运行脚本"
         return 1
     fi
 }
