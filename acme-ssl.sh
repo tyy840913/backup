@@ -531,6 +531,7 @@ cert_issue_menu() {
     echo "1) Let's Encrypt (默认)"
     echo "2) ZeroSSL (需要注册)"
     echo "3) BuyPass"
+    echo ""
     read -p "请选择(1-3): " ca_choice
     
     case $ca_choice in
@@ -543,6 +544,7 @@ cert_issue_menu() {
     echo "选择验证模式："
     echo "1) 手动DNS验证 (默认)"
     echo "2) DNS API自动验证"
+    echo ""
     read -p "请选择(1-2): " mode_choice
     
     case $mode_choice in
@@ -1047,7 +1049,7 @@ main_menu() {
         echo "5) 安装证书到Web服务"
         echo "6) 重新安装acme.sh"
         echo "0) 退出"
-        
+        echo ""
         read -p "请选择操作(0-6): " choice
         
         case $choice in
