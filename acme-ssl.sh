@@ -384,10 +384,9 @@ issue_certificate() {
         # 显示TXT记录给用户
         echo -e "\n${GREEN}[✓] DNS验证信息获取成功${NC}"
         echo -e "${BLUE}==========================================${NC}"
-        echo -e "${YELLOW}记录类型:   TXT${NC}"
-        echo ""
-        echo -e "${YELLOW}主机名:   _acme-challenge.$domain${NC}"
-        echo -e "${YELLOW}记录值:   $txt_record${NC}"
+        echo -e "${YELLOW}记录类型: TXT${NC}"
+        echo -e "${YELLOW}主机名:  _acme-challenge.$domain${NC}"
+        echo -e "${YELLOW}记录值:  $txt_record${NC}"
         echo -e "${BLUE}==========================================${NC}"
         echo ""
         echo -e "${YELLOW}[!] 请到您的DNS服务商处添加上述TXT记录${NC}"
