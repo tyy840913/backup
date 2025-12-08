@@ -10,7 +10,7 @@ https://github.com/ACL4SSR/ACL4SSR/tree/master
 ```
 # acme-ssl证书
 ```bash
-bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/acme.sh)
+bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ssl.sh)
 ```
 
 # 主脚本
