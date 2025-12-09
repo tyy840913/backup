@@ -415,17 +415,28 @@ issue_certificate() {
     else
         # Cloudflare API自动验证
         echo -e "${YELLOW}[!] 使用Cloudflare API自动验证${NC}"
-    
         echo -e "${BLUE}[!] 提示：本脚本默认使用Cloudflare API${NC}"
         echo -e "${BLUE}[!] 如需使用其他DNS服务商，可以手动执行以下命令：${NC}"
-        echo "  1. 设置对应API环境变量，例如："
+        echo "  1. 查看支持的服务商列表："
+        echo "     ls ~/.acme.sh/dnsapi/dns_*.sh"
+        echo "  2. 设置对应API环境变量，可以参考脚本中的环境变量名设置，例如："
+        echo "     # Cloudflare:"
+        echo "     export CF_Token=\"your-token\"  # 或 CF_Key + CF_Email"
+        echo "     # 阿里云:"
         echo "     export Ali_Key=\"your-key\""
         echo "     export Ali_Secret=\"your-secret\""
-        echo "  2. 执行申请命令："
-        echo "     ~/.acme.sh/acme.sh --issue --dns dns_ali -d $domain"
-        echo "  3. 支持的DNS API列表："
-        echo "     ls ~/.acme.sh/dnsapi/dns_*.sh"
-        echo ""
+        echo "     # 腾讯云DNSPod:"
+        echo "     export DP_Id=\"your-id\""
+        echo "     export DP_Key=\"your-key\""
+        echo "     # 华为云:"
+        echo "     export HUAWEICLOUD_Username=\"username\""
+        echo "     export HUAWEICLOUD_Password=\"password\""
+        echo "     export HUAWEICLOUD_DomainName=\"domain\""
+        echo "  3. 执行申请命令：<服务商为dnsapi中脚本的服务商名称，去除 ".sh">"
+        echo "     ~/.acme.sh/acme.sh --issue --dns <服务商> -d example.com"
+        echo "     # 例如："
+        echo "     ~/.acme.sh/acme.sh --issue --dns dns_ali -d example.com"
+        echo "     ~/.acme.sh/acme.sh --issue --dns dns_dp -d example.com"
     
         read -p "请输入Cloudflare API Token: " cf_token
     
