@@ -81,8 +81,8 @@ install_acme() {
     
     echo -e "${YELLOW}[!] 官方安装失败，尝试GitHub安装...${NC}"
     
-    # 尝试GitHub安装
-    if git clone https://github.com/acmesh-official/acme.sh.git "$ACME_DIR"; then
+    # 尝试GitHub安装，使用GitHub镜像
+    if git clone https://gitclone.com/acmesh-official/acme.sh.git "$ACME_DIR"; then
         cd "$ACME_DIR" || return 1
         ./acme.sh --install \
             --home "$ACME_DIR" || {
