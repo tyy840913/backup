@@ -419,7 +419,7 @@ issue_certificate() {
         echo -e "${BLUE}[!] 如需使用其他DNS服务商，可以手动执行以下命令：${NC}"
         echo "  1. 查看支持的服务商列表："
         echo "     ls ~/.acme.sh/dnsapi/dns_*.sh"
-        echo "  2. 设置对应API环境变量，可以参考脚本中的环境变量名设置，例如："
+        echo "  2. 设置对应API环境变量，可以参考dnsapi目录域名服务商脚本中的环境变量名设置，例如："
         echo "     # Cloudflare:"
         echo "     export CF_Token=\"your-token\"  # 或 CF_Key + CF_Email"
         echo "     # 阿里云:"
