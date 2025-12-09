@@ -32,7 +32,7 @@ services:
     restart: always
     network_mode: host
     volumes:
-      - /docker_data/luckyconf:/goodluck
+      - /docker_data/luckyconf:/app/conf
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Asia/Shanghai
