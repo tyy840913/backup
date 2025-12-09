@@ -603,7 +603,7 @@ cert_issue_menu() {
     fi
 }
 
-# 安装证书到Web服务 - 优化版
+# 安装证书到Web服务 - 优化版（只保留Nginx和自定义路径）
 install_certificate_menu() {
     local domain="$1"
     
@@ -698,357 +698,275 @@ install_certificate_menu() {
         echo -e "${GREEN}[✓] 证书到期时间: $expiry_date${NC}"
     fi
     
-    echo "选择Web服务："
-    echo "1) Nginx"
-    echo "2) X-UI"
-    echo "3) 自定义路径"
-    read -p "请选择(1-3): " service_choice
+    # 显示证书文件信息
+    echo -e "${BLUE}证书文件位置:${NC}"
+    echo -e "  ${GREEN}证书:${NC} $cert_path"
+    if [ -n "$fullchain_path" ]; then
+        echo -e "  ${GREEN}完整链证书:${NC} $fullchain_path (推荐使用)"
+    fi
+    echo -e "  ${GREEN}私钥:${NC} $key_path"
+    if [ -f "$ca_path" ]; then
+        echo -e "  ${GREEN}CA证书:${NC} $ca_path"
+    fi
+    echo ""
+    
+    echo "选择安装方式："
+    echo "1) Nginx (自动更新配置文件)"
+    echo "2) 自定义路径 (仅输出证书路径)"
+    read -p "请选择(1-2): " service_choice
     
     case $service_choice in
-        1) # Nginx - 完全重写的优化版
-            echo -e "${BLUE}[*] 正在查找Nginx配置...${NC}"
+        1) # Nginx - 优化版
+            echo -e "${BLUE}[*] Nginx证书安装模式${NC}"
             
-            # 方法1: 查找所有正在运行的Nginx进程及其配置文件
-            local nginx_processes=()
-            local nginx_configs=()
-            
-            # 获取所有Nginx主进程
-            while IFS= read -r pid; do
-                if [ -n "$pid" ]; then
-                    # 获取进程命令行
-                    local cmdline
-                    cmdline=$(cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ')
-                    
-                    # 查找配置文件参数
-                    local config_path=""
-                    
-                    # 检查是否有-c参数
-                    if [[ "$cmdline" =~ -c[[:space:]]+([^[:space:]]+) ]]; then
-                        config_path="${BASH_REMATCH[1]}"
-                        echo -e "${GREEN}[✓] 进程 $pid 使用配置文件: $config_path${NC}"
-                        nginx_processes+=("$pid:$config_path")
-                        nginx_configs+=("$config_path")
-                    elif [[ "$cmdline" =~ -g[[:space:]]+([^[:space:]]+) ]]; then
-                        # 处理-g参数中的配置
-                        local global_config="${BASH_REMATCH[1]}"
-                        if [[ "$global_config" == *"conf"* ]]; then
-                            config_path="/etc/nginx/nginx.conf"  # 默认路径
-                            echo -e "${GREEN}[✓] 进程 $pid 使用全局配置: $global_config${NC}"
-                            nginx_processes+=("$pid:$config_path")
-                            nginx_configs+=("$config_path")
-                        fi
-                    fi
-                fi
-            done < <(pgrep -f "nginx: master" | head -10)
-            
-            # 去重
-            nginx_configs=($(printf "%s\n" "${nginx_configs[@]}" | sort -u))
-            
-            # 方法2: 搜索包含域名的配置文件
-            echo -e "${BLUE}[*] 搜索包含域名 $domain 的配置文件...${NC}"
-            
-            # 定义搜索路径
-            local search_paths=(
-                "/etc/nginx"
-                "/usr/local/nginx/conf"
-                "/usr/local/etc/nginx"
-                "/opt/nginx/conf"
-            )
-            
-            # 记录找到的配置文件
-            local found_domain_configs=()
-            
-            for nginx_root in "${search_paths[@]}"; do
-                if [ -d "$nginx_root" ]; then
-                    # 使用grep递归搜索包含域名的.conf文件
-                    local grep_results
-                    grep_results=$(grep -r -l "server_name.*$domain" "$nginx_root" 2>/dev/null | grep "\.conf$")
-                    
-                    while IFS= read -r config_file; do
-                        if [ -f "$config_file" ] && [[ ! " ${found_domain_configs[@]} " =~ " ${config_file} " ]]; then
-                            found_domain_configs+=("$config_file")
-                            echo -e "${GREEN}[✓] 找到包含域名的配置: $config_file${NC}"
-                        fi
-                    done <<< "$grep_results"
-                    
-                    # 也检查sites-enabled目录
-                    if [ -d "$nginx_root/sites-enabled" ]; then
-                        for config in "$nginx_root/sites-enabled"/*; do
-                            if [ -f "$config" ] && grep -q "server_name.*$domain" "$config" 2>/dev/null; then
-                                if [[ ! " ${found_domain_configs[@]} " =~ " ${config} " ]]; then
-                                    found_domain_configs+=("$config")
-                                    echo -e "${GREEN}[✓] 在sites-enabled找到: $config${NC}"
-                                fi
-                            fi
-                        done
-                    fi
-                    
-                    # 检查conf.d目录
-                    if [ -d "$nginx_root/conf.d" ]; then
-                        for config in "$nginx_root/conf.d"/*.conf; do
-                            if [ -f "$config" ] && grep -q "server_name.*$domain" "$config" 2>/dev/null; then
-                                if [[ ! " ${found_domain_configs[@]} " =~ " ${config} " ]]; then
-                                    found_domain_configs+=("$config")
-                                    echo -e "${GREEN}[✓] 在conf.d找到: $config${NC}"
-                                fi
-                            fi
-                        done
-                    fi
-                fi
-            done
-            
-            # 合并所有找到的配置文件
-            local all_configs=()
-            for config in "${nginx_configs[@]}" "${found_domain_configs[@]}"; do
-                all_configs+=("$config")
-            done
-            
-            # 去重
-            all_configs=($(printf "%s\n" "${all_configs[@]}" | sort -u))
-            
-            # 选择配置文件
+            # 获取Nginx配置文件路径
             local nginx_conf=""
-            if [ ${#all_configs[@]} -eq 0 ]; then
-                echo -e "${YELLOW}[!] 未找到Nginx配置文件${NC}"
-                local default_conf="/etc/nginx/conf.d/$domain.conf"
-                if [ ! -d "/etc/nginx/conf.d" ]; then
-                    default_conf="/etc/nginx/sites-available/$domain"
-                fi
+            
+            # 方法1: 尝试从运行的Nginx进程中获取配置
+            echo -e "${BLUE}[*] 查找运行的Nginx进程...${NC}"
+            local nginx_pid
+            nginx_pid=$(pgrep -f "nginx: master" | head -1)
+            
+            if [ -n "$nginx_pid" ]; then
+                # 从进程命令行中提取配置文件路径
+                local cmdline
+                cmdline=$(cat "/proc/$nginx_pid/cmdline" 2>/dev/null | tr '\0' ' ')
                 
-                read -p "请输入Nginx配置文件路径(默认: $default_conf): " user_input
-                nginx_conf="${user_input:-$default_conf}"
-            elif [ ${#all_configs[@]} -eq 1 ]; then
-                nginx_conf="${all_configs[0]}"
-                echo -e "${GREEN}[✓] 使用配置文件: $nginx_conf${NC}"
-            else
-                echo -e "${GREEN}[i] 发现多个配置文件:${NC}"
-                echo ""
-                
-                for i in "${!all_configs[@]}"; do
-                    local config="${all_configs[$i]}"
-                    local domain_match=""
-                    local ssl_config=""
-                    
-                    if [ -f "$config" ]; then
-                        if grep -q "server_name.*$domain" "$config" 2>/dev/null; then
-                            domain_match="(包含域名)"
-                        fi
-                        
-                        # 检查SSL配置状态
-                        if grep -q "^\s*ssl_certificate" "$config" 2>/dev/null; then
-                            ssl_config="(已配置SSL)"
-                        elif grep -q "^\s*#\s*ssl_certificate" "$config" 2>/dev/null; then
-                            ssl_config="(SSL被注释)"
-                        fi
-                    fi
-                    
-                    echo -e "  ${BLUE}[$((i+1))]${NC} $config $domain_match $ssl_config"
-                done
-                
-                echo -e "  ${BLUE}[0]${NC} 手动输入路径"
-                echo ""
-                
-                read -p "请选择配置文件 [0-${#all_configs[@]}]: " choice
-                
-                if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -eq 0 ]; then
-                    read -p "请输入配置文件路径: " nginx_conf
-                elif [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -le ${#all_configs[@]} ]; then
-                    nginx_conf="${all_configs[$((choice-1))]}"
-                else
-                    echo -e "${RED}[✗] 无效选择，使用第一个配置文件${NC}"
-                    nginx_conf="${all_configs[0]}"
+                # 检查是否有-c参数指定配置文件
+                if [[ "$cmdline" =~ -c[[:space:]]+([^[:space:]]+) ]]; then
+                    nginx_conf="${BASH_REMATCH[1]}"
+                    echo -e "${GREEN}[✓] 从Nginx进程($nginx_pid)获取配置文件: $nginx_conf${NC}"
                 fi
             fi
             
-            # 确保配置文件存在
+            # 方法2: 如果没有找到配置文件，搜索常见位置
+            if [ -z "$nginx_conf" ]; then
+                echo -e "${YELLOW}[!] 未从进程获取到配置文件，搜索默认位置...${NC}"
+                
+                local common_paths=(
+                    "/etc/nginx/nginx.conf"
+                    "/usr/local/nginx/conf/nginx.conf"
+                    "/usr/local/etc/nginx/nginx.conf"
+                    "/opt/nginx/conf/nginx.conf"
+                )
+                
+                for path in "${common_paths[@]}"; do
+                    if [ -f "$path" ]; then
+                        nginx_conf="$path"
+                        echo -e "${GREEN}[✓] 找到配置文件: $nginx_conf${NC}"
+                        break
+                    fi
+                done
+            fi
+            
+            # 方法3: 如果还没有找到，让用户输入
+            if [ -z "$nginx_conf" ]; then
+                echo -e "${YELLOW}[!] 未找到Nginx配置文件${NC}"
+                read -p "请输入Nginx配置文件路径: " nginx_conf
+            fi
+            
+            # 验证配置文件是否存在
             if [ ! -f "$nginx_conf" ]; then
-                echo -e "${YELLOW}[!] 配置文件不存在: $nginx_conf${NC}"
-                echo -e "${BLUE}[*] 证书文件位置:${NC}"
-                echo "证书: $cert_path"
-                [ -n "$fullchain_path" ] && echo "完整链证书: $fullchain_path (推荐使用)"
-                echo "私钥: $key_path"
+                echo -e "${RED}[✗] 配置文件不存在: $nginx_conf${NC}"
+                echo -e "${YELLOW}[!] 请检查路径后重试${NC}"
                 return 1
             fi
             
-            # 显示配置文件内容（前20行）
-            echo -e "${BLUE}[*] 配置文件预览:${NC}"
-            head -20 "$nginx_conf" | cat -n
-            echo ""
+            echo -e "${GREEN}[✓] 使用配置文件: $nginx_conf${NC}"
             
-            # 创建备份
+            # 备份配置文件
             local backup_file="$nginx_conf.bak.$(date +%Y%m%d_%H%M%S)"
             cp "$nginx_conf" "$backup_file"
             echo -e "${GREEN}[✓] 配置文件已备份到: $backup_file${NC}"
             
-            # 确定要使用的证书路径
+            # 确定要使用的证书路径（优先使用完整链证书）
             local cert_to_use="$cert_path"
             if [ -n "$fullchain_path" ]; then
                 cert_to_use="$fullchain_path"
                 echo -e "${GREEN}[✓] 使用完整链证书 (推荐)${NC}"
             fi
             
-            # 更新配置文件 - 处理可能被注释的SSL配置
-            echo -e "${BLUE}[*] 更新SSL证书配置...${NC}"
+            # 更新Nginx配置文件
+            echo -e "${BLUE}[*] 更新Nginx配置文件...${NC}"
             
-            # 检查当前SSL配置状态
-            local ssl_cert_line
-            local ssl_key_line
-            ssl_cert_line=$(grep -n "^\s*#\?\s*ssl_certificate" "$nginx_conf" | head -1)
-            ssl_key_line=$(grep -n "^\s*#\?\s*ssl_certificate_key" "$nginx_conf" | head -1)
+            # 创建临时配置文件
+            local temp_conf="/tmp/nginx_ssl_update_$(date +%s).conf"
+            cp "$nginx_conf" "$temp_conf"
             
-            if [ -n "$ssl_cert_line" ] && [ -n "$ssl_key_line" ]; then
-                # 已有SSL配置（可能被注释）
-                echo -e "${GREEN}[✓] 找到现有的SSL配置${NC}"
+            # 处理通配符域名的目录名
+            local clean_domain="${domain//\*/_}"
+            
+            # 搜索并更新所有包含该域名的server块
+            local updated=false
+            
+            # 使用awk处理配置文件，更可靠
+            awk -v domain="$domain" \
+                -v clean_domain="$clean_domain" \
+                -v cert_path="$cert_to_use" \
+                -v key_path="$key_path" \
+                -v fullchain_path="$fullchain_path" \
+                '
+            BEGIN {
+                in_server = 0
+                server_start = 0
+                ssl_updated = 0
+            }
+            
+            # 检测server块开始
+            /^\s*server\s*{/ {
+                in_server = 1
+                server_start = NR
+                ssl_updated = 0
+                server_lines = $0 "\n"
+                next
+            }
+            
+            # 收集server块内容
+            in_server {
+                server_lines = server_lines $0 "\n"
                 
-                # 使用sed取消注释并更新路径
-                # 处理ssl_certificate（支持多种注释格式）
-                sed -i "s|^\s*#\s*ssl_certificate\s\+[^;]\+;|ssl_certificate $cert_to_use;|" "$nginx_conf"
-                sed -i "s|^\s*ssl_certificate\s\+[^;]\+;|ssl_certificate $cert_to_use;|" "$nginx_conf"
+                # 检测server块结束
+                if (/^\s*}/) {
+                    # 检查这个server块是否包含目标域名
+                    if (server_lines ~ domain || server_lines ~ clean_domain) {
+                        # 在这个server块中更新或添加SSL配置
+                        updated_server = ""
+                        split(server_lines, lines, "\n")
+                        for (i=1; i<=length(lines); i++) {
+                            line = lines[i]
+                            
+                            # 如果找到ssl_certificate行，更新它
+                            if (line ~ /^\s*#?\s*ssl_certificate\s+/) {
+                                updated_server = updated_server "    ssl_certificate " cert_path ";\n"
+                                ssl_updated = 1
+                            }
+                            # 如果找到ssl_certificate_key行，更新它
+                            else if (line ~ /^\s*#?\s*ssl_certificate_key\s+/) {
+                                updated_server = updated_server "    ssl_certificate_key " key_path ";\n"
+                                ssl_updated = 1
+                            }
+                            # 如果是server块的最后一行，检查是否需要添加SSL配置
+                            else if (i == length(lines) && !ssl_updated) {
+                                # 在server块结束前添加完整的SSL配置
+                                updated_server = updated_server line "\n"
+                                updated_server = updated_server "\n    # SSL证书配置 - 由acme-ssl优化脚本自动添加\n"
+                                updated_server = updated_server "    ssl_certificate " cert_path ";\n"
+                                updated_server = updated_server "    ssl_certificate_key " key_path ";\n"
+                                updated_server = updated_server "    ssl_protocols TLSv1.2 TLSv1.3;\n"
+                                updated_server = updated_server "    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;\n"
+                                updated_server = updated_server "    ssl_prefer_server_ciphers off;\n"
+                                updated_server = updated_server "    ssl_session_cache shared:SSL:10m;\n"
+                                updated_server = updated_server "    ssl_session_timeout 10m;\n"
+                            }
+                            else {
+                                updated_server = updated_server line "\n"
+                            }
+                        }
+                        print updated_server
+                        updated = 1
+                    } else {
+                        # 不是目标域名的server块，原样输出
+                        print server_lines
+                    }
+                    
+                    in_server = 0
+                    server_lines = ""
+                    next
+                }
+                next
+            }
+            
+            # 非server块内容，原样输出
+            !in_server {
+                print $0
+            }
+            
+            END {
+                if (updated) {
+                    print "# SSL配置已为域名 " domain " 更新 - " strftime("%Y-%m-%d %H:%M:%S") > "/dev/stderr"
+                } else {
+                    print "# 未找到包含域名 " domain " 的server块，可能需要手动配置" > "/dev/stderr"
+                }
+            }
+            ' "$temp_conf" > "${temp_conf}.new"
+            
+            if [ -s "${temp_conf}.new" ]; then
+                mv "${temp_conf}.new" "$nginx_conf"
+                echo -e "${GREEN}[✓] Nginx配置文件更新完成${NC}"
                 
-                # 处理ssl_certificate_key
-                sed -i "s|^\s*#\s*ssl_certificate_key\s\+[^;]\+;|ssl_certificate_key $key_path;|" "$nginx_conf"
-                sed -i "s|^\s*ssl_certificate_key\s\+[^;]\+;|ssl_certificate_key $key_path;|" "$nginx_conf"
-                
-                echo -e "${GREEN}[✓] 已更新SSL证书路径${NC}"
+                # 显示更新的SSL配置部分
+                echo -e "${BLUE}[*] 更新的SSL配置:${NC}"
+                grep -n -A3 -B1 "ssl_certificate.*$clean_domain\|ssl_certificate_key.*$clean_domain" "$nginx_conf" | head -20
             else
-                # 没有找到SSL配置，需要添加到合适的server块
-                echo -e "${YELLOW}[!] 未找到SSL配置，尝试添加到server块...${NC}"
-                
-                # 查找包含域名的server块
-                local server_block_start
-                server_block_start=$(grep -n "server_name.*$domain" "$nginx_conf" | head -1 | cut -d: -f1)
-                
-                if [ -n "$server_block_start" ]; then
-                    # 找到server块，查找server块的结束位置
-                    local line_num=$server_block_start
-                    local brace_count=0
-                    local server_block_end=0
-                    
-                    while IFS= read -r line; do
-                        ((line_num++))
-                        # 统计花括号
-                        brace_count=$((brace_count + $(echo "$line" | grep -o "{" | wc -l) - $(echo "$line" | grep -o "}" | wc -l)))
-                        
-                        if [ $brace_count -le 0 ] && [ $server_block_end -eq 0 ]; then
-                            server_block_end=$line_num
-                            break
-                        fi
-                    done < <(tail -n +$((server_block_start+1)) "$nginx_conf")
-                    
-                    if [ $server_block_end -gt 0 ]; then
-                        # 在server块结束前添加SSL配置
-                        local ssl_config="\n    # SSL证书配置\n    ssl_certificate $cert_to_use;\n    ssl_certificate_key $key_path;\n    ssl_protocols TLSv1.2 TLSv1.3;\n    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;\n    ssl_prefer_server_ciphers off;"
-                        
-                        # 在server块结束前插入
-                        sed -i "$((server_block_end-1)) a\\$ssl_config" "$nginx_conf"
-                        echo -e "${GREEN}[✓] 已添加SSL配置到server块${NC}"
-                    else
-                        echo -e "${RED}[✗] 无法确定server块范围${NC}"
-                    fi
-                else
-                    echo -e "${RED}[✗] 未找到包含域名 $domain 的server块${NC}"
-                    echo -e "${YELLOW}[!] 请手动更新配置文件${NC}"
-                fi
+                echo -e "${YELLOW}[!] 配置文件未更新，可能未找到包含域名 $domain 的server块${NC}"
             fi
             
-            # 显示更新后的配置（SSL部分）
-            echo -e "${BLUE}[*] 更新后的SSL配置:${NC}"
-            grep -A2 -B2 "ssl_certificate\|ssl_certificate_key" "$nginx_conf" | head -10
+            # 清理临时文件
+            rm -f "$temp_conf" "${temp_conf}.new"
             
             # 测试Nginx配置
             echo -e "\n${BLUE}[*] 测试Nginx配置...${NC}"
             
-            if nginx -t -c "$nginx_conf" 2>/dev/null; then
+            if nginx -t 2>/dev/null; then
                 echo -e "${GREEN}[✓] Nginx配置测试通过${NC}"
                 
                 # 重载Nginx
                 echo -e "${BLUE}[*] 重载Nginx服务...${NC}"
                 
-                # 查找使用此配置文件的Nginx进程
-                local reloaded=false
-                for process_info in "${nginx_processes[@]}"; do
-                    local pid="${process_info%%:*}"
-                    local config="${process_info##*:}"
-                    
-                    if [ "$config" = "$nginx_conf" ] || [ "$(realpath "$config" 2>/dev/null)" = "$(realpath "$nginx_conf" 2>/dev/null)" ]; then
-                        if kill -HUP "$pid" 2>/dev/null; then
-                            echo -e "${GREEN}[✓] 已重载Nginx进程 $pid${NC}"
-                            reloaded=true
-                        fi
+                if systemctl reload nginx 2>/dev/null; then
+                    echo -e "${GREEN}[✓] Nginx重载成功${NC}"
+                elif service nginx reload 2>/dev/null; then
+                    echo -e "${GREEN}[✓] Nginx重载成功${NC}"
+                elif [ -n "$nginx_pid" ]; then
+                    if kill -HUP "$nginx_pid" 2>/dev/null; then
+                        echo -e "${GREEN}[✓] Nginx重载成功 (通过发送HUP信号)${NC}"
+                    else
+                        echo -e "${YELLOW}[!] 无法重载Nginx，请手动执行: nginx -s reload${NC}"
                     fi
-                done
-                
-                if [ "$reloaded" = false ]; then
-                    echo -e "${YELLOW}[!] 未找到使用此配置的Nginx进程${NC}"
-                    echo -e "${YELLOW}[!] 请手动重载Nginx:${NC}"
-                    echo "  nginx -s reload  # 如果使用默认配置"
-                    echo "  或"
-                    echo "  kill -HUP <nginx_pid>  # 重载特定进程"
+                else
+                    echo -e "${YELLOW}[!] 无法重载Nginx，请手动执行: nginx -s reload${NC}"
                 fi
                 
                 echo -e "${GREEN}[✓] 证书安装完成！${NC}"
+                echo -e "${BLUE}[*] 证书文件已应用到Nginx配置${NC}"
+                echo -e "${BLUE}[*] 原始配置文件备份在: $backup_file${NC}"
             else
                 echo -e "${RED}[✗] Nginx配置测试失败${NC}"
                 echo -e "${YELLOW}[!] 详细错误信息:${NC}"
-                nginx -t -c "$nginx_conf" 2>&1
+                nginx -t 2>&1
                 echo -e "\n${YELLOW}[!] 配置文件已备份到: $backup_file${NC}"
                 echo -e "${YELLOW}[!] 您可以手动修复配置或恢复备份${NC}"
                 return 1
             fi
             ;;
             
-        2) # X-UI（保持不变）
-            local xui_config="/etc/x-ui/config.json"
-            if [ ! -f "$xui_config" ]; then
-                xui_config="/usr/local/x-ui/config.json"
+        2) # 自定义路径（仅输出路径）
+            echo -e "\n${BLUE}=== 证书路径信息 ===${NC}"
+            echo -e "${GREEN}证书文件位置:${NC}"
+            echo -e "  ${YELLOW}证书文件:${NC} $cert_path"
+            
+            if [ -n "$fullchain_path" ]; then
+                echo -e "  ${YELLOW}完整链证书:${NC} $fullchain_path"
+                echo -e "  ${GREEN}(推荐使用完整链证书，包含中间证书)${NC}"
             fi
             
-            if [ ! -f "$xui_config" ]; then
-                read -p "请输入X-UI配置文件路径: " xui_config
+            echo -e "  ${YELLOW}私钥文件:${NC} $key_path"
+            
+            if [ -f "$ca_path" ]; then
+                echo -e "  ${YELLOW}CA证书:${NC} $ca_path"
             fi
             
-            if [ -f "$xui_config" ]; then
-                echo -e "${GREEN}[✓] 请手动更新X-UI配置:${NC}"
-                echo "证书路径: $cert_path"
-                [ -n "$fullchain_path" ] && echo "完整链证书: $fullchain_path"
-                echo "私钥路径: $key_path"
+            echo ""
+            echo -e "${BLUE}使用示例:${NC}"
+            echo "在Nginx配置中添加:"
+            echo "  ssl_certificate $(basename "$cert_path");"
+            echo "  ssl_certificate_key $(basename "$key_path");"
+            
+            if [ -n "$fullchain_path" ]; then
                 echo ""
-                echo "在X-UI面板中："
-                echo "1. 进入入站列表"
-                echo "2. 编辑相关入站"
-                echo "3. 在TLS设置中更新证书路径"
-            else
-                echo -e "${YELLOW}[!] X-UI配置文件不存在，证书文件位置:${NC}"
-                echo "证书: $cert_path"
-                [ -n "$fullchain_path" ] && echo "完整链证书: $fullchain_path"
-                echo "私钥: $key_path"
-            fi
-            ;;
-            
-        3) # 自定义路径（保持不变）
-            echo -e "${GREEN}[✓] 证书文件位置:${NC}"
-            echo "证书: $cert_path"
-            [ -n "$fullchain_path" ] && echo "完整链证书: $fullchain_path (推荐)"
-            echo "私钥: $key_path"
-            [ -f "$ca_path" ] && echo "CA证书: $ca_path"
-            
-            read -p "请输入目标证书路径: " target_cert
-            read -p "请输入目标私钥路径: " target_key
-            
-            if [ -n "$target_cert" ]; then
-                mkdir -p "$(dirname "$target_cert")"
-                local source_cert="$cert_path"
-                [ -n "$fullchain_path" ] && source_cert="$fullchain_path"
-                cp "$source_cert" "$target_cert"
-                chmod 644 "$target_cert"
-                echo -e "${GREEN}[✓] 证书复制到: $target_cert${NC}"
-            fi
-            
-            if [ -n "$target_key" ]; then
-                mkdir -p "$(dirname "$target_key")"
-                cp "$key_path" "$target_key"
-                chmod 600 "$target_key"
-                echo -e "${GREEN}[✓] 私钥复制到: $target_key${NC}"
+                echo -e "${GREEN}或使用完整链证书:${NC}"
+                echo "  ssl_certificate $(basename "$fullchain_path");"
+                echo "  ssl_certificate_key $(basename "$key_path");"
             fi
             ;;
             
