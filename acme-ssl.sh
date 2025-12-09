@@ -883,49 +883,54 @@ install_certificate_menu() {
                 fi
                 
                 # 尝试重载Nginx
-if [ "$nginx_test_success" = true ]; then
-    echo -e "${YELLOW}[i] 正在重载Nginx服务...${NC}"
-    
-    # 尝试多种重载方式
-    if systemctl reload nginx 2>/dev/null; then
-        echo -e "${GREEN}[✓] 通过systemctl重载Nginx成功${NC}"
-        nginx_reload_success=true
-    elif service nginx reload 2>/dev/null; then
-        echo -e "${GREEN}[✓] 通过service重载Nginx成功${NC}"
-        nginx_reload_success=true
-    elif rc-service nginx reload 2>/dev/null; then
-        echo -e "${GREEN}[✓] 通过rc-service重载Nginx成功${NC}"
-        nginx_reload_success=true
-    else
-        echo -e "${YELLOW}[!] 无法通过服务管理器重载Nginx，尝试直接发送信号${NC}"
-        # 使用当前用户的Nginx进程（如果存在）
-        local nginx_pid=$(ps ux | grep "nginx: master" | grep -v grep | awk '{print $2}' | head -1)
-        if [ -z "$nginx_pid" ]; then
-            nginx_pid=$(ps aux | grep "nginx: master" | grep -v grep | awk '{print $2}' | head -1)
-        fi
-        if [ -n "$nginx_pid" ]; then
-            if kill -HUP "$nginx_pid" 2>/dev/null; then
-                echo -e "${GREEN}[✓] Nginx已通过HUP信号重载${NC}"
-                nginx_reload_success=true
+                if [ "$nginx_test_success" = true ]; then
+                    echo -e "${YELLOW}[i] 正在重载Nginx服务...${NC}"
+                    
+                    # 尝试多种重载方式
+                    if systemctl reload nginx 2>/dev/null; then
+                        echo -e "${GREEN}[✓] 通过systemctl重载Nginx成功${NC}"
+                        nginx_reload_success=true
+                    elif service nginx reload 2>/dev/null; then
+                        echo -e "${GREEN}[✓] 通过service重载Nginx成功${NC}"
+                        nginx_reload_success=true
+                    else
+                        echo -e "${YELLOW}[!] 无法通过systemctl/service重载Nginx，尝试直接发送信号${NC}"
+                        # 使用当前用户的Nginx进程（如果存在）
+                        local nginx_pid=$(ps ux | grep "nginx: master" | grep -v grep | awk '{print $2}' | head -1)
+                        if [ -z "$nginx_pid" ]; then
+                            nginx_pid=$(ps aux | grep "nginx: master" | grep -v grep | awk '{print $2}' | head -1)
+                        fi
+                        if [ -n "$nginx_pid" ]; then
+                            if kill -HUP "$nginx_pid" 2>/dev/null; then
+                                echo -e "${GREEN}[✓] Nginx已通过HUP信号重载${NC}"
+                                nginx_reload_success=true
+                            else
+                                echo -e "${RED}[✗] 无法通过信号重载Nginx${NC}"
+                            fi
+                        else
+                            echo -e "${RED}[✗] 未找到Nginx主进程PID${NC}"
+                        fi
+                    fi
+                fi
+                
+                if [ "$nginx_reload_success" = true ]; then
+                    echo -e "${GREEN}[✓] Nginx配置已更新并生效${NC}"
+                else
+                    echo -e "${YELLOW}[!] Nginx配置文件已更新，但需要手动重载服务${NC}"
+                    echo -e "${YELLOW}[i] 请执行以下命令之一重载Nginx:${NC}"
+                    echo "  sudo systemctl reload nginx"
+                    echo "  sudo service nginx reload"
+                    echo "  sudo nginx -s reload"
+                fi
             else
-                echo -e "${RED}[✗] 无法通过信号重载Nginx${NC}"
+                echo -e "${YELLOW}[!] Nginx配置文件不存在，证书文件位置:${NC}"
+                echo "证书: $cert_path"
+                [ -n "$fullchain_path" ] && echo "完整链证书: $fullchain_path"
+                echo "私钥: $key_path"
+                echo ""
+                echo -e "${YELLOW}[i] 请手动更新Nginx配置文件中的证书路径${NC}"
             fi
-        else
-            echo -e "${RED}[✗] 未找到Nginx主进程PID${NC}"
-        fi
-    fi
-fi
-
-if [ "$nginx_reload_success" = true ]; then
-    echo -e "${GREEN}[✓] Nginx配置已更新并生效${NC}"
-else
-    echo -e "${YELLOW}[!] Nginx配置文件已更新，但需要手动重载服务${NC}"
-    echo -e "${YELLOW}[i] 请执行以下命令之一重载Nginx:${NC}"
-    echo "  sudo systemctl reload nginx"
-    echo "  sudo service nginx reload"
-    echo "  sudo rc-service nginx reload"
-    echo "  sudo nginx -s reload"
-fi
+            ;;
             
         2) # X-UI
             local xui_config="/etc/x-ui/config.json"
