@@ -706,36 +706,226 @@ install_certificate_menu() {
 
     case $service_choice in
         1) # Nginx
-            local nginx_conf="/etc/nginx/conf.d/$domain.conf"
-            if [ ! -f "$nginx_conf" ]; then
-                nginx_conf="/etc/nginx/sites-available/$domain"
+            # 获取当前用户的Nginx进程信息
+            local nginx_processes=$(ps ux | grep -E "nginx:( master|worker)" | grep -v grep)
+            
+            # 如果没有找到当前用户的Nginx进程，尝试用ps aux查找所有用户（作为后备）
+            if [ -z "$nginx_processes" ]; then
+                echo -e "${YELLOW}[!] 未找到当前用户的Nginx进程${NC}"
+                echo -e "${YELLOW}[i] 正在搜索所有用户的Nginx进程...${NC}"
+                nginx_processes=$(ps aux | grep -E "nginx:( master|worker)" | grep -v grep)
             fi
             
-            if [ ! -f "$nginx_conf" ]; then
-                read -p "请输入Nginx配置文件路径: " nginx_conf
+            local nginx_conf_list=()
+            local nginx_conf_selected=""
+            
+            if [ -n "$nginx_processes" ]; then
+                # 提取Nginx主进程（优先使用当前用户的进程）
+                local nginx_master=""
+                local current_user=$(whoami)
+                
+                # 优先查找当前用户的Nginx主进程
+                nginx_master=$(echo "$nginx_processes" | grep "nginx: master" | grep "^$current_user" | head -1)
+                
+                # 如果没有找到当前用户的主进程，使用第一个找到的主进程
+                if [ -z "$nginx_master" ]; then
+                    nginx_master=$(echo "$nginx_processes" | grep "nginx: master" | head -1)
+                    if [ -n "$nginx_master" ]; then
+                        local process_user=$(echo "$nginx_master" | awk '{print $1}')
+                        echo -e "${YELLOW}[i] 注意：Nginx进程由用户 $process_user 运行，当前用户为 $current_user${NC}"
+                        echo -e "${YELLOW}[i] 可能需要相应权限才能更新配置文件${NC}"
+                    fi
+                fi
+                
+                # 解析Nginx主进程的启动参数
+                if [ -n "$nginx_master" ]; then
+                    # 提取-c参数后面的配置文件路径
+                    if [[ "$nginx_master" =~ \-c[[:space:]]+([^[:space:]]+) ]]; then
+                        local main_config="${BASH_REMATCH[1]}"
+                        echo -e "${GREEN}[i] 发现Nginx主配置文件: $main_config${NC}"
+                        
+                        # 从主配置文件中查找包含的配置文件
+                        if [ -f "$main_config" ]; then
+                            # 查找include指令引入的配置文件
+                            local included_configs=$(grep -E "^\s*include\s+" "$main_config" | \
+                                sed -E 's/^\s*include\s+//;s/;$//')
+                            
+                            # 处理通配符路径
+                            for inc_conf in $included_configs; do
+                                # 如果路径包含通配符，使用find查找实际文件
+                                if [[ "$inc_conf" == *"*"* ]]; then
+                                    local found_files=$(find /etc/nginx -path "$inc_conf" 2>/dev/null | head -10)
+                                    for file in $found_files; do
+                                        nginx_conf_list+=("$file")
+                                    done
+                                elif [ -f "$inc_conf" ]; then
+                                    nginx_conf_list+=("$inc_conf")
+                                fi
+                            done
+                        fi
+                    fi
+                fi
             fi
             
+            # 如果没有找到配置文件，尝试常见路径
+            if [ ${#nginx_conf_list[@]} -eq 0 ]; then
+                echo -e "${YELLOW}[i] 正在搜索常见的Nginx配置文件路径...${NC}"
+                
+                # 常见配置文件路径
+                local common_paths=(
+                    "/etc/nginx/conf.d/*.conf"
+                    "/etc/nginx/sites-enabled/*"
+                    "/etc/nginx/sites-available/*"
+                    "/usr/local/nginx/conf/vhost/*.conf"
+                    "/usr/local/nginx/conf/conf.d/*.conf"
+                    "/usr/local/etc/nginx/servers/*.conf"
+                )
+                
+                for pattern in "${common_paths[@]}"; do
+                    # 使用nullglob避免没有匹配时原样输出通配符
+                    shopt -s nullglob
+                    for file in $pattern; do
+                        if [ -f "$file" ] && ([[ "$file" == *.conf ]] || [[ "$file" == *"$domain"* ]] || grep -q "ssl_certificate" "$file" 2>/dev/null); then
+                            nginx_conf_list+=("$file")
+                        fi
+                    done
+                    shopt -u nullglob
+                done
+            fi
+            
+            # 去重并排序
+            nginx_conf_list=($(printf "%s\n" "${nginx_conf_list[@]}" | sort -u))
+            
+            if [ ${#nginx_conf_list[@]} -eq 0 ]; then
+                echo -e "${YELLOW}[!] 未找到任何Nginx配置文件${NC}"
+                local default_conf="/etc/nginx/conf.d/$domain.conf"
+                if [ ! -f "$default_conf" ]; then
+                    default_conf="/etc/nginx/sites-available/$domain"
+                fi
+                
+                read -p "请输入Nginx配置文件路径(默认: $default_conf): " nginx_conf
+                if [ -z "$nginx_conf" ]; then
+                    nginx_conf="$default_conf"
+                fi
+            elif [ ${#nginx_conf_list[@]} -eq 1 ]; then
+                # 只有一个配置文件，直接使用
+                nginx_conf="${nginx_conf_list[0]}"
+                echo -e "${GREEN}[✓] 使用配置文件: $nginx_conf${NC}"
+            else
+                # 多个配置文件，让用户选择
+                echo -e "${GREEN}[i] 发现多个Nginx配置文件:${NC}"
+                echo ""
+                
+                local index=1
+                for config in "${nginx_conf_list[@]}"; do
+                    # 尝试在配置文件中查找域名
+                    local has_domain=""
+                    if [ -f "$config" ]; then
+                        if grep -q "server_name.*$domain" "$config" 2>/dev/null; then
+                            has_domain=" (包含域名)"
+                        elif grep -q "ssl_certificate" "$config" 2>/dev/null; then
+                            has_domain=" (已配置SSL)"
+                        fi
+                    fi
+                    
+                    echo -e "  ${BLUE}[$index]${NC} $config$has_domain"
+                    ((index++))
+                done
+                
+                echo -e "  ${BLUE}[0]${NC} 手动输入路径"
+                echo ""
+                
+                local choice
+                read -p "请选择要更新的配置文件编号 [0-${#nginx_conf_list[@]}]: " choice
+                
+                if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -eq 0 ]; then
+                    read -p "请输入Nginx配置文件路径: " nginx_conf
+                elif [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -le ${#nginx_conf_list[@]} ]; then
+                    nginx_conf="${nginx_conf_list[$((choice-1))]}"
+                    echo -e "${GREEN}[✓] 选择配置文件: $nginx_conf${NC}"
+                else
+                    echo -e "${RED}[✗] 无效的选择，将使用第一个配置文件${NC}"
+                    nginx_conf="${nginx_conf_list[0]}"
+                fi
+            fi
+            
+            # 更新配置文件
             if [ -f "$nginx_conf" ]; then
-                cp "$nginx_conf" "$nginx_conf.bak"
+                # 创建备份
+                local backup_file="$nginx_conf.bak.$(date +%Y%m%d_%H%M%S)"
+                cp "$nginx_conf" "$backup_file"
+                echo -e "${GREEN}[✓] 配置文件已备份到: $backup_file${NC}"
+                
                 local cert_to_use="$cert_path"
                 if [ -n "$fullchain_path" ]; then
                     cert_to_use="$fullchain_path"
                     echo -e "${GREEN}[✓] 使用完整链证书 (推荐)${NC}"
                 fi
                 
+                # 更新证书路径
                 sed -i "s|ssl_certificate .*|ssl_certificate $cert_to_use;|" "$nginx_conf"
                 sed -i "s|ssl_certificate_key .*|ssl_certificate_key $key_path;|" "$nginx_conf"
                 
-                nginx -t && systemctl reload nginx
+                # 测试并重载Nginx
+                echo -e "${YELLOW}[i] 正在测试Nginx配置...${NC}"
                 
-                echo -e "${GREEN}[✓] Nginx配置已更新${NC}"
+                local nginx_test_success=false
+                local nginx_reload_success=false
+                
+                # 测试Nginx配置
+                if nginx -t 2>/dev/null; then
+                    echo -e "${GREEN}[✓] Nginx配置测试通过${NC}"
+                    nginx_test_success=true
+                else
+                    echo -e "${RED}[✗] Nginx配置测试失败${NC}"
+                    echo -e "${YELLOW}[i] 尝试查看详细错误信息...${NC}"
+                    nginx -t 2>&1
+                fi
+                
+                # 尝试重载Nginx
+if [ "$nginx_test_success" = true ]; then
+    echo -e "${YELLOW}[i] 正在重载Nginx服务...${NC}"
+    
+    # 尝试多种重载方式
+    if systemctl reload nginx 2>/dev/null; then
+        echo -e "${GREEN}[✓] 通过systemctl重载Nginx成功${NC}"
+        nginx_reload_success=true
+    elif service nginx reload 2>/dev/null; then
+        echo -e "${GREEN}[✓] 通过service重载Nginx成功${NC}"
+        nginx_reload_success=true
+    elif rc-service nginx reload 2>/dev/null; then
+        echo -e "${GREEN}[✓] 通过rc-service重载Nginx成功${NC}"
+        nginx_reload_success=true
+    else
+        echo -e "${YELLOW}[!] 无法通过服务管理器重载Nginx，尝试直接发送信号${NC}"
+        # 使用当前用户的Nginx进程（如果存在）
+        local nginx_pid=$(ps ux | grep "nginx: master" | grep -v grep | awk '{print $2}' | head -1)
+        if [ -z "$nginx_pid" ]; then
+            nginx_pid=$(ps aux | grep "nginx: master" | grep -v grep | awk '{print $2}' | head -1)
+        fi
+        if [ -n "$nginx_pid" ]; then
+            if kill -HUP "$nginx_pid" 2>/dev/null; then
+                echo -e "${GREEN}[✓] Nginx已通过HUP信号重载${NC}"
+                nginx_reload_success=true
             else
-                echo -e "${YELLOW}[!] Nginx配置文件不存在，证书文件位置:${NC}"
-                echo "证书: $cert_path"
-                [ -n "$fullchain_path" ] && echo "完整链证书: $fullchain_path"
-                echo "私钥: $key_path"
+                echo -e "${RED}[✗] 无法通过信号重载Nginx${NC}"
             fi
-            ;;
+        else
+            echo -e "${RED}[✗] 未找到Nginx主进程PID${NC}"
+        fi
+    fi
+fi
+
+if [ "$nginx_reload_success" = true ]; then
+    echo -e "${GREEN}[✓] Nginx配置已更新并生效${NC}"
+else
+    echo -e "${YELLOW}[!] Nginx配置文件已更新，但需要手动重载服务${NC}"
+    echo -e "${YELLOW}[i] 请执行以下命令之一重载Nginx:${NC}"
+    echo "  sudo systemctl reload nginx"
+    echo "  sudo service nginx reload"
+    echo "  sudo rc-service nginx reload"
+    echo "  sudo nginx -s reload"
+fi
             
         2) # X-UI
             local xui_config="/etc/x-ui/config.json"
