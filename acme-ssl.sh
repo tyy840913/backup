@@ -413,11 +413,22 @@ issue_certificate() {
         fi
         
     else
-        # Cloudflare API自动验证（保持不变）
+        # Cloudflare API自动验证
         echo -e "${YELLOW}[!] 使用Cloudflare API自动验证${NC}"
-        
+    
+        echo -e "${BLUE}[!] 提示：本脚本默认使用Cloudflare API${NC}"
+        echo -e "${BLUE}[!] 如需使用其他DNS服务商，可以手动执行以下命令：${NC}"
+        echo "  1. 设置对应API环境变量，例如："
+        echo "     export Ali_Key=\"your-key\""
+        echo "     export Ali_Secret=\"your-secret\""
+        echo "  2. 执行申请命令："
+        echo "     ~/.acme.sh/acme.sh --issue --dns dns_ali -d $domain"
+        echo "  3. 支持的DNS API列表："
+        echo "     ls ~/.acme.sh/dnsapi/dns_*.sh"
+        echo ""
+    
         read -p "请输入Cloudflare API Token: " cf_token
-        
+    
         if [ -z "$cf_token" ]; then
             echo -e "${YELLOW}[!] 尝试使用传统API Key...${NC}"
             read -p "请输入Cloudflare邮箱: " cf_email
