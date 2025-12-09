@@ -706,36 +706,15 @@ install_certificate_menu() {
 
     case $service_choice in
         1) # Nginx
-            # 获取当前用户的Nginx进程信息
+            # Nginx配置更新
             local nginx_processes=$(ps ux | grep -E "nginx:( master|worker)" | grep -v grep)
-            
-            # 如果没有找到当前用户的Nginx进程，尝试用ps aux查找所有用户（作为后备）
-            if [ -z "$nginx_processes" ]; then
-                echo -e "${YELLOW}[!] 未找到当前用户的Nginx进程${NC}"
-                echo -e "${YELLOW}[i] 正在搜索所有用户的Nginx进程...${NC}"
-                nginx_processes=$(ps aux | grep -E "nginx:( master|worker)" | grep -v grep)
-            fi
             
             local nginx_conf_list=()
             local nginx_conf_selected=""
             
             if [ -n "$nginx_processes" ]; then
-                # 提取Nginx主进程（优先使用当前用户的进程）
-                local nginx_master=""
-                local current_user=$(whoami)
-                
-                # 优先查找当前用户的Nginx主进程
-                nginx_master=$(echo "$nginx_processes" | grep "nginx: master" | grep "^$current_user" | head -1)
-                
-                # 如果没有找到当前用户的主进程，使用第一个找到的主进程
-                if [ -z "$nginx_master" ]; then
-                    nginx_master=$(echo "$nginx_processes" | grep "nginx: master" | head -1)
-                    if [ -n "$nginx_master" ]; then
-                        local process_user=$(echo "$nginx_master" | awk '{print $1}')
-                        echo -e "${YELLOW}[i] 注意：Nginx进程由用户 $process_user 运行，当前用户为 $current_user${NC}"
-                        echo -e "${YELLOW}[i] 可能需要相应权限才能更新配置文件${NC}"
-                    fi
-                fi
+                # 查找Nginx主进程
+                local nginx_master=$(echo "$nginx_processes" | grep "nginx: master" | head -1)
                 
                 # 解析Nginx主进程的启动参数
                 if [ -n "$nginx_master" ]; then
@@ -754,10 +733,17 @@ install_certificate_menu() {
                             for inc_conf in $included_configs; do
                                 # 如果路径包含通配符，使用find查找实际文件
                                 if [[ "$inc_conf" == *"*"* ]]; then
-                                    local found_files=$(find /etc/nginx -path "$inc_conf" 2>/dev/null | head -10)
-                                    for file in $found_files; do
-                                        nginx_conf_list+=("$file")
-                                    done
+                                    # 提取目录部分用于find搜索
+                                    local inc_dir=$(dirname "$inc_conf")
+                                    local inc_pattern=$(basename "$inc_conf")
+                                    if [ -d "$inc_dir" ]; then
+                                        local found_files=$(find "$inc_dir" -name "$inc_pattern" 2>/dev/null | head -10)
+                                        for file in $found_files; do
+                                            if [ -f "$file" ]; then
+                                                nginx_conf_list+=("$file")
+                                            fi
+                                        done
+                                    fi
                                 elif [ -f "$inc_conf" ]; then
                                     nginx_conf_list+=("$inc_conf")
                                 fi
@@ -767,41 +753,12 @@ install_certificate_menu() {
                 fi
             fi
             
-            # 如果没有找到配置文件，尝试常见路径
-            if [ ${#nginx_conf_list[@]} -eq 0 ]; then
-                echo -e "${YELLOW}[i] 正在搜索常见的Nginx配置文件路径...${NC}"
-                
-                # 常见配置文件路径
-                local common_paths=(
-                    "/etc/nginx/conf.d/*.conf"
-                    "/etc/nginx/sites-enabled/*"
-                    "/etc/nginx/sites-available/*"
-                    "/usr/local/nginx/conf/vhost/*.conf"
-                    "/usr/local/nginx/conf/conf.d/*.conf"
-                    "/usr/local/etc/nginx/servers/*.conf"
-                )
-                
-                for pattern in "${common_paths[@]}"; do
-                    # 使用nullglob避免没有匹配时原样输出通配符
-                    shopt -s nullglob
-                    for file in $pattern; do
-                        if [ -f "$file" ] && ([[ "$file" == *.conf ]] || [[ "$file" == *"$domain"* ]] || grep -q "ssl_certificate" "$file" 2>/dev/null); then
-                            nginx_conf_list+=("$file")
-                        fi
-                    done
-                    shopt -u nullglob
-                done
-            fi
-            
             # 去重并排序
             nginx_conf_list=($(printf "%s\n" "${nginx_conf_list[@]}" | sort -u))
             
             if [ ${#nginx_conf_list[@]} -eq 0 ]; then
-                echo -e "${YELLOW}[!] 未找到任何Nginx配置文件${NC}"
+                echo -e "${YELLOW}[!] 未通过进程找到Nginx配置文件${NC}"
                 local default_conf="/etc/nginx/conf.d/$domain.conf"
-                if [ ! -f "$default_conf" ]; then
-                    default_conf="/etc/nginx/sites-available/$domain"
-                fi
                 
                 read -p "请输入Nginx配置文件路径(默认: $default_conf): " nginx_conf
                 if [ -z "$nginx_conf" ]; then
@@ -886,30 +843,18 @@ install_certificate_menu() {
                 if [ "$nginx_test_success" = true ]; then
                     echo -e "${YELLOW}[i] 正在重载Nginx服务...${NC}"
                     
-                    # 尝试多种重载方式
-                    if systemctl reload nginx 2>/dev/null; then
-                        echo -e "${GREEN}[✓] 通过systemctl重载Nginx成功${NC}"
-                        nginx_reload_success=true
-                    elif service nginx reload 2>/dev/null; then
-                        echo -e "${GREEN}[✓] 通过service重载Nginx成功${NC}"
-                        nginx_reload_success=true
-                    else
-                        echo -e "${YELLOW}[!] 无法通过systemctl/service重载Nginx，尝试直接发送信号${NC}"
-                        # 使用当前用户的Nginx进程（如果存在）
-                        local nginx_pid=$(ps ux | grep "nginx: master" | grep -v grep | awk '{print $2}' | head -1)
-                        if [ -z "$nginx_pid" ]; then
-                            nginx_pid=$(ps aux | grep "nginx: master" | grep -v grep | awk '{print $2}' | head -1)
-                        fi
-                        if [ -n "$nginx_pid" ]; then
-                            if kill -HUP "$nginx_pid" 2>/dev/null; then
-                                echo -e "${GREEN}[✓] Nginx已通过HUP信号重载${NC}"
-                                nginx_reload_success=true
-                            else
-                                echo -e "${RED}[✗] 无法通过信号重载Nginx${NC}"
-                            fi
+                    # 使用当前用户的Nginx进程（如果存在）
+                    local nginx_pid=$(echo "$nginx_processes" | grep "nginx: master" | awk '{print $2}' | head -1)
+                    
+                    if [ -n "$nginx_pid" ]; then
+                        if kill -HUP "$nginx_pid" 2>/dev/null; then
+                            echo -e "${GREEN}[✓] Nginx已通过HUP信号重载${NC}"
+                            nginx_reload_success=true
                         else
-                            echo -e "${RED}[✗] 未找到Nginx主进程PID${NC}"
+                            echo -e "${RED}[✗] 无法通过信号重载Nginx${NC}"
                         fi
+                    else
+                        echo -e "${RED}[✗] 未找到Nginx主进程PID${NC}"
                     fi
                 fi
                 
@@ -917,9 +862,7 @@ install_certificate_menu() {
                     echo -e "${GREEN}[✓] Nginx配置已更新并生效${NC}"
                 else
                     echo -e "${YELLOW}[!] Nginx配置文件已更新，但需要手动重载服务${NC}"
-                    echo -e "${YELLOW}[i] 请执行以下命令之一重载Nginx:${NC}"
-                    echo "  sudo systemctl reload nginx"
-                    echo "  sudo service nginx reload"
+                    echo -e "${YELLOW}[i] 请执行以下命令重载Nginx:${NC}"
                     echo "  sudo nginx -s reload"
                 fi
             else
