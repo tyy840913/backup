@@ -726,8 +726,9 @@ install_certificate_menu() {
                 sed -i "s|ssl_certificate .*|ssl_certificate $cert_to_use;|" "$nginx_conf"
                 sed -i "s|ssl_certificate_key .*|ssl_certificate_key $key_path;|" "$nginx_conf"
                 
+                nginx -t && systemctl reload nginx
+                
                 echo -e "${GREEN}[✓] Nginx配置已更新${NC}"
-                echo -e "${YELLOW}[!] 请执行: nginx -t && systemctl reload nginx${NC}"
             else
                 echo -e "${YELLOW}[!] Nginx配置文件不存在，证书文件位置:${NC}"
                 echo "证书: $cert_path"
