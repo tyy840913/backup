@@ -16,7 +16,7 @@ services:
 
   # Lucky - 反向代理工具（Host 网络）
   lucky:
-    image: gdy666/lucky:latest
+    image: gdy666/lucky:v2
     container_name: lucky
     restart: always
     network_mode: host
