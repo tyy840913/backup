@@ -692,7 +692,7 @@ install_certificate_menu() {
     fullchain_path="$_FULLCHAIN_PATH"
     
     echo -e "\n${BLUE}安装证书: $domain${NC}"
- 
+    
     # 只显示到期时间（如果获取到的话）
     if [ -n "$expiry_date" ]; then
         echo -e "${GREEN}[✓] 证书到期时间: $expiry_date${NC}"
@@ -703,10 +703,10 @@ install_certificate_menu() {
     echo "2) X-UI"
     echo "3) 自定义路径"
     read -p "请选择(1-3): " service_choice
-
+    
     case $service_choice in
         1) # Nginx
-            # Nginx配置更新
+            # Nginx配置更新 - 优化版
             local nginx_processes=$(ps ux | grep -E "nginx:( master|worker)" | grep -v grep)
             
             local nginx_conf_list=()
@@ -729,25 +729,52 @@ install_certificate_menu() {
                             local included_configs=$(grep -E "^\s*include\s+" "$main_config" | \
                                 sed -E 's/^\s*include\s+//;s/;$//')
                             
-                            # 处理通配符路径
+                            # 处理通配符路径，只搜索.conf文件或包含server块的文件
                             for inc_conf in $included_configs; do
+                                # 跳过常见的非服务器配置文件
+                                local skip_file=0
+                                for exclude in mime.types fastcgi_params scgi_params uwsgi_params koi-utf koi-win win-utf; do
+                                    if [[ "$inc_conf" == *"$exclude" ]]; then
+                                        skip_file=1
+                                        break
+                                    fi
+                                done
+                                
+                                if [ $skip_file -eq 1 ]; then
+                                    continue
+                                fi
+                                
                                 # 如果路径包含通配符，使用find查找实际文件
                                 if [[ "$inc_conf" == *"*"* ]]; then
                                     # 提取目录部分用于find搜索
                                     local inc_dir=$(dirname "$inc_conf")
                                     local inc_pattern=$(basename "$inc_conf")
                                     if [ -d "$inc_dir" ]; then
+                                        # 只查找.conf文件或包含"server"关键字的文件
                                         local found_files=$(find "$inc_dir" -name "$inc_pattern" 2>/dev/null | head -10)
                                         for file in $found_files; do
                                             if [ -f "$file" ]; then
-                                                nginx_conf_list+=("$file")
+                                                # 检查是否是服务器配置文件（包含server块或ssl_certificate指令）
+                                                if grep -q -E "^\s*server\s*{|^\s*ssl_certificate\s" "$file" 2>/dev/null || \
+                                                   [[ "$file" == *.conf ]]; then
+                                                    nginx_conf_list+=("$file")
+                                                fi
                                             fi
                                         done
                                     fi
                                 elif [ -f "$inc_conf" ]; then
-                                    nginx_conf_list+=("$inc_conf")
+                                    # 检查是否是服务器配置文件
+                                    if grep -q -E "^\s*server\s*{|^\s*ssl_certificate\s" "$inc_conf" 2>/dev/null || \
+                                       [[ "$inc_conf" == *.conf ]]; then
+                                        nginx_conf_list+=("$inc_conf")
+                                    fi
                                 fi
                             done
+                            
+                            # 如果通过include没找到合适的配置文件，检查主配置文件本身是否包含server块
+                            if [ ${#nginx_conf_list[@]} -eq 0 ] && grep -q -E "^\s*server\s*{" "$main_config" 2>/dev/null; then
+                                nginx_conf_list+=("$main_config")
+                            fi
                         fi
                     fi
                 fi
@@ -758,16 +785,36 @@ install_certificate_menu() {
             
             if [ ${#nginx_conf_list[@]} -eq 0 ]; then
                 echo -e "${YELLOW}[!] 未通过进程找到Nginx配置文件${NC}"
-                local default_conf="/etc/nginx/conf.d/$domain.conf"
                 
-                read -p "请输入Nginx配置文件路径(默认: $default_conf): " nginx_conf
-                if [ -z "$nginx_conf" ]; then
-                    nginx_conf="$default_conf"
+                # 尝试直接查找包含域名的配置文件
+                echo -e "${YELLOW}[i] 正在搜索包含域名 $domain 的配置文件...${NC}"
+                local domain_conf=$(grep -r -l "server_name.*$domain" /etc/nginx 2>/dev/null | head -1)
+                
+                if [ -n "$domain_conf" ] && [ -f "$domain_conf" ]; then
+                    nginx_conf="$domain_conf"
+                    echo -e "${GREEN}[✓] 找到包含域名的配置文件: $nginx_conf${NC}"
+                else
+                    local default_conf="/etc/nginx/conf.d/$domain.conf"
+                    
+                    read -p "请输入Nginx配置文件路径(默认: $default_conf): " nginx_conf
+                    if [ -z "$nginx_conf" ]; then
+                        nginx_conf="$default_conf"
+                    fi
                 fi
             elif [ ${#nginx_conf_list[@]} -eq 1 ]; then
-                # 只有一个配置文件，直接使用
+                # 只有一个配置文件，验证它是否是真正的服务器配置文件
                 nginx_conf="${nginx_conf_list[0]}"
-                echo -e "${GREEN}[✓] 使用配置文件: $nginx_conf${NC}"
+                if grep -q -E "^\s*server\s*{|^\s*ssl_certificate\s" "$nginx_conf" 2>/dev/null || \
+                   [[ "$nginx_conf" == *.conf ]]; then
+                    echo -e "${GREEN}[✓] 使用配置文件: $nginx_conf${NC}"
+                else
+                    echo -e "${YELLOW}[!] 警告: 选择的文件可能不是服务器配置文件: $nginx_conf${NC}"
+                    echo -e "${YELLOW}[i] 请手动验证或选择其他文件${NC}"
+                    read -p "继续使用此文件？(y/N): " confirm
+                    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+                        read -p "请输入正确的Nginx配置文件路径: " nginx_conf
+                    fi
+                fi
             else
                 # 多个配置文件，让用户选择
                 echo -e "${GREEN}[i] 发现多个Nginx配置文件:${NC}"
@@ -777,15 +824,17 @@ install_certificate_menu() {
                 for config in "${nginx_conf_list[@]}"; do
                     # 尝试在配置文件中查找域名
                     local has_domain=""
+                    local has_ssl=""
                     if [ -f "$config" ]; then
                         if grep -q "server_name.*$domain" "$config" 2>/dev/null; then
                             has_domain=" (包含域名)"
-                        elif grep -q "ssl_certificate" "$config" 2>/dev/null; then
-                            has_domain=" (已配置SSL)"
+                        fi
+                        if grep -q "ssl_certificate" "$config" 2>/dev/null; then
+                            has_ssl=" (已配置SSL)"
                         fi
                     fi
                     
-                    echo -e "  ${BLUE}[$index]${NC} $config$has_domain"
+                    echo -e "  ${BLUE}[$index]${NC} $config$has_domain$has_ssl"
                     ((index++))
                 done
                 
