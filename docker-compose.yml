@@ -1,15 +1,4 @@
 services:
-  # Portainer - Docker 可视化管理
-  portainer:
-    image: 6053537/portainer-ce:latest
-    container_name: portainer
-    restart: always
-    network_mode: bridge
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    ports:
-      - "9100:9000"
-
   # openlist - 文件列表服务
   openlist:
     image: openlistteam/openlist:latest
