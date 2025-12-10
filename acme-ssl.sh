@@ -3,6 +3,7 @@
 # 启用严格模式（可选，可注释掉）
 set -o errexit  # 命令失败时退出
 set -o pipefail # 管道失败时退出
+set -o nounset  # 使用未定义变量时退出
 
 # 颜色定义
 RED='\033[0;31m'
@@ -1203,7 +1204,9 @@ list_certificates() {
     
     if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
         echo -e "${YELLOW}[!] 没有找到证书${NC}"
-        return 1
+        echo -e "\n${YELLOW}按回车键返回主菜单...${NC}"
+        read -r
+        return 0  # 返回0表示正常结束，回到main_menu
     fi
     
     local certs=("${_CERT_ARRAY[@]}")
