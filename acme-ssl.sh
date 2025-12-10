@@ -1607,7 +1607,7 @@ main_menu() {
                 ;;
             *)
                 echo -e "${RED}[✗] 无效的选择${NC}"
-                show_continue_prompt=true
+                show_continue_prompt=false
                 ;;
         esac
         
