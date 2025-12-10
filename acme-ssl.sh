@@ -625,73 +625,81 @@ show_cert_detail() {
     fi
 }
 
-# 检查DNS记录 - 支持通配符域名（修复版）
+# 检查DNS记录 - 精简修复版（解决第一次失败后后续不成功的问题）
 check_dns_record() {
     local domain="$1"
     local txt_record="$2"
     local max_attempts=10
     local attempt=1
-
+    
     echo -e "${BLUE}[*] 检查DNS记录: _acme-challenge.$domain${NC}"
-
-    # 处理通配符域名 - 修复判断逻辑
+    
+    # 处理通配符域名
     local check_domain="_acme-challenge.$domain"
     if [[ "${domain:0:2}" == "*." ]]; then
-        # 如果是通配符域名，需要检查通配符记录
         check_domain="_acme-challenge.${domain:2}"
         echo -e "${YELLOW}[!] 通配符域名检测: 实际检查 $check_domain${NC}"
     fi
-
-    # DNS服务器列表
-    local dns_servers=("8.8.8.8" "1.1.1.1" "1.0.0.1" "8.8.4.4")
+    
+    # DNS服务器列表（多个服务器）
+    local dns_servers=(
+        "8.8.8.8"     # Google
+        "8.8.4.4"     # Google备用
+        "1.1.1.1"     # Cloudflare
+        "1.0.0.1"     # Cloudflare备用
+        "223.5.5.5"   # 阿里DNS
+        "119.29.29.29" # 腾讯DNS
+        "114.114.114.114" # 114DNS
+    )
+    
     local required_success=2  # 至少需要2个DNS服务器返回正确结果
-
+    
     while [ $attempt -le $max_attempts ]; do
-        echo -ne "${YELLOW}[!] 尝试 $attempt/$max_attempts...\r${NC}"
-
+        echo -ne "${YELLOW}[!] 尝试 $attempt/$max_attempts...${NC}"
+        
         local success=0
-        local results=()
-
+        
+        # 关键修复：每次查询都执行完整检查，不重用变量
         for dns_server in "${dns_servers[@]}"; do
+            # 每次查询都使用新的变量
             local query_result
             query_result=$(dig +short TXT "$check_domain" @"$dns_server" 2>/dev/null)
-
-            # 清理结果：去除引号，合并多行
-            local cleaned_result=""
+            
+            # 清理结果
             if [ -n "$query_result" ]; then
-                # 合并多行并去除引号
-                cleaned_result=$(echo "$query_result" | tr '\n' ' ' | sed 's/"//g' | xargs)
-            fi
-
-            if [[ "$cleaned_result" == *"$txt_record"* ]]; then
-                ((success++))
-                results+=("✓ $dns_server: 匹配")
-            else
-                results+=("✗ $dns_server: '$cleaned_result'")
+                # 合并多行
+                local cleaned_result
+                cleaned_result=$(echo "$query_result" | tr '\n' ' ' | xargs)
+                
+                # 检查是否匹配
+                if [[ "$cleaned_result" == *"$txt_record"* ]]; then
+                    ((success++))
+                fi
             fi
         done
-
+        
         if [ $success -ge $required_success ]; then
             echo -e "\n${GREEN}[✓] DNS记录已在 $success/${#dns_servers[@]} 个DNS服务器生效${NC}"
             return 0
         fi
-
-        sleep 5
+        
+        # 如果不是最后一次尝试，等待5秒
+        if [ $attempt -lt $max_attempts ]; then
+            sleep 5
+        fi
+        
         ((attempt++))
     done
-
+    
+    # 所有尝试都失败
     echo -e "\n${YELLOW}[!] DNS记录检查超时: $check_domain${NC}"
-    echo -e "${YELLOW}[!] 最终检查结果:${NC}"
-    for result in "${results[@]}"; do
-        echo "  $result"
-    done
-
+    
+    # 直接询问是否继续
     read -p "是否继续尝试验证？(y/n): " continue_anyway
     if [[ $continue_anyway =~ ^[Yy]$ ]]; then
         return 0
     else
-        echo -e "${YELLOW}[!] 您可以稍后手动执行续期:${NC}"
-        echo "  $ACME_BIN --renew $domain_params --force"
+        echo -e "${YELLOW}[!] 您可以稍后手动执行续期${NC}"
         return 1
     fi
 }
@@ -822,6 +830,17 @@ issue_certificate() {
 
                 if "${renew_cmd[@]}"; then
                     echo -e "${GREEN}[✓] 证书续期成功${NC}"
+                    
+                    # 修复：显示证书信息后等待用户确认
+                    echo -e "\n${BLUE}[*] 显示证书信息...${NC}"
+                    local clean_domain="${primary_domain//\*/_}"
+                    list_certificates "$clean_domain"
+                    
+                    # 添加等待用户确认
+                    echo -e "\n${GREEN}[✓] 证书操作完成${NC}"
+                    echo -e "${YELLOW}[!] 按回车键返回主菜单...${NC}"
+                    read -r
+                    
                     return 0
                 else
                     echo -e "${RED}[✗] 证书续期失败${NC}"
@@ -932,7 +951,12 @@ issue_certificate() {
             # 将主域名传递给证书列表函数
             local clean_domain="${primary_domain//\*/_}"
             list_certificates "$clean_domain"
-
+            
+            # 修复：添加等待用户确认
+            echo -e "\n${GREEN}[✓] 证书申请操作完成${NC}"
+            echo -e "${YELLOW}[!] 按回车键返回主菜单...${NC}"
+            read -r
+            
             return 0
         else
             echo -e "${RED}[✗] 证书签发失败${NC}"
@@ -1009,11 +1033,21 @@ issue_certificate() {
             # 将主域名传递给证书列表函数
             local clean_domain="${primary_domain//\*/_}"
             list_certificates "$clean_domain"
+            
+            # 修复：添加等待用户确认
+            echo -e "\n${GREEN}[✓] 证书申请操作完成${NC}"
+            echo -e "${YELLOW}[!] 按回车键返回主菜单...${NC}"
+            read -r
 
             return 0
         else
             echo -e "${RED}[✗] 证书申请失败${NC}"
             unset CF_Key CF_Email CF_Token 2>/dev/null
+            
+            # 失败时也添加等待
+            echo -e "\n${YELLOW}[!] 按回车键返回主菜单...${NC}"
+            read -r
+            
             return 1
         fi
     fi
@@ -1128,6 +1162,13 @@ renew_certificate() {
         else
             echo "$((i+1))) $cert_name"
         fi
+        
+        local now_seconds=$(date +%s)
+            local expiry_seconds=$(date -d "$not_after" +%s 2>/dev/null || echo "")
+            if [ -n "$expiry_seconds" ] && [ "$expiry_seconds" -gt "$now_seconds" ]; then
+                local days_left=$(( (expiry_seconds - now_seconds) / 86400 ))
+                echo "  剩余天数: $days_left 天"
+            fi
     done
 
     echo ""
@@ -1181,12 +1222,22 @@ renew_certificate() {
     if "$ACME_BIN" --renew --domain "$domain" --force; then
         echo -e "${GREEN}[✓] 证书续期成功${NC}"
 
+        echo -e "\n${BLUE}[*] 显示续期后的证书信息...${NC}"
+        
         # 显示续期后的到期时间
         if [ -f "$cert_file" ]; then
             local new_expiry=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
             echo -e "${GREEN}[✓] 新到期时间: $new_expiry${NC}"
         fi
-
+        
+        # 显示完整的证书信息
+        list_certificates "$domain"
+        
+        # 添加等待用户确认
+        echo -e "\n${GREEN}[✓] 证书续期操作完成${NC}"
+        echo -e "${YELLOW}[!] 按回车键返回主菜单...${NC}"
+        read -r
+        
         return 0
     else
         echo -e "${RED}[✗] 证书续期失败${NC}"
@@ -1194,6 +1245,10 @@ renew_certificate() {
         # 提供手动续期建议
         echo -e "${YELLOW}[!] 您可以尝试手动续期:${NC}"
         echo "  $ACME_BIN --renew -d $domain --force --debug"
+        
+        # 失败时也添加等待
+        echo -e "\n${YELLOW}[!] 按回车键返回主菜单...${NC}"
+        read -r
 
         return 1
     fi
@@ -1371,6 +1426,13 @@ list_certificates() {
             echo "    目录位置: $cert_dir"
         fi
         echo ""
+        
+        local now_seconds=$(date +%s)
+            local expiry_seconds=$(date -d "$not_after" +%s 2>/dev/null || echo "")
+            if [ -n "$expiry_seconds" ] && [ "$expiry_seconds" -gt "$now_seconds" ]; then
+                local days_left=$(( (expiry_seconds - now_seconds) / 86400 ))
+                echo "  剩余天数: $days_left 天"
+            fi
     done
 
        while true; do
