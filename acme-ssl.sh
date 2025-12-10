@@ -826,10 +826,6 @@ issue_certificate() {
         echo -e "${BLUE}[*] 等待您添加DNS记录...${NC}"
         read -p "DNS记录添加完成并等待生效后，按回车键继续验证..."
         
-        # 可选：增加固定的等待时间，确保DNS传播
-        echo -e "${BLUE}[*] 等待30秒让DNS记录传播...${NC}"
-        sleep 30
-        
         # 检查所有域名的DNS记录
         local all_dns_valid=true
         for domain in "${domains[@]}"; do
