@@ -688,14 +688,6 @@ check_dns_record() {
             return 0
         fi
         
-         # 每5次尝试显示一次详细结果
-        if [ $((attempt % 5)) -eq 0 ]; then
-            echo -e "\n${YELLOW}[!] 当前DNS检查结果:${NC}"
-            for result in "${results[@]}"; do
-                echo "  $result"
-            done
-        fi
-        
         sleep 5
         ((attempt++))
     done
