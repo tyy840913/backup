@@ -1036,6 +1036,45 @@ install_certificate_menu() {
                 rm -f "$temp_file"
             fi
             ;;
+   
+        2) # 自定义路径（仅输出路径）
+            echo -e "\n${BLUE}=== 证书路径信息 ===${NC}"
+            echo -e "${GREEN}证书文件位置:${NC}"
+            echo -e "  ${YELLOW}证书文件:${NC} $cert_path"
+            
+            if [ -n "$fullchain_path" ]; then
+                echo -e "  ${YELLOW}完整链证书:${NC} $fullchain_path"
+                echo -e "  ${GREEN}(推荐使用完整链证书，包含中间证书)${NC}"
+            fi
+            
+            echo -e "  ${YELLOW}私钥文件:${NC} $key_path"
+            
+            if [ -f "$ca_path" ]; then
+                echo -e "  ${YELLOW}CA证书:${NC} $ca_path"
+            fi
+            
+            echo ""
+            echo -e "${BLUE}使用示例:${NC}"
+            echo "在Nginx配置中添加:"
+            echo "  ssl_certificate $(basename "$cert_path");"
+            echo "  ssl_certificate_key $(basename "$key_path");"
+            
+            if [ -n "$fullchain_path" ]; then
+                echo ""
+                echo -e "${GREEN}或使用完整链证书:${NC}"
+                echo "  ssl_certificate $(basename "$fullchain_path");"
+                echo "  ssl_certificate_key $(basename "$key_path");"
+            fi
+            ;;
+            
+        *)
+            echo -e "${RED}[✗] 无效的选择${NC}"
+            return 1
+            ;;
+    esac
+    
+    return 0
+}
 
 # 证书续期
 renew_certificate() {
