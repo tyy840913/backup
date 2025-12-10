@@ -641,7 +641,7 @@ show_cert_detail() {
 check_dns_record() {
     local domain="$1"
     local txt_record="$2"
-    local max_attempts=10
+    local max_attempts=36
     local attempt=1
     
     echo -e "${BLUE}[*] 检查DNS记录: _acme-challenge.$domain${NC}"
