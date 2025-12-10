@@ -589,220 +589,7 @@ cert_issue_menu() {
     
     # 执行证书申请（传入域名数组）
     issue_certificate "${domains[@]}" "$ca" "$mode" "$email"
-    
-    if [ $? -eq 0 ]; then
-        # 使用主域名（第一个域名）进行后续操作
-        local primary_domain="${domains[0]}"
-        # 清理通配符符号用于查找目录
-        local clean_domain="${primary_domain//\*/_}"
-        
-        read -p "证书申请成功，是否立即安装？(y/n): " install_now
-        if [[ $install_now =~ ^[Yy]$ ]]; then
-            install_certificate_menu "$clean_domain"
-        fi
-    fi
 }
-
-# 安装证书到Web服务 - 优化版
-install_certificate_menu() {
-    local domain="$1"
-    local nginx_conf=""
-    local nginx_conf_dir=""
-    
-    # ==========================================
-    # 1. 证书选择与验证逻辑 (保持不变)
-    # ==========================================
-    if [ -z "$domain" ]; then
-        echo -e "\n${BLUE}=== 安装证书 ===${NC}"
-        find_certificates
-        
-        if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
-            echo -e "${YELLOW}[!] 没有找到证书${NC}"
-            echo -e "${YELLOW}[!] 请先申请证书或检查acme.sh安装${NC}"
-            return 1
-        fi
-        
-        local certs=("${_CERT_ARRAY[@]}")
-        local cert_dirs=("${_CERT_DIR_ARRAY[@]}")
-        
-        # 显示列表
-        for i in "${!certs[@]}"; do
-            local cert_name="${certs[$i]}"
-            local cert_dir="${cert_dirs[$i]}"
-            local cert_file="$cert_dir/$cert_name.cer"
-            [ ! -f "$cert_file" ] && cert_file="$cert_dir/$cert_name.crt"
-            
-            local expiry_date=""
-            if [ -f "$cert_file" ]; then
-                expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
-            fi
-            
-            if [ -n "$expiry_date" ]; then
-                echo "$((i+1))) $cert_name - 到期时间: $expiry_date"
-            else
-                echo "$((i+1))) $cert_name"
-            fi
-        done
-        
-        read -p "请选择要安装的证书序号: " selected_index
-        if ! [[ "$selected_index" =~ ^[0-9]+$ ]] || [ "$selected_index" -lt 1 ] || [ "$selected_index" -gt ${#certs[@]} ]; then
-            echo -e "${RED}[✗] 无效的序号${NC}"
-            return 1
-        fi
-        
-        domain="${certs[$((selected_index-1))]}"
-        cert_dir="${cert_dirs[$((selected_index-1))]}"
-        
-        # 获取到期时间
-        local cert_file="$cert_dir/$domain.cer"
-        [ ! -f "$cert_file" ] && cert_file="$cert_dir/$domain.crt"
-        expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
-    else
-        find_certificates "$domain"
-        cert_dir="$_CERT_DIR"
-        expiry_date=""
-        if [ -f "$_CERT_PATH" ]; then
-            expiry_date=$(openssl x509 -enddate -noout -in "$_CERT_PATH" 2>/dev/null | cut -d= -f2)
-        fi
-    fi
-
-    if [ -z "$cert_dir" ]; then
-        echo -e "${RED}[✗] 无法找到证书: $domain${NC}"
-        return 1
-    fi
-    
-    # 获取证书文件路径
-    cert_path="$_CERT_PATH"
-    key_path="$_KEY_PATH"
-    fullchain_path="$_FULLCHAIN_PATH"
-    
-    echo -e "\n${BLUE}准备为域名安装证书: $domain${NC}"
-    if [ -n "$expiry_date" ]; then
-        echo -e "${GREEN}[✓] 证书到期时间: $expiry_date${NC}"
-    fi
-
-    # ==========================================
-    # 2. 智能探测 Nginx 配置文件路径
-    # ==========================================
-    echo -e "${BLUE}[+] 正在探测 Nginx 配置...${NC}"
-    
-    # 尝试从进程获取配置文件路径
-    nginx_conf=$(ps aux | grep '[n]ginx' | grep -oP '(?<=-c\s)[^ ]+' | head -n1)
-    
-    if [ -n "$nginx_conf" ] && [ -f "$nginx_conf" ]; then
-        echo -e "${GREEN}[✓] 通过参数探测到配置文件: $nginx_conf${NC}"
-        # 如果指定了具体文件，则不需要目录
-        nginx_conf_dir=""
-    else
-        # 如果没有指定 -c 文件，通常默认加载 conf/nginx.conf，我们关注其包含的目录
-        # 常见的默认配置文件
-        if [ -f "/etc/nginx/nginx.conf" ]; then
-            nginx_conf="/etc/nginx/nginx.conf"
-            # 提取第一个包含 conf.d 或 sites-enabled 的 include 行作为目录参考
-            nginx_conf_dir=$(grep -r "include" "$nginx_conf" | grep -oP '(?<=include\s)[^;]+' | head -n1 | sed 's/\*//')
-            if [ -n "$nginx_conf_dir" ] && [ -d "$nginx_conf_dir" ]; then
-                echo -e "${GREEN}[✓] 默认配置文件: $nginx_conf, 站点目录: $nginx_conf_dir${NC}"
-            else
-                nginx_conf_dir="/etc/nginx/conf.d/"
-            fi
-        elif [ -f "/usr/local/nginx/conf/nginx.conf" ]; then
-            nginx_conf="/usr/local/nginx/conf/nginx.conf"
-            nginx_conf_dir="/usr/local/nginx/conf/conf.d/"
-        else
-            # 完全探测失败，使用最常见路径
-            nginx_conf_dir="/etc/nginx/conf.d/"
-        fi
-    fi
-
-    # ==========================================
-    # 3. 确定最终的站点配置文件
-    # ==========================================
-    local target_conf=""
-
-    # 情况 A: 如果我们已经拿到了具体的主配置文件 (nginx.conf)，通常不直接在这里写站点，尝试找包含的文件
-    if [ -n "$nginx_conf" ] && [[ "$nginx_conf" != *"nginx.conf"* && "$nginx_conf" != *".conf"$ ]]; then
-        # 如果 -c 指向的是一个非标准文件，直接使用
-        target_conf="$nginx_conf"
-    else
-        # 情况 B: 优先检查 conf.d 目录下是否有该域名的配置
-        if [ -f "${nginx_conf_dir}${domain}.conf" ]; then
-            target_conf="${nginx_conf_dir}${domain}.conf"
-        elif [ -f "/etc/nginx/sites-enabled/${domain}" ]; then
-            target_conf="/etc/nginx/sites-enabled/${domain}"
-        elif [ -f "/etc/nginx/conf.d/${domain}.conf" ]; then
-            target_conf="/etc/nginx/conf.d/${domain}.conf"
-        else
-            # 提示用户输入或使用默认
-            echo -e "${YELLOW}[!] 未自动找到 $domain 的配置文件${NC}"
-            read -p "请输入该域名的 Nginx 配置文件路径: " target_conf
-            if [ ! -f "$target_conf" ]; then
-                echo -e "${RED}[✗] 文件 $target_conf 不存在${NC}"
-                return 1
-            fi
-        fi
-    fi
-
-    if [ -z "$target_conf" ]; then
-        echo -e "${RED}[✗] 无法确定配置文件路径${NC}"
-        return 1
-    fi
-
-    echo -e "${BLUE}[+] 目标配置文件: $target_conf${NC}"
-    cp "$target_conf" "$target_conf.bak_$(date +%s)" && echo -e "${GREEN}[✓] 配置文件已备份${NC}"
-
-    # ==========================================
-    # 4. 智能更新配置 (处理注释、存在、不存在的情况)
-    # ==========================================
-    local cert_to_use="$cert_path"
-    # 优先使用 fullchain (完整证书链)
-    [ -n "$fullchain_path" ] && cert_to_use="$fullchain_path"
-
-    # 处理证书行 (ssl_certificate)
-    # 1. 取消注释并替换路径
-    # 2. 替换现有路径
-    # 3. 如果以上都没发生 (q 模式退出码非0)，则追加到文件末尾 (或者更精确地，在 listen 443 块内追加)
-    if ! sed -i -E "s|#?\s*ssl_certificate\s+.*|#\tssl_certificate $cert_to_use;|" "$target_conf"; then
-        # 如果替换失败，尝试追加 (这里简单处理，追加到文件末尾，实际中建议定位到 server 块)
-        echo "ssl_certificate $cert_to_use;" >> "$target_conf"
-    fi
-
-    # 处理私钥行 (ssl_certificate_key)
-    if ! sed -i -E "s|#?\s*ssl_certificate_key\s+.*|#\tssl_certificate_key $key_path;|" "$target_conf"; then
-        echo "ssl_certificate_key $key_path;" >> "$target_conf"
-    fi
-
-    # ==========================================
-    # 5. 验证与完成
-    # ==========================================
-    echo -e "\n${BLUE}正在测试 Nginx 配置...${NC}"
-    # 尝试检测 nginx 命令路径
-    local nginx_cmd="nginx"
-    if ! command -v nginx &> /dev/null; then
-        nginx_cmd="/usr/sbin/nginx"
-        if [ ! -f "$nginx_cmd" ]; then
-            echo -e "${YELLOW}[!] 无法找到 Nginx 执行文件，跳过语法检测${NC}"
-        fi
-    fi
-
-    if [ -f "$nginx_cmd" ]; then
-        if "$nginx_cmd" -t; then
-            echo -e "${GREEN}[✓] 证书安装成功！${NC}"
-            echo -e "${GREEN}[✓] 配置已更新，证书和私钥路径已写入${NC}"
-            echo -e "${YELLOW}[!] 请执行命令重载 Nginx: $nginx_cmd -s reload${NC}"
-        else
-            echo -e "${RED}[✗] Nginx 配置测试失败！${NC}"
-            echo -e "${RED}[✗] 请检查配置文件: $target_conf${NC}"
-            echo -e "${RED}[✗] 可能需要手动修复语法或还原备份: $target_conf.bak_*${NC}"
-            return 1
-        fi
-    else
-        echo -e "${GREEN}[✓] 证书安装成功！${NC}"
-        echo -e "${YELLOW}[!] Nginx 语法检测跳过 (未找到命令)，请手动检查配置并重载服务${NC}"
-    fi
-
-    return 0
-}
-
 
 # 证书续期
 renew_certificate() {
@@ -978,7 +765,7 @@ delete_certificate() {
     return 0
 }
 
-# 列出证书
+# 列出证书 - 优化版：支持按序号查看详细路径信息
 list_certificates() {
     echo -e "\n${BLUE}=== 证书列表 ===${NC}"
     
@@ -993,6 +780,9 @@ list_certificates() {
     local certs=("${_CERT_ARRAY[@]}")
     local cert_dirs=("${_CERT_DIR_ARRAY[@]}")
     
+    echo -e "${GREEN}[✓] 找到 ${#certs[@]} 个证书:${NC}\n"
+    
+    # 显示证书列表
     for i in "${!certs[@]}"; do
         local cert_name="${certs[$i]}"
         local cert_dir="${cert_dirs[$i]}"
@@ -1017,15 +807,130 @@ list_certificates() {
             if [ -n "$expiry_date" ]; then
                 echo "$((i+1))) $cert_name - $file_type"
                 echo "    到期时间: $expiry_date"
-                echo "    位置: $(basename "$(dirname "$cert_dir")")/$(basename "$cert_dir")"
+                echo "    目录位置: $cert_dir"
             else
                 echo "$((i+1))) $cert_name - $file_type"
-                echo "    位置: $(basename "$(dirname "$cert_dir")")/$(basename "$cert_dir")"
+                echo "    目录位置: $cert_dir"
             fi
         else
             echo "$((i+1))) $cert_name"
-            echo "    位置: $(basename "$(dirname "$cert_dir")")/$(basename "$cert_dir")"
+            echo "    目录位置: $cert_dir"
         fi
+        echo ""
+    done
+    
+    # 询问用户是否要查看特定证书的详细路径
+    echo -e "${BLUE}----------------------------------------${NC}"
+    echo -e "${YELLOW}[?] 您可以输入证书序号查看详细文件路径${NC}"
+    echo -e "${YELLOW}[?] 输入0返回主菜单${NC}"
+    echo -e "${BLUE}----------------------------------------${NC}"
+    
+    while true; do
+        read -p "请输入证书序号查看详细路径 (0返回): " selected_index
+        
+        if [ -z "$selected_index" ]; then
+            continue
+        fi
+        
+        if [[ "$selected_index" =~ ^[0]$ ]]; then
+            echo -e "${BLUE}[*] 返回主菜单${NC}"
+            break
+        fi
+        
+        if ! [[ "$selected_index" =~ ^[0-9]+$ ]] || [ "$selected_index" -lt 1 ] || [ "$selected_index" -gt ${#certs[@]} ]; then
+            echo -e "${RED}[✗] 无效的序号，请输入1-${#certs[@]}之间的数字${NC}"
+            continue
+        fi
+        
+        local domain="${certs[$((selected_index-1))]}"
+        local cert_dir="${cert_dirs[$((selected_index-1))]}"
+        
+        echo -e "\n${GREEN}[✓] 证书: $domain${NC}"
+        echo -e "${BLUE}========================================${NC}"
+        echo -e "${YELLOW}[*] 证书详细路径信息:${NC}"
+        
+        # 查找所有可能的证书文件
+        echo -e "\n${GREEN}证书文件:${NC}"
+        if [ -f "$cert_dir/$domain.cer" ]; then
+            echo "  - $cert_dir/$domain.cer"
+        fi
+        if [ -f "$cert_dir/$domain.crt" ]; then
+            echo "  - $cert_dir/$domain.crt"
+        fi
+        if [ -f "$cert_dir/cert.pem" ]; then
+            echo "  - $cert_dir/cert.pem"
+        fi
+        
+        # 完整链证书
+        echo -e "\n${GREEN}完整链证书:${NC}"
+        if [ -f "$cert_dir/fullchain.cer" ]; then
+            echo "  - $cert_dir/fullchain.cer"
+        fi
+        if [ -f "$cert_dir/fullchain.crt" ]; then
+            echo "  - $cert_dir/fullchain.crt"
+        fi
+        if [ -f "$cert_dir/fullchain.pem" ]; then
+            echo "  - $cert_dir/fullchain.pem"
+        fi
+        
+        # 私钥文件
+        echo -e "\n${GREEN}私钥文件:${NC}"
+        if [ -f "$cert_dir/$domain.key" ]; then
+            echo "  - $cert_dir/$domain.key"
+        fi
+        if [ -f "$cert_dir/privkey.pem" ]; then
+            echo "  - $cert_dir/privkey.pem"
+        fi
+        if [ -f "$cert_dir/key.pem" ]; then
+            echo "  - $cert_dir/key.pem"
+        fi
+        
+        # CA证书
+        echo -e "\n${GREEN}CA证书:${NC}"
+        if [ -f "$cert_dir/ca.cer" ]; then
+            echo "  - $cert_dir/ca.cer"
+        fi
+        if [ -f "$cert_dir/ca.crt" ]; then
+            echo "  - $cert_dir/ca.crt"
+        fi
+        if [ -f "$cert_dir/chain.pem" ]; then
+            echo "  - $cert_dir/chain.pem"
+        fi
+        
+        # 证书信息
+        echo -e "\n${GREEN}证书信息:${NC}"
+        local cert_file_to_check=""
+        if [ -f "$cert_dir/$domain.cer" ]; then
+            cert_file_to_check="$cert_dir/$domain.cer"
+        elif [ -f "$cert_dir/$domain.crt" ]; then
+            cert_file_to_check="$cert_dir/$domain.crt"
+        elif [ -f "$cert_dir/fullchain.cer" ]; then
+            cert_file_to_check="$cert_dir/fullchain.cer"
+        elif [ -f "$cert_dir/fullchain.crt" ]; then
+            cert_file_to_check="$cert_dir/fullchain.crt"
+        fi
+        
+        if [ -n "$cert_file_to_check" ] && [ -f "$cert_file_to_check" ]; then
+            echo -e "${YELLOW}[*] 证书详细信息:${NC}"
+            openssl x509 -in "$cert_file_to_check" -noout -text 2>/dev/null | grep -E "(Issuer:|Subject:|Not Before:|Not After :|DNS:)" | head -10
+        fi
+        
+        echo -e "${BLUE}========================================${NC}"
+        echo ""
+        
+        # 继续查看其他证书或返回
+        echo -e "${YELLOW}[?] 是否查看其他证书？(y/n): ${NC}"
+        read -p "" continue_view
+        if [[ ! $continue_view =~ ^[Yy]$ ]]; then
+            break
+        fi
+        
+        # 重新显示证书列表
+        echo -e "\n${GREEN}[✓] 证书列表:${NC}"
+        for i in "${!certs[@]}"; do
+            local cert_name="${certs[$i]}"
+            echo "  $((i+1))) $cert_name"
+        done
         echo ""
     done
     
@@ -1186,20 +1091,18 @@ main_menu() {
         echo "1) 申请证书"
         echo "2) 证书续期"
         echo "3) 删除证书"
-        echo "4) 列出证书"
-        echo "5) 安装证书到Web服务"
-        echo "6) 重新安装acme.sh"
+        echo "4) 列出证书（查看路径）"
+        echo "5) 重新安装acme.sh"
         echo "0) 退出"
         echo ""
-        read -p "请选择操作(0-6): " choice
+        read -p "请选择操作(0-5): " choice
         
         case $choice in
             1) cert_issue_menu ;;
             2) renew_certificate ;;
             3) delete_certificate ;;
             4) list_certificates ;;
-            5) install_certificate_menu ;;
-            6) reinstall_acme ;;
+            5) reinstall_acme ;;
             0) 
                 echo -e "${GREEN}再见！${NC}"
                 exit 0
