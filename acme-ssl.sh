@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# 启用严格模式（可选，可注释掉）
-set -o errexit  # 命令失败时退出
-set -o pipefail # 管道失败时退出
-
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
