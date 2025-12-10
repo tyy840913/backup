@@ -1044,9 +1044,10 @@ cert_issue_menu() {
     echo ""
     read -p "请输入域名: " domain_input
     
+    # 处理空输入：返回主菜单
     if [ -z "$domain_input" ]; then
-        echo -e "${RED}[✗] 域名不能为空${NC}"
-        return 1
+        echo -e "${BLUE}[*] 返回主菜单${NC}"
+        return 0
     fi
     
     # 将输入转换为数组
@@ -1143,6 +1144,12 @@ renew_certificate() {
     
     echo ""
     read -p "请选择要续期的证书序号: " cert_index
+
+    # 处理空输入：返回主菜单
+    if [ -z "$cert_index" ]; then
+        echo -e "${BLUE}[*] 返回主菜单${NC}"
+        return 0
+    fi
     
     # 验证输入
     if [ -z "$cert_index" ] || ! [[ "$cert_index" =~ ^[0-9]+$ ]] || [ "$cert_index" -lt 1 ] || [ "$cert_index" -gt ${#certs[@]} ]; then
@@ -1257,6 +1264,13 @@ delete_certificate() {
     
     echo ""
     read -p "请选择要删除的证书序号: " cert_index
+
+    # 处理空输入：返回主菜单
+    if [ -z "$cert_index" ]; then
+        echo -e "${BLUE}[*] 返回主菜单${NC}"
+        return 0
+    fi
+    
     if ! [[ "$cert_index" =~ ^[0-9]+$ ]] || [ "$cert_index" -lt 1 ] || [ "$cert_index" -gt ${#certs[@]} ]; then
         echo -e "${RED}[✗] 无效的序号${NC}"
         return 1
@@ -1424,6 +1438,12 @@ reinstall_acme() {
     echo -e "\n${BLUE}=== 重新安装acme.sh ===${NC}"
     
     read -p "确定要重新安装acme.sh吗？(y/n): " confirm
+
+    if [ -z "$confirm" ]; then
+        echo -e "${BLUE}[*] 返回主菜单${NC}"
+        return 0
+    fi
+    
     if ! [[ $confirm =~ ^[Yy]$ ]]; then
         echo -e "${YELLOW}[!] 取消重新安装${NC}"
         return 0
@@ -1580,42 +1600,25 @@ main_menu() {
         echo ""
         read -p "请选择操作(0-5): " choice
         
+        # 处理空输入：如果直接按回车，重新显示菜单
+        if [ -z "$choice" ]; then
+            continue
+        fi
+        
         case $choice in
-            1) 
-                cert_issue_menu
-                show_continue_prompt=true
-                ;;
-            2) 
-                renew_certificate
-                show_continue_prompt=true
-                ;;
-            3) 
-                delete_certificate
-                show_continue_prompt=true
-                ;;
-            4) 
-                list_certificates
-                show_continue_prompt=false
-                ;;
-            5) 
-                reinstall_acme
-                show_continue_prompt=true
-                ;;
+            1) cert_issue_menu ;;
+            2) renew_certificate ;;
+            3) delete_certificate ;;
+            4) list_certificates ;;
+            5) reinstall_acme ;;
             0) 
                 echo -e "${GREEN}再见！${NC}"
                 exit 0
                 ;;
             *)
-                echo -e "${RED}[✗] 无效的选择${NC}"
-                show_continue_prompt=false
+                echo -e "${RED}[✗] 无效的选择，请输入 0-5${NC}"
                 ;;
         esac
-        
-        # 只有需要时才显示"按回车键继续..."
-        if [ "$show_continue_prompt" = true ]; then
-            echo -e "\n${YELLOW}按回车键继续...${NC}"
-            read -r
-        fi
     done
 }
 
