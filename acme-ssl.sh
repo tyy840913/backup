@@ -37,105 +37,237 @@ init_directories() {
     mkdir -p "$ACME_DIR"
 }
 
-# 检查并安装依赖 - 改进版
+# 检查并安装依赖 - 完全修正版
 check_dependencies() {
-    # 依赖映射：命令 -> 包名（不同发行版）
-    local -A debian_packages=(
-        ["curl"]="curl"
-        ["socat"]="socat"
-        ["openssl"]="openssl"
-        ["dig"]="dnsutils"
-        ["git"]="git"
-        ["idn"]="idn"
-        ["find"]="findutils"  # 通常已安装
-        ["grep"]="grep"       # 通常已安装
-    )
-    
-    local -A centos_packages=(
-        ["curl"]="curl"
-        ["socat"]="socat"
-        ["openssl"]="openssl"
-        ["dig"]="bind-utils"
-        ["git"]="git"
-        ["idn"]="libidn"
-        ["find"]="findutils"
-        ["grep"]="grep"
-    )
-    
-    # 检查的命令列表
-    local commands=("curl" "socat" "openssl" "dig" "git" "idn" "find" "grep")
-    local missing_commands=()
-    
     echo -e "${BLUE}[*] 检查系统依赖...${NC}"
     
-    for cmd in "${commands[@]}"; do
-        if ! command -v "$cmd" &> /dev/null; then
-            missing_commands+=("$cmd")
-            echo -e "${YELLOW}[!] 缺失命令: $cmd${NC}"
-        fi
-    done
+    # 1. 首先检查核心依赖（必须）
+    local core_missing=()
     
-    if [ ${#missing_commands[@]} -eq 0 ]; then
-        echo -e "${GREEN}[✓] 所有依赖已安装${NC}"
+    # 注意：curl 不需要检查，因为脚本是用 curl 运行的
+    # openssl 必须（证书操作）
+    if ! command -v openssl &> /dev/null; then
+        core_missing+=("openssl")
+        echo -e "${YELLOW}[!] 缺失核心命令: openssl${NC}"
+    fi
+    
+    # crontab 必须（自动续期）
+    if ! command -v crontab &> /dev/null; then
+        core_missing+=("crontab")
+        echo -e "${YELLOW}[!] 缺失核心命令: crontab${NC}"
+    fi
+    
+    # 2. 如果有缺失的核心依赖，尝试安装
+    if [ ${#core_missing[@]} -gt 0 ]; then
+        echo -e "${YELLOW}[!] 发现缺失核心命令: ${core_missing[*]}${NC}"
+        echo -e "${BLUE}[*] 尝试安装核心依赖...${NC}"
+        
+        if ! install_packages "${core_missing[@]}"; then
+            echo -e "${RED}[✗] 核心依赖安装失败，脚本无法继续${NC}"
+            return 1
+        fi
+    else
+        echo -e "${GREEN}[✓] 所有核心依赖已安装${NC}"
+    fi
+    
+    # 3. 检查可选依赖（仅提示，不强制安装）
+    echo -e "\n${BLUE}[*] 检查可选依赖...${NC}"
+    
+    # socat: 用于HTTP验证模式
+    if ! command -v socat &> /dev/null; then
+        echo -e "${YELLOW}[!] 可选依赖缺失: socat${NC}"
+        echo -e "${BLUE}[!] 如需使用HTTP验证模式（Standalone），请手动安装:${NC}"
+        echo -e "  Debian/Ubuntu: sudo apt-get install socat"
+        echo -e "  CentOS/RHEL:   sudo yum install socat"
+        echo -e "  Alpine Linux:  sudo apk add socat"
+        echo -e "  或使用 DNS 验证模式（推荐）"
+    fi
+    
+    # dig: 用于手动DNS验证的检查（比 nslookup 更好）
+    if ! command -v dig &> /dev/null; then
+        echo -e "${YELLOW}[!] 可选依赖缺失: dig${NC}"
+        echo -e "${BLUE}[!] 如需更准确的DNS记录检查，请手动安装:${NC}"
+        echo -e "  Debian/Ubuntu: sudo apt-get install dnsutils"
+        echo -e "  CentOS/RHEL:   sudo yum install bind-utils"
+        echo -e "  Alpine Linux:  sudo apk add bind-tools"
+        echo -e "  可使用 nslookup 作为替代方案"
+    fi
+    
+    # git: 用于GitHub安装方式（备选方案）
+    if ! command -v git &> /dev/null; then
+        echo -e "${YELLOW}[!] 可选依赖缺失: git${NC}"
+        echo -e "${BLUE}[!] 仅当官方curl安装失败时才需要:${NC}"
+        echo -e "  Debian/Ubuntu: sudo apt-get install git"
+        echo -e "  CentOS/RHEL:   sudo yum install git"
+        echo -e "  Alpine Linux:  sudo apk add git"
+    fi
+    
+    # idn: 用于国际化域名（罕见需求）
+    if ! command -v idn &> /dev/null; then
+        echo -e "${YELLOW}[!] 可选依赖缺失: idn${NC}"
+        echo -e "${BLUE}[!] 仅处理国际化域名（如中文域名）时需要:${NC}"
+        echo -e "  Debian/Ubuntu: sudo apt-get install idn"
+        echo -e "  CentOS/RHEL:   sudo yum install libidn"
+        echo -e "  Alpine Linux:  sudo apk add libidn"
+    fi
+    
+    echo -e "${GREEN}[✓] 依赖检查完成${NC}"
+    return 0
+}
+
+# 安装包的辅助函数
+install_packages() {
+    local packages=("$@")
+    
+    if [ ${#packages[@]} -eq 0 ]; then
         return 0
     fi
     
-    echo -e "${YELLOW}[!] 发现缺失命令: ${missing_commands[*]}${NC}"
-    echo -e "${BLUE}[*] 尝试安装缺失依赖...${NC}"
+    # 包名映射
+    local -A debian_packages=(
+        ["openssl"]="openssl"
+        ["crontab"]="cron"
+        ["socat"]="socat"
+        ["dig"]="dnsutils"
+        ["git"]="git"
+        ["idn"]="idn"
+    )
     
-    # 尝试检测发行版并安装
+    local -A centos_packages=(
+        ["openssl"]="openssl"
+        ["crontab"]="cronie"
+        ["socat"]="socat"
+        ["dig"]="bind-utils"
+        ["git"]="git"
+        ["idn"]="libidn"
+    )
+    
+    local -A alpine_packages=(
+        ["openssl"]="openssl"
+        ["crontab"]="dcron"  # Alpine 有 dcron, fcron, cronie 多种
+        ["socat"]="socat"
+        ["dig"]="bind-tools"
+        ["git"]="git"
+        ["idn"]="libidn"
+    )
+    
+    echo -e "${BLUE}[*] 安装包: ${packages[*]}${NC}"
+    
     if command -v apt-get &> /dev/null; then
         # Debian/Ubuntu
-        local packages=()
-        for cmd in "${missing_commands[@]}"; do
-            packages+=("${debian_packages[$cmd]:-$cmd}")
+        local install_list=()
+        for cmd in "${packages[@]}"; do
+            local pkg="${debian_packages[$cmd]:-$cmd}"
+            install_list+=("$pkg")
         done
         
-        apt-get update
-        if apt-get install -y "${packages[@]}"; then
-            echo -e "${GREEN}[✓] 依赖安装完成${NC}"
+        echo -e "${BLUE}[*] 使用 apt-get 安装: ${install_list[*]}${NC}"
+        
+        if apt-get update && apt-get install -y "${install_list[@]}"; then
+            echo -e "${GREEN}[✓] 依赖安装成功${NC}"
             return 0
         else
-            echo -e "${RED}[✗] 依赖安装失败，请手动安装: ${packages[*]}${NC}"
+            echo -e "${RED}[✗] 依赖安装失败${NC}"
+            
+            # 尝试分开安装
+            echo -e "${YELLOW}[!] 尝试单独安装...${NC}"
+            for pkg in "${install_list[@]}"; do
+                if apt-get install -y "$pkg"; then
+                    echo -e "${GREEN}[✓] 安装成功: $pkg${NC}"
+                else
+                    echo -e "${RED}[✗] 安装失败: $pkg${NC}"
+                fi
+            done
+            
             return 1
         fi
         
     elif command -v yum &> /dev/null; then
         # CentOS/RHEL 7及以下
-        local packages=()
-        for cmd in "${missing_commands[@]}"; do
-            packages+=("${centos_packages[$cmd]:-$cmd}")
+        local install_list=()
+        for cmd in "${packages[@]}"; do
+            local pkg="${centos_packages[$cmd]:-$cmd}"
+            install_list+=("$pkg")
         done
         
-        if yum install -y "${packages[@]}"; then
-            echo -e "${GREEN}[✓] 依赖安装完成${NC}"
+        echo -e "${BLUE}[*] 使用 yum 安装: ${install_list[*]}${NC}"
+        
+        if yum install -y "${install_list[@]}"; then
+            echo -e "${GREEN}[✓] 依赖安装成功${NC}"
             return 0
         else
-            echo -e "${RED}[✗] 依赖安装失败，请手动安装: ${packages[*]}${NC}"
+            echo -e "${RED}[✗] 依赖安装失败${NC}"
             return 1
         fi
         
     elif command -v dnf &> /dev/null; then
         # Fedora/CentOS 8+
-        local packages=()
-        for cmd in "${missing_commands[@]}"; do
-            packages+=("${centos_packages[$cmd]:-$cmd}")
+        local install_list=()
+        for cmd in "${packages[@]}"; do
+            local pkg="${centos_packages[$cmd]:-$cmd}"
+            install_list+=("$pkg")
         done
         
-        if dnf install -y "${packages[@]}"; then
-            echo -e "${GREEN}[✓] 依赖安装完成${NC}"
+        echo -e "${BLUE}[*] 使用 dnf 安装: ${install_list[*]}${NC}"
+        
+        if dnf install -y "${install_list[@]}"; then
+            echo -e "${GREEN}[✓] 依赖安装成功${NC}"
             return 0
         else
-            echo -e "${RED}[✗] 依赖安装失败，请手动安装: ${packages[*]}${NC}"
+            echo -e "${RED}[✗] 依赖安装失败${NC}"
+            return 1
+        fi
+        
+    elif command -v apk &> /dev/null; then
+        # Alpine Linux
+        local install_list=()
+        for cmd in "${packages[@]}"; do
+            local pkg="${alpine_packages[$cmd]:-$cmd}"
+            install_list+=("$pkg")
+        done
+        
+        echo -e "${BLUE}[*] 使用 apk 安装: ${install_list[*]}${NC}"
+        
+        if apk add --no-cache "${install_list[@]}"; then
+            echo -e "${GREEN}[✓] 依赖安装成功${NC}"
+            return 0
+        else
+            echo -e "${RED}[✗] 依赖安装失败${NC}"
+            
+            # Alpine 的 cron 可能有不同包名
+            if [[ " ${packages[*]} " =~ " crontab " ]]; then
+                echo -e "${YELLOW}[!] 尝试不同的cron包...${NC}"
+                for cron_pkg in "dcron" "fcron" "cronie"; do
+                    if apk add --no-cache "$cron_pkg"; then
+                        echo -e "${GREEN}[✓] 安装成功: $cron_pkg (替代crontab)${NC}"
+                        return 0
+                    fi
+                done
+            fi
+            
             return 1
         fi
         
     else
         echo -e "${RED}[✗] 无法确定包管理器${NC}"
         echo -e "${YELLOW}[!] 请手动安装以下命令:${NC}"
-        for cmd in "${missing_commands[@]}"; do
+        for cmd in "${packages[@]}"; do
             echo "  - $cmd"
+            case "$cmd" in
+                "openssl")
+                    echo "    # 几乎所有Linux发行版都需要此命令"
+                    ;;
+                "crontab")
+                    echo "    # 自动续期必需，但可手动运行续期命令替代"
+                    ;;
+            esac
         done
+        
+        echo -e "\n${YELLOW}[!] 安装建议:${NC}"
+        echo "1. 先尝试安装核心依赖：openssl 和 crontab"
+        echo "2. 如无法安装crontab，可手动运行续期：~/.acme.sh/acme.sh --cron"
+        echo "3. 可选依赖不是必须的"
+        
         return 1
     fi
 }
