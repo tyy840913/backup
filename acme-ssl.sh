@@ -713,7 +713,7 @@ issue_certificate() {
         echo -e "${BLUE}[*] 正在获取DNS验证信息...${NC}"
         
         # 构建acme.sh命令 - 使用数组避免eval问题
-        local get_txt_cmd=("$ACME_BIN" "--issue" "--dns" "manual")
+        local get_txt_cmd=("$ACME_BIN" "--issue" "--manual")
         for domain in "${domains[@]}"; do
             get_txt_cmd+=("-d" "$domain")
         done
