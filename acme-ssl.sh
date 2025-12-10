@@ -1204,8 +1204,7 @@ list_certificates() {
     if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
         echo -e "${YELLOW}[!] 没有找到证书${NC}"
         echo -e "\n${YELLOW}按回车键返回主菜单...${NC}"
-        read -r
-        return 0  # 返回0表示正常结束，回到main_menu
+        return 1
     fi
     
     local certs=("${_CERT_ARRAY[@]}")
