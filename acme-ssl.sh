@@ -666,7 +666,6 @@ register_ca() {
 }
 
 # 申请证书 - 支持多域名版本（修复手动模式）
-# 申请证书 - 支持多域名版本（修复手动模式）
 issue_certificate() {
     # 参数处理：最后一个参数是邮箱，倒数第二个是模式，倒数第三个是CA，其余都是域名
     local args=("$@")
@@ -693,12 +692,6 @@ issue_certificate() {
     done
     echo ""
     
-    # 构建域名参数字符串
-    local domain_params=""
-    for domain in "${domains[@]}"; do
-        domain_params="$domain_params -d $domain"
-    done
-    
     if [ "$mode" = "manual" ]; then
         echo -e "${YELLOW}[!] 使用手动DNS验证模式${NC}"
         echo -e "${YELLOW}[!] 注意：每个域名都需要单独添加DNS TXT记录${NC}"
@@ -724,12 +717,30 @@ issue_certificate() {
         echo -e "${BLUE}[*] 执行命令...${NC}"
         echo -e "${YELLOW}[!] 命令: ${get_txt_cmd[*]}${NC}"
         
-        # 执行命令并捕获输出
-        if ! "${get_txt_cmd[@]}" 2>&1 | tee "$log_file"; then
-            local exit_code=${PIPESTATUS[0]}
-            
-            # 检查是否是"证书已存在"的错误
-            if grep -qi "already exists" "$log_file" || grep -qi "already issued" "$log_file"; then
+        # 执行命令并捕获输出 - 重要的是获取输出，而不是检查退出码
+        local cmd_output=""
+        cmd_output=$("${get_txt_cmd[@]}" 2>&1 | tee "$log_file")
+        local exit_code=${PIPESTATUS[0]}
+        
+        # 显示命令输出
+        echo "$cmd_output"
+        
+        # 重要修复：在手动模式下，acme.sh会显示TXT记录然后退出（非零状态）
+        # 这是正常行为，不是错误！
+        
+        # 检查是否成功获取了TXT记录
+        local found_txt_record=false
+        
+        for domain in "${domains[@]}"; do
+            if grep -q "TXT value" "$log_file" && grep -q "$domain" "$log_file"; then
+                found_txt_record=true
+                break
+            fi
+        done
+        
+        if [ "$found_txt_record" = false ]; then
+            # 检查是否是"证书已存在"的情况
+            if grep -qi "already exists" "$cmd_output" || grep -qi "already issued" "$cmd_output"; then
                 echo -e "${YELLOW}[!] 检测到该域名可能已有证书${NC}"
                 echo -e "${YELLOW}[!] 尝试续期现有证书...${NC}"
                 
@@ -752,15 +763,9 @@ issue_certificate() {
                     return 1
                 fi
             else
-                echo -e "${RED}[✗] 获取DNS验证信息失败 (exit $exit_code)${NC}"
+                echo -e "${RED}[✗] 获取DNS验证信息失败，未找到TXT记录${NC}"
                 return 1
             fi
-        fi
-        
-        local exit_code=${PIPESTATUS[0]}
-        if [ $exit_code -ne 0 ]; then
-            echo -e "${RED}[✗] 获取DNS验证信息失败${NC}"
-            return 1
         fi
         
         # 解析日志，获取每个域名的TXT记录
@@ -770,24 +775,26 @@ issue_certificate() {
             # 从日志中提取该域名的TXT记录
             local txt_record=""
             
-            # 尝试多种匹配模式
-            txt_record=$(grep -i "domain: $domain" "$log_file" -A 5 | grep -i "txt value:" | head -1 | sed -n "s/.*TXT value:[[:space:]]*['\"]\?\([^'\"]*\)['\"]\?/\1/p")
+            # 从命令输出中直接提取（更可靠）
+            txt_record=$(echo "$cmd_output" | grep -A 2 "Domain: '_acme-challenge.$domain'" | grep "TXT value:" | sed -n "s/.*TXT value: '\([^']*\)'.*/\1/p")
             
             if [ -z "$txt_record" ]; then
-                txt_record=$(grep -i "_acme-challenge.$domain" "$log_file" -A 3 | grep -i "txt value:" | head -1 | sed 's/.*TXT value:[[:space:]]*//' | tr -d '\"' | tr -d "'")
+                txt_record=$(echo "$cmd_output" | grep -i "txt value:" | grep -i "$domain" | sed -n "s/.*TXT value: '\([^']*\)'.*/\1/p")
             fi
             
             if [ -z "$txt_record" ]; then
-                txt_record=$(grep -i "Please add the TXT record" "$log_file" | grep -i "$domain" | sed -n 's/.*: \(.*\)/\1/p' | head -1)
+                txt_record=$(echo "$cmd_output" | grep -i "TXT value:" | tail -1 | sed -n "s/.*TXT value: '\([^']*\)'.*/\1/p")
             fi
             
             if [ -z "$txt_record" ]; then
                 echo -e "${YELLOW}[!] 无法自动获取域名 $domain 的TXT记录${NC}"
+                echo -e "${YELLOW}[!] 请从上面的输出中手动查找TXT记录值${NC}"
                 read -p "请手动输入 _acme-challenge.$domain 的TXT记录值: " txt_record
             fi
             
             if [ -n "$txt_record" ]; then
                 domain_txt_records["$domain"]="$txt_record"
+                echo -e "${GREEN}[✓] 获取到域名 $domain 的TXT记录${NC}"
             fi
         done
         
@@ -816,6 +823,7 @@ issue_certificate() {
         echo ""
         
         # 等待用户确认
+        echo -e "${BLUE}[*] 等待您添加DNS记录...${NC}"
         read -p "DNS记录添加完成并等待生效后，按回车键继续验证..."
         
         # 可选：增加固定的等待时间，确保DNS传播
@@ -869,7 +877,7 @@ issue_certificate() {
             echo -e "${RED}[✗] 证书签发失败${NC}"
             return 1
         fi
-
+        
     else
         # Cloudflare API自动验证
         echo -e "${YELLOW}[!] 使用Cloudflare API自动验证${NC}"
