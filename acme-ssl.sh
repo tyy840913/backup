@@ -603,14 +603,17 @@ cert_issue_menu() {
     fi
 }
 
-# 安装证书到Web服务 - 核心功能模块
+# 安装证书到Web服务 - 优化版
 install_certificate_menu() {
     local domain="$1"
+    local nginx_conf=""
+    local nginx_conf_dir=""
     
+    # ==========================================
+    # 1. 证书选择与验证逻辑 (保持不变)
+    # ==========================================
     if [ -z "$domain" ]; then
         echo -e "\n${BLUE}=== 安装证书 ===${NC}"
-        
-        # 使用统一的证书查找函数
         find_certificates
         
         if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
@@ -622,14 +625,12 @@ install_certificate_menu() {
         local certs=("${_CERT_ARRAY[@]}")
         local cert_dirs=("${_CERT_DIR_ARRAY[@]}")
         
-        # 显示证书列表供选择
+        # 显示列表
         for i in "${!certs[@]}"; do
             local cert_name="${certs[$i]}"
             local cert_dir="${cert_dirs[$i]}"
             local cert_file="$cert_dir/$cert_name.cer"
-            if [ ! -f "$cert_file" ]; then
-                cert_file="$cert_dir/$cert_name.crt"
-            fi
+            [ ! -f "$cert_file" ] && cert_file="$cert_dir/$cert_name.crt"
             
             local expiry_date=""
             if [ -f "$cert_file" ]; then
@@ -643,7 +644,6 @@ install_certificate_menu() {
             fi
         done
         
-        echo ""
         read -p "请选择要安装的证书序号: " selected_index
         if ! [[ "$selected_index" =~ ^[0-9]+$ ]] || [ "$selected_index" -lt 1 ] || [ "$selected_index" -gt ${#certs[@]} ]; then
             echo -e "${RED}[✗] 无效的序号${NC}"
@@ -655,368 +655,154 @@ install_certificate_menu() {
         
         # 获取到期时间
         local cert_file="$cert_dir/$domain.cer"
-        if [ ! -f "$cert_file" ]; then
-            cert_file="$cert_dir/$domain.crt"
-        fi
-        
-        expiry_date=""
-        if [ -f "$cert_file" ]; then
-            expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
-        fi
+        [ ! -f "$cert_file" ] && cert_file="$cert_dir/$domain.crt"
+        expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
     else
-        # 查找指定域名的证书文件
         find_certificates "$domain"
         cert_dir="$_CERT_DIR"
-        
-        # 获取到期时间
-        local cert_file="$_CERT_PATH"
         expiry_date=""
-        if [ -f "$cert_file" ]; then
-            expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+        if [ -f "$_CERT_PATH" ]; then
+            expiry_date=$(openssl x509 -enddate -noout -in "$_CERT_PATH" 2>/dev/null | cut -d= -f2)
         fi
     fi
-    
-    if [ -z "$cert_dir" ]; then
-        find_certificates "$domain"
-        cert_dir="$_CERT_DIR"
-    fi
-    
+
     if [ -z "$cert_dir" ]; then
         echo -e "${RED}[✗] 无法找到证书: $domain${NC}"
         return 1
     fi
     
+    # 获取证书文件路径
     cert_path="$_CERT_PATH"
     key_path="$_KEY_PATH"
-    ca_path="$_CA_PATH"
     fullchain_path="$_FULLCHAIN_PATH"
     
-    echo -e "\n${BLUE}安装证书: $domain${NC}"
-    
-    # 显示到期时间（如果获取到的话）
+    echo -e "\n${BLUE}准备为域名安装证书: $domain${NC}"
     if [ -n "$expiry_date" ]; then
         echo -e "${GREEN}[✓] 证书到期时间: $expiry_date${NC}"
     fi
+
+    # ==========================================
+    # 2. 智能探测 Nginx 配置文件路径
+    # ==========================================
+    echo -e "${BLUE}[+] 正在探测 Nginx 配置...${NC}"
     
-    # 显示证书文件信息
-    echo -e "${BLUE}证书文件位置:${NC}"
-    echo -e "  ${GREEN}证书:${NC} $cert_path"
-    if [ -n "$fullchain_path" ]; then
-        echo -e "  ${GREEN}完整链证书:${NC} $fullchain_path (推荐使用)"
-    fi
-    echo -e "  ${GREEN}私钥:${NC} $key_path"
-    if [ -f "$ca_path" ]; then
-        echo -e "  ${GREEN}CA证书:${NC} $ca_path"
-    fi
-    echo ""
+    # 尝试从进程获取配置文件路径
+    nginx_conf=$(ps aux | grep '[n]ginx' | grep -oP '(?<=-c\s)[^ ]+' | head -n1)
     
-    echo "选择安装方式："
-    echo "1) Nginx (配置证书路径)"
-    echo "2) Apache (配置证书路径)"
-    echo "3) 仅显示证书路径"
-    read -p "请选择(1-3): " service_choice
-    
-    case $service_choice in
-        1) # Nginx - 配置证书路径
-            echo -e "${BLUE}[*] Nginx配置模式${NC}"
-            
-            # 获取Nginx配置文件路径
-            local nginx_conf=""
-            read -p "请输入Nginx配置文件路径: " nginx_conf
-            
-            if [ ! -f "$nginx_conf" ]; then
-                echo -e "${RED}[✗] 配置文件不存在: $nginx_conf${NC}"
-                return 1
-            fi
-            
-            echo -e "${GREEN}[✓] 确定使用配置文件: $nginx_conf${NC}"
-            
-            # 备份配置文件
-            local backup_file="$nginx_conf.bak.$(date +%Y%m%d_%H%M%S)"
-            cp "$nginx_conf" "$backup_file"
-            echo -e "${GREEN}[✓] 配置文件已备份到: $backup_file${NC}"
-            
-            # 确定要使用的证书路径（优先使用完整链证书）
-            local cert_to_use="$cert_path"
-            if [ -n "$fullchain_path" ]; then
-                cert_to_use="$fullchain_path"
-                echo -e "${GREEN}[✓] 使用完整链证书 (推荐)${NC}"
-            fi
-            
-            # 处理通配符域名用于匹配
-            local clean_domain="${domain//\*/_}"
-            
-            # 配置更新逻辑
-            echo -e "${BLUE}[*] 更新Nginx配置中的证书路径...${NC}"
-            
-            local config_updated=0
-            local temp_file="/tmp/nginx_update_$(date +%s).conf"
-            
-            # 读取配置文件并更新
-            local output_content=""
-            local in_server=0
-            local server_block=""
-            local server_lines=""
-            
-            while IFS= read -r line || [ -n "$line" ]; do
-                # 检测server块开始
-                if [[ "$line" =~ ^[[:space:]]*server[[:space:]]*\{ ]]; then
-                    in_server=1
-                    server_block="$line"
-                    server_lines="$line"
-                    continue
-                fi
-                
-                # 如果在server块内
-                if [ $in_server -eq 1 ]; then
-                    server_block+="\n$line"
-                    server_lines+="\n$line"
-                    
-                    # 检测server块结束
-                    if [[ "$line" =~ ^[[:space:]]*\} ]]; then
-                        in_server=0
-                        
-                        # 检查这个server块是否包含目标域名
-                        if echo "$server_lines" | grep -q -E "server_name.*[[:space:]]$domain[[:space:];]|server_name.*[[:space:]]$clean_domain[[:space:];]" ; then
-                            echo -e "${GREEN}[✓] 找到包含域名 $domain 的server块${NC}"
-                            
-                            # 处理server块中的证书配置
-                            local processed_block=""
-                            local has_ssl_cert=0
-                            local has_ssl_key=0
-                            
-                            # 逐行处理server块
-                            while IFS= read -r srv_line || [ -n "$srv_line" ]; do
-                                # 处理证书配置行
-                                if [[ "$srv_line" =~ ^[[:space:]]*#?[[:space:]]*ssl_certificate[[:space:]] ]]; then
-                                    echo -e "${YELLOW}[!] 发现证书配置行: ${srv_line:0:50}...${NC}"
-                                    
-                                    # 如果被注释，取消注释
-                                    if [[ "$srv_line" =~ ^[[:space:]]*# ]]; then
-                                        echo -e "${YELLOW}[!] 取消注释证书配置${NC}"
-                                        # 移除注释符号和多余空格
-                                        srv_line=$(echo "$srv_line" | sed 's/^[[:space:]]*#//')
-                                        srv_line=$(echo "$srv_line" | sed 's/^[[:space:]]*//')
-                                    fi
-                                    
-                                    # 更新为正确的证书路径
-                                    processed_block+="    ssl_certificate $cert_to_use;"$'\n'
-                                    has_ssl_cert=1
-                                    
-                                # 处理私钥配置行
-                                elif [[ "$srv_line" =~ ^[[:space:]]*#?[[:space:]]*ssl_certificate_key[[:space:]] ]]; then
-                                    echo -e "${YELLOW}[!] 发现私钥配置行: ${srv_line:0:50}...${NC}"
-                                    
-                                    # 如果被注释，取消注释
-                                    if [[ "$srv_line" =~ ^[[:space:]]*# ]]; then
-                                        echo -e "${YELLOW}[!] 取消注释私钥配置${NC}"
-                                        # 移除注释符号和多余空格
-                                        srv_line=$(echo "$srv_line" | sed 's/^[[:space:]]*#//')
-                                        srv_line=$(echo "$srv_line" | sed 's/^[[:space:]]*//')
-                                    fi
-                                    
-                                    # 更新为正确的私钥路径
-                                    processed_block+="    ssl_certificate_key $key_path;"$'\n'
-                                    has_ssl_key=1
-                                    
-                                # 处理空配置（如 ssl_certificate ;）
-                                elif [[ "$srv_line" =~ ^[[:space:]]*ssl_certificate[[:space:]]*;[[:space:]]*$ ]] || 
-                                     [[ "$srv_line" =~ ^[[:space:]]*ssl_certificate[[:space:]]+;[[:space:]]*$ ]]; then
-                                    echo -e "${YELLOW}[!] 发现空的证书配置，填充路径${NC}"
-                                    processed_block+="    ssl_certificate $cert_to_use;"$'\n'
-                                    has_ssl_cert=1
-                                    
-                                elif [[ "$srv_line" =~ ^[[:space:]]*ssl_certificate_key[[:space:]]*;[[:space:]]*$ ]] || 
-                                     [[ "$srv_line" =~ ^[[:space:]]*ssl_certificate_key[[:space:]]+;[[:space:]]*$ ]]; then
-                                    echo -e "${YELLOW}[!] 发现空的私钥配置，填充路径${NC}"
-                                    processed_block+="    ssl_certificate_key $key_path;"$'\n'
-                                    has_ssl_key=1
-                                    
-                                # 其他行原样保留
-                                else
-                                    processed_block+="$srv_line"$'\n'
-                                fi
-                            done < <(echo -e "$server_block")
-                            
-                            # 检查是否需要添加缺失的配置
-                            if [ $has_ssl_cert -eq 0 ] || [ $has_ssl_key -eq 0 ]; then
-                                echo -e "${YELLOW}[!] 缺少SSL证书配置，正在添加...${NC}"
-                                
-                                # 寻找合适的位置插入
-                                local temp_block=""
-                                local ssl_config_added=0
-                                
-                                while IFS= read -r srv_line || [ -n "$srv_line" ]; do
-                                    temp_block+="$srv_line"$'\n'
-                                    
-                                    # 在ssl_protocols之前添加证书配置
-                                    if [[ "$srv_line" =~ ^[[:space:]]*ssl_protocols ]] && [ $ssl_config_added -eq 0 ]; then
-                                        if [ $has_ssl_cert -eq 0 ]; then
-                                            temp_block+="    ssl_certificate $cert_to_use;"$'\n'
-                                            has_ssl_cert=1
-                                        fi
-                                        if [ $has_ssl_key -eq 0 ]; then
-                                            temp_block+="    ssl_certificate_key $key_path;"$'\n'
-                                            has_ssl_key=1
-                                        fi
-                                        ssl_config_added=1
-                                    fi
-                                done < <(echo -e "$processed_block")
-                                
-                                # 如果没找到ssl_protocols，在server块结束前添加
-                                if [ $ssl_config_added -eq 0 ]; then
-                                    # 移除最后的 } 行
-                                    processed_block=$(echo -e "$temp_block" | head -n -1)
-                                    
-                                    # 添加注释说明
-                                    processed_block+="\n    # SSL证书配置 - 由acme-ssl脚本添加"$'\n'
-                                    if [ $has_ssl_cert -eq 0 ]; then
-                                        processed_block+="    ssl_certificate $cert_to_use;"$'\n'
-                                    fi
-                                    if [ $has_ssl_key -eq 0 ]; then
-                                        processed_block+="    ssl_certificate_key $key_path;"$'\n'
-                                    fi
-                                    processed_block+="}"$'\n'
-                                else
-                                    processed_block="$temp_block"
-                                fi
-                            fi
-                            
-                            output_content+="$processed_block"
-                            config_updated=1
-                        else
-                            # 不包含目标域名，原样输出
-                            output_content+="$server_block"$'\n'
-                        fi
-                        
-                        server_block=""
-                        server_lines=""
-                        continue
-                    fi
-                else
-                    # 不在server块中的行
-                    output_content+="$line"$'\n'
-                fi
-            done < "$nginx_conf"
-            
-            # 将更新后的内容写入临时文件
-            echo -e "$output_content" > "$temp_file"
-            
-            if [ $config_updated -eq 1 ]; then
-                # 验证配置语法
-                echo -e "${BLUE}[*] 验证配置语法...${NC}"
-                if nginx -t -c "$temp_file" 2>/dev/null; then
-                    # 替换原配置文件
-                    mv "$temp_file" "$nginx_conf"
-                    echo -e "${GREEN}[✓] Nginx配置文件更新成功${NC}"
-                    
-                    # 显示更新结果
-                    echo -e "${GREEN}[✓] 证书路径已更新:${NC}"
-                    echo "  ssl_certificate $cert_to_use;"
-                    echo "  ssl_certificate_key $key_path;"
-                    
-                    echo -e "\n${BLUE}[*] 重要信息:${NC}"
-                    echo -e "${GREEN}[✓] 配置文件已备份: $backup_file${NC}"
-                    echo -e "${YELLOW}[!] 请手动重载Nginx配置生效:${NC}"
-                    echo "  命令: nginx -s reload"
-                    echo "  或: systemctl reload nginx"
-                    
-                else
-                    echo -e "${RED}[✗] 配置语法验证失败${NC}"
-                    echo -e "${YELLOW}[!] 详细错误信息:${NC}"
-                    nginx -t -c "$temp_file" 2>&1
-                    echo -e "\n${YELLOW}[!] 配置文件未修改，原始配置备份在: $backup_file${NC}"
-                    rm -f "$temp_file"
-                    return 1
-                fi
+    if [ -n "$nginx_conf" ] && [ -f "$nginx_conf" ]; then
+        echo -e "${GREEN}[✓] 通过参数探测到配置文件: $nginx_conf${NC}"
+        # 如果指定了具体文件，则不需要目录
+        nginx_conf_dir=""
+    else
+        # 如果没有指定 -c 文件，通常默认加载 conf/nginx.conf，我们关注其包含的目录
+        # 常见的默认配置文件
+        if [ -f "/etc/nginx/nginx.conf" ]; then
+            nginx_conf="/etc/nginx/nginx.conf"
+            # 提取第一个包含 conf.d 或 sites-enabled 的 include 行作为目录参考
+            nginx_conf_dir=$(grep -r "include" "$nginx_conf" | grep -oP '(?<=include\s)[^;]+' | head -n1 | sed 's/\*//')
+            if [ -n "$nginx_conf_dir" ] && [ -d "$nginx_conf_dir" ]; then
+                echo -e "${GREEN}[✓] 默认配置文件: $nginx_conf, 站点目录: $nginx_conf_dir${NC}"
             else
-                echo -e "${YELLOW}[!] 未找到包含域名 $domain 的server块${NC}"
-                echo -e "${YELLOW}[!] 请手动在Nginx配置中添加:${NC}"
-                echo "  ssl_certificate $cert_to_use;"
-                echo "  ssl_certificate_key $key_path;"
-                echo -e "\n${GREEN}[✓] 配置文件已备份: $backup_file${NC}"
-                rm -f "$temp_file"
+                nginx_conf_dir="/etc/nginx/conf.d/"
             fi
-            ;;
-            
-        2) # Apache - 配置证书路径
-            echo -e "${BLUE}[*] Apache配置模式${NC}"
-            
-            # 获取Apache配置文件路径
-            local apache_conf=""
-            read -p "请输入Apache配置文件路径: " apache_conf
-            
-            if [ ! -f "$apache_conf" ]; then
-                echo -e "${RED}[✗] 配置文件不存在: $apache_conf${NC}"
+        elif [ -f "/usr/local/nginx/conf/nginx.conf" ]; then
+            nginx_conf="/usr/local/nginx/conf/nginx.conf"
+            nginx_conf_dir="/usr/local/nginx/conf/conf.d/"
+        else
+            # 完全探测失败，使用最常见路径
+            nginx_conf_dir="/etc/nginx/conf.d/"
+        fi
+    fi
+
+    # ==========================================
+    # 3. 确定最终的站点配置文件
+    # ==========================================
+    local target_conf=""
+
+    # 情况 A: 如果我们已经拿到了具体的主配置文件 (nginx.conf)，通常不直接在这里写站点，尝试找包含的文件
+    if [ -n "$nginx_conf" ] && [[ "$nginx_conf" != *"nginx.conf"* && "$nginx_conf" != *".conf"$ ]]; then
+        # 如果 -c 指向的是一个非标准文件，直接使用
+        target_conf="$nginx_conf"
+    else
+        # 情况 B: 优先检查 conf.d 目录下是否有该域名的配置
+        if [ -f "${nginx_conf_dir}${domain}.conf" ]; then
+            target_conf="${nginx_conf_dir}${domain}.conf"
+        elif [ -f "/etc/nginx/sites-enabled/${domain}" ]; then
+            target_conf="/etc/nginx/sites-enabled/${domain}"
+        elif [ -f "/etc/nginx/conf.d/${domain}.conf" ]; then
+            target_conf="/etc/nginx/conf.d/${domain}.conf"
+        else
+            # 提示用户输入或使用默认
+            echo -e "${YELLOW}[!] 未自动找到 $domain 的配置文件${NC}"
+            read -p "请输入该域名的 Nginx 配置文件路径: " target_conf
+            if [ ! -f "$target_conf" ]; then
+                echo -e "${RED}[✗] 文件 $target_conf 不存在${NC}"
                 return 1
             fi
-            
-            echo -e "${GREEN}[✓] 确定使用配置文件: $apache_conf${NC}"
-            
-            # 显示Apache配置示例
-            echo -e "\n${BLUE}Apache SSL配置示例:${NC}"
-            echo "在VirtualHost配置中添加:"
-            echo "  SSLEngine on"
-            echo "  SSLCertificateFile $cert_path"
-            echo "  SSLCertificateKeyFile $key_path"
-            
-            if [ -n "$ca_path" ]; then
-                echo "  SSLCertificateChainFile $ca_path"
-            fi
-            
-            echo -e "\n${YELLOW}[!] 请手动修改Apache配置并重启服务${NC}"
-            ;;
-            
-        3) # 仅显示证书路径
-            echo -e "\n${BLUE}=== 证书路径信息 ===${NC}"
-            echo -e "${GREEN}证书文件位置:${NC}"
-            echo -e "  ${YELLOW}证书文件:${NC} $cert_path"
-            
-            if [ -n "$fullchain_path" ]; then
-                echo -e "  ${YELLOW}完整链证书:${NC} $fullchain_path"
-                echo -e "  ${GREEN}(推荐使用完整链证书，包含中间证书)${NC}"
-            fi
-            
-            echo -e "  ${YELLOW}私钥文件:${NC} $key_path"
-            
-            if [ -f "$ca_path" ]; then
-                echo -e "  ${YELLOW}CA证书:${NC} $ca_path"
-            fi
-            
-            echo -e "\n${BLUE}配置示例:${NC}"
-            
-            echo "1) Nginx配置:"
-            echo "   ssl_certificate $cert_path;"
-            echo "   ssl_certificate_key $key_path;"
-            
-            if [ -n "$fullchain_path" ]; then
-                echo "   # 或使用完整链证书:"
-                echo "   ssl_certificate $fullchain_path;"
-                echo "   ssl_certificate_key $key_path;"
-            fi
-            
-            echo -e "\n2) Apache配置:"
-            echo "   SSLCertificateFile $cert_path"
-            echo "   SSLCertificateKeyFile $key_path"
-            
-            if [ -f "$ca_path" ]; then
-                echo "   SSLCertificateChainFile $ca_path"
-            fi
-            
-            echo -e "\n3) 其他服务:"
-            echo "   证书文件: $cert_path"
-            echo "   私钥文件: $key_path"
-            ;;
-            
-        *)
-            echo -e "${RED}[✗] 无效的选择${NC}"
+        fi
+    fi
+
+    if [ -z "$target_conf" ]; then
+        echo -e "${RED}[✗] 无法确定配置文件路径${NC}"
+        return 1
+    fi
+
+    echo -e "${BLUE}[+] 目标配置文件: $target_conf${NC}"
+    cp "$target_conf" "$target_conf.bak_$(date +%s)" && echo -e "${GREEN}[✓] 配置文件已备份${NC}"
+
+    # ==========================================
+    # 4. 智能更新配置 (处理注释、存在、不存在的情况)
+    # ==========================================
+    local cert_to_use="$cert_path"
+    # 优先使用 fullchain (完整证书链)
+    [ -n "$fullchain_path" ] && cert_to_use="$fullchain_path"
+
+    # 处理证书行 (ssl_certificate)
+    # 1. 取消注释并替换路径
+    # 2. 替换现有路径
+    # 3. 如果以上都没发生 (q 模式退出码非0)，则追加到文件末尾 (或者更精确地，在 listen 443 块内追加)
+    if ! sed -i -E "s|#?\s*ssl_certificate\s+.*|#\tssl_certificate $cert_to_use;|" "$target_conf"; then
+        # 如果替换失败，尝试追加 (这里简单处理，追加到文件末尾，实际中建议定位到 server 块)
+        echo "ssl_certificate $cert_to_use;" >> "$target_conf"
+    fi
+
+    # 处理私钥行 (ssl_certificate_key)
+    if ! sed -i -E "s|#?\s*ssl_certificate_key\s+.*|#\tssl_certificate_key $key_path;|" "$target_conf"; then
+        echo "ssl_certificate_key $key_path;" >> "$target_conf"
+    fi
+
+    # ==========================================
+    # 5. 验证与完成
+    # ==========================================
+    echo -e "\n${BLUE}正在测试 Nginx 配置...${NC}"
+    # 尝试检测 nginx 命令路径
+    local nginx_cmd="nginx"
+    if ! command -v nginx &> /dev/null; then
+        nginx_cmd="/usr/sbin/nginx"
+        if [ ! -f "$nginx_cmd" ]; then
+            echo -e "${YELLOW}[!] 无法找到 Nginx 执行文件，跳过语法检测${NC}"
+        fi
+    fi
+
+    if [ -f "$nginx_cmd" ]; then
+        if "$nginx_cmd" -t; then
+            echo -e "${GREEN}[✓] 证书安装成功！${NC}"
+            echo -e "${GREEN}[✓] 配置已更新，证书和私钥路径已写入${NC}"
+            echo -e "${YELLOW}[!] 请执行命令重载 Nginx: $nginx_cmd -s reload${NC}"
+        else
+            echo -e "${RED}[✗] Nginx 配置测试失败！${NC}"
+            echo -e "${RED}[✗] 请检查配置文件: $target_conf${NC}"
+            echo -e "${RED}[✗] 可能需要手动修复语法或还原备份: $target_conf.bak_*${NC}"
             return 1
-            ;;
-    esac
-    
-    echo -e "\n${GREEN}[✓] 证书安装完成！${NC}"
+        fi
+    else
+        echo -e "${GREEN}[✓] 证书安装成功！${NC}"
+        echo -e "${YELLOW}[!] Nginx 语法检测跳过 (未找到命令)，请手动检查配置并重载服务${NC}"
+    fi
+
     return 0
 }
+
 
 # 证书续期
 renew_certificate() {
