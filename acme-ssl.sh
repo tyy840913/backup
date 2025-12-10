@@ -1374,19 +1374,14 @@ list_certificates() {
     # 询问用户是否要查看特定证书的详细路径（交互式部分保持不变）
     echo -e "${BLUE}----------------------------------------${NC}"
     echo -e "${YELLOW}[?] 您可以输入证书序号查看详细文件路径${NC}"
-    echo -e "${YELLOW}[?] 输入0返回主菜单${NC}"
+    echo -e "${YELLOW}按回车键返回主菜单...${NC}"
     echo -e "${BLUE}----------------------------------------${NC}"
     
-    while true; do
-        read -p "请输入证书序号查看详细路径 (0返回): " selected_index
+        while true; do
+        read -p "请输入证书序号查看详细路径: " selected_index
         
         if [ -z "$selected_index" ]; then
             continue
-        fi
-        
-        if [[ "$selected_index" =~ ^[0]$ ]]; then
-            echo -e "${BLUE}[*] 返回主菜单${NC}"
-            break
         fi
         
         if ! [[ "$selected_index" =~ ^[0-9]+$ ]] || [ "$selected_index" -lt 1 ] || [ "$selected_index" -gt ${#certs[@]} ]; then
@@ -1418,6 +1413,11 @@ list_certificates() {
             echo "  $((i+1))) $cert_name"
         done
         echo ""
+        
+        # 简化提示信息
+        echo -e "${BLUE}----------------------------------------${NC}"
+        echo -e "${YELLOW}[?] 请输入证书序号继续查看详细路径${NC}"
+        echo -e "${BLUE}----------------------------------------${NC}"
     done
     
     return 0
