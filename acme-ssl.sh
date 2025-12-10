@@ -17,7 +17,7 @@ init_directories() {
 
 # 检查并安装依赖
 check_dependencies() {
-    local dependencies=("curl" "openssl" "crontab")
+    local dependencies=("openssl" "crontab")
     local missing=()
     
     echo -e "${BLUE}[*] 检查系统依赖...${NC}"
