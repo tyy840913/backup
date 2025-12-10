@@ -1371,19 +1371,21 @@ list_certificates() {
         echo ""
     done
     
-    # 询问用户是否要查看特定证书的详细路径（交互式部分保持不变）
-    echo -e "${BLUE}----------------------------------------${NC}"
-    echo -e "${YELLOW}[?] 您可以输入证书序号查看详细文件路径${NC}"
-    echo -e "${YELLOW}按回车键返回主菜单...${NC}"
-    echo -e "${BLUE}----------------------------------------${NC}"
-    
-        while true; do
-        read -p "请输入证书序号查看详细路径: " selected_index
+       while true; do
+        echo -e "${BLUE}----------------------------------------${NC}"
+        echo -e "${YELLOW}[?] 请输入证书序号查看详细路径${NC}"
+        echo -e "${YELLOW}[?] 直接按回车键返回主菜单${NC}"
+        echo -e "${BLUE}----------------------------------------${NC}"
         
+        read -p "请选择: " selected_index
+        
+        # 如果直接按回车，返回主菜单
         if [ -z "$selected_index" ]; then
-            continue
+            echo -e "${BLUE}[*] 返回主菜单${NC}"
+            return 0
         fi
         
+        # 检查输入是否有效
         if ! [[ "$selected_index" =~ ^[0-9]+$ ]] || [ "$selected_index" -lt 1 ] || [ "$selected_index" -gt ${#certs[@]} ]; then
             echo -e "${RED}[✗] 无效的序号，请输入1-${#certs[@]}之间的数字${NC}"
             continue
@@ -1402,22 +1404,17 @@ list_certificates() {
         
         echo -e "${BLUE}========================================${NC}"
         echo ""
-        echo -e "${YELLOW}按任意键返回证书列表继续查看其他证书...${NC}"
+        echo -e "${YELLOW}按任意键返回继续查看其他证书...${NC}"
         read -n 1 -s -r
         echo ""
         
-        # 重新显示证书列表
+        # 重新显示证书列表（简洁版）
         echo -e "${GREEN}[Success] 证书列表: ${NC}"
         for i in "${!certs[@]}"; do
             local cert_name="${certs[$i]}"
             echo "  $((i+1))) $cert_name"
         done
         echo ""
-        
-        # 简化提示信息
-        echo -e "${BLUE}----------------------------------------${NC}"
-        echo -e "${YELLOW}[?] 请输入证书序号继续查看详细路径${NC}"
-        echo -e "${BLUE}----------------------------------------${NC}"
     done
     
     return 0
