@@ -556,7 +556,7 @@ show_cert_detail() {
 check_dns_record() {
     local domain="$1"
     local txt_record="$2"
-    local max_attempts=36
+    local max_attempts=10
     local attempt=1
     
     echo -e "${BLUE}[*] 检查DNS记录: _acme-challenge.$domain${NC}"
@@ -601,14 +601,6 @@ check_dns_record() {
         if [ $success -ge $required_success ]; then
             echo -e "\n${GREEN}[✓] DNS记录已在 $success/${#dns_servers[@]} 个DNS服务器生效${NC}"
             return 0
-        fi
-        
-        # 每5次尝试显示一次详细结果
-        if [ $((attempt % 5)) -eq 0 ]; then
-            echo -e "\n${YELLOW}[!] 当前DNS检查结果:${NC}"
-            for result in "${results[@]}"; do
-                echo "  $result"
-            done
         fi
         
         sleep 5
