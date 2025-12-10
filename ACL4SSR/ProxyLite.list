@@ -8,7 +8,6 @@ DOMAIN-SUFFIX,ipapi.co
 DOMAIN-SUFFIX,api.myip.com
 
 # 自定义域名
-DOMAIN-SUFFIX,56idc.net
 DOMAIN-SUFFIX,freemyip.com
 DOMAIN-SUFFIX,cloudns.be
 DOMAIN-SUFFIX,cloudns.ch
