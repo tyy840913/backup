@@ -550,6 +550,7 @@ show_cert_detail() {
                 break
             fi
         done
+    fi
     
     # 查找私钥
     local key_file=""
