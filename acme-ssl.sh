@@ -438,8 +438,7 @@ find_certificates() {
                         if [ -n "$key_file" ]; then
                             _KEY_PATH="$key_file"
                         fi
-                        # ==================== 改进的私钥查找逻辑结束 ====================
-                        
+                  
                         # ==================== 改进的CA证书查找逻辑开始 ====================
                         # 查找CA证书
                         local ca_file=""
@@ -461,8 +460,7 @@ find_certificates() {
                         if [ -n "$ca_file" ]; then
                             _CA_PATH="$ca_file"
                         fi
-                        # ==================== 改进的CA证书查找逻辑结束 ====================
-                        
+         
                         # ==================== 改进的完整链证书查找逻辑开始 ====================
                         # 查找完整链证书
                         local fullchain_file=""
@@ -510,45 +508,132 @@ find_certificates() {
     fi
 }
 
-# 显示证书详细信息函数 - 新增
+# 显示证书详细信息函数 - 修复重复显示问题
 show_cert_detail() {
     local domain="$1"
     local cert_dir="$2"
     
     echo -e "${BLUE}[*] 解析证书目录: $cert_dir${NC}"
     
-    # 查找证书文件
-    local candidates
-    mapfile -t candidates < <(find "$cert_dir" -maxdepth 1 -type f \( -iname "cert.*" -o -iname "*.cer" -o -iname "*.crt" -o -iname "fullchain.*" -o -iname "certificate.*" \) 2>/dev/null)
+    # 查找证书文件（主要证书）
+    local cert_file=""
+    local cert_candidates=()
     
-    for f in "${candidates[@]}"; do
-        if [ -f "$f" ]; then
-            echo "  - 证书: $f"
+    # 优先查找域名命名的证书文件
+    local domain_cert_files=(
+        "$cert_dir/$domain.cer"
+        "$cert_dir/$domain.crt"
+        "$cert_dir/$domain.pem"
+    )
+    
+    for file in "${domain_cert_files[@]}"; do
+        if [ -f "$file" ]; then
+            cert_file="$file"
+            echo "  - 证书: $file"
+            break
         fi
     done
     
-    # 私钥
-    local key=$(find "$cert_dir" -maxdepth 1 -type f \( -iname "*.key" -o -iname "privkey.*" -o -iname "key.*" \) 2>/dev/null | head -1)
-    if [ -n "$key" ]; then
-        echo "  - 私钥: $key"
+    # 如果没有找到域名证书，查找通用证书文件
+    if [ -z "$cert_file" ]; then
+        local generic_cert_files=(
+            "$cert_dir/cert.pem"
+            "$cert_dir/certificate.pem"
+            "$cert_dir/cert.cer"
+            "$cert_dir/cert.crt"
+        )
+        
+        for file in "${generic_cert_files[@]}"; do
+            if [ -f "$file" ]; then
+                cert_file="$file"
+                echo "  - 证书: $file"
+                break
+            fi
+        done
+    done
+    
+    # 查找私钥
+    local key_file=""
+    local possible_key_files=(
+        "$cert_dir/$domain.key"
+        "$cert_dir/privkey.pem"
+        "$cert_dir/key.pem"
+        "$cert_dir/private.key"
+    )
+    
+    for file in "${possible_key_files[@]}"; do
+        if [ -f "$file" ]; then
+            key_file="$file"
+            echo "  - 私钥: $file"
+            break
+        fi
+    done
+    
+    # 如果还没有找到，查找任何.key文件
+    if [ -z "$key_file" ]; then
+        local any_key=$(find "$cert_dir" -maxdepth 1 -type f -name "*.key" 2>/dev/null | head -1)
+        if [ -n "$any_key" ]; then
+            echo "  - 私钥: $any_key"
+        fi
     fi
     
-    # 完整链
-    local fc=$(find "$cert_dir" -maxdepth 1 -type f -iname "fullchain.*" 2>/dev/null | head -1)
-    if [ -n "$fc" ]; then
-        echo "  - 完整链: $fc"
-    fi
+    # 查找完整链证书
+    local fullchain_files=(
+        "$cert_dir/fullchain.cer"
+        "$cert_dir/fullchain.crt"
+        "$cert_dir/fullchain.pem"
+    )
     
-    # CA证书
-    local ca=$(find "$cert_dir" -maxdepth 1 -type f \( -iname "ca.*" -o -iname "chain.*" \) 2>/dev/null | head -1)
-    if [ -n "$ca" ]; then
-        echo "  - CA证书: $ca"
-    fi
+    for file in "${fullchain_files[@]}"; do
+        if [ -f "$file" ] && [ "$file" != "$cert_file" ]; then  # 避免重复显示
+            echo "  - 完整链: $file"
+            break
+        fi
+    done
     
-    # 打印证书摘要
-    if [ -n "${candidates[0]}" ]; then
+    # 查找CA证书
+    local ca_files=(
+        "$cert_dir/ca.cer"
+        "$cert_dir/ca.crt"
+        "$cert_dir/chain.pem"
+        "$cert_dir/ca.pem"
+        "$cert_dir/chain.crt"
+    )
+    
+    for file in "${ca_files[@]}"; do
+        if [ -f "$file" ] && [ "$file" != "$cert_file" ]; then  # 避免重复显示
+            echo "  - CA证书: $file"
+            break
+        fi
+    done
+    
+    # 如果有证书文件，显示证书摘要
+    if [ -n "$cert_file" ]; then
         echo -e "${YELLOW}证书摘要:${NC}"
-        openssl x509 -in "${candidates[0]}" -noout -subject -issuer -dates 2>/dev/null || echo "  (无法读取证书信息)"
+        openssl x509 -in "$cert_file" -noout -subject -issuer -dates 2>/dev/null || echo "  (无法读取证书信息)"
+        
+        # 显示证书有效期（天数和到期时间）
+        echo -e "${YELLOW}证书有效期:${NC}"
+        local expiry_info
+        expiry_info=$(openssl x509 -in "$cert_file" -noout -dates 2>/dev/null)
+        if [ $? -eq 0 ]; then
+            local not_before=$(echo "$expiry_info" | grep "notBefore" | cut -d= -f2)
+            local not_after=$(echo "$expiry_info" | grep "notAfter" | cut -d= -f2)
+            echo "  生效时间: $not_before"
+            echo "  到期时间: $not_after"
+            
+            # 计算剩余天数
+            local now_seconds=$(date +%s)
+            local expiry_seconds=$(date -d "$not_after" +%s 2>/dev/null || echo "")
+            if [ -n "$expiry_seconds" ] && [ "$expiry_seconds" -gt "$now_seconds" ]; then
+                local days_left=$(( (expiry_seconds - now_seconds) / 86400 ))
+                echo "  剩余天数: $days_left 天"
+            fi
+        else
+            echo "  (无法获取有效期信息)"
+        fi
+    else
+        echo -e "${YELLOW}[!] 未找到证书文件${NC}"
     fi
 }
 
