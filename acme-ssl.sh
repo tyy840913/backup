@@ -1381,7 +1381,6 @@ list_certificates() {
         
         # 如果直接按回车，返回主菜单
         if [ -z "$selected_index" ]; then
-            echo -e "${BLUE}[*] 返回主菜单${NC}"
             return 0
         fi
         
