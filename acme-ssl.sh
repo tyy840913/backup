@@ -1484,15 +1484,12 @@ main_menu() {
 
 # 主程序
 main() {
-    # 移除强制root检查，改为警告
     if [ "$EUID" -eq 0 ]; then
-        echo -e "${YELLOW}[!] 警告：您正在以root用户运行脚本${NC}"
-        echo -e "${YELLOW}[!] 建议以普通用户运行acme.sh${NC}"
-        read -p "是否继续？(y/n): " continue_as_root
-        if ! [[ $continue_as_root =~ ^[Yy]$ ]]; then
-            echo -e "${BLUE}[*] 请以普通用户重新运行脚本${NC}"
-            exit 0
-        fi
+        echo -e "${GREEN}[✓] 以ROOT权限运行${NC}"
+    else
+        echo -e "${YELLOW}[!] 以普通用户运行，部分功能受限${NC}"
+        echo -e "${BLUE}[!] 提示：使用sudo可获得完整功能${NC}"
+        echo ""
     fi
     
     init_directories
