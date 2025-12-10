@@ -666,6 +666,7 @@ register_ca() {
 }
 
 # 申请证书 - 支持多域名版本（修复手动模式）
+# 申请证书 - 支持多域名版本（修复手动模式）
 issue_certificate() {
     # 参数处理：最后一个参数是邮箱，倒数第二个是模式，倒数第三个是CA，其余都是域名
     local args=("$@")
@@ -708,7 +709,7 @@ issue_certificate() {
         
         echo -e "${BLUE}[*] 正在获取DNS验证信息...${NC}"
         
-        # 构建acme.sh命令 - 使用数组避免eval问题
+        # 构建acme.sh命令 - 只获取TXT记录，不立即验证
         local get_txt_cmd=("$ACME_BIN" "--issue" "--dns")
         for domain in "${domains[@]}"; do
             get_txt_cmd+=("-d" "$domain")
@@ -726,8 +727,34 @@ issue_certificate() {
         # 执行命令并捕获输出
         if ! "${get_txt_cmd[@]}" 2>&1 | tee "$log_file"; then
             local exit_code=${PIPESTATUS[0]}
-            echo -e "${RED}[✗] acme.sh手动模式命令执行失败 (exit $exit_code)${NC}"
-            return 1
+            
+            # 检查是否是"证书已存在"的错误
+            if grep -qi "already exists" "$log_file" || grep -qi "already issued" "$log_file"; then
+                echo -e "${YELLOW}[!] 检测到该域名可能已有证书${NC}"
+                echo -e "${YELLOW}[!] 尝试续期现有证书...${NC}"
+                
+                # 尝试续期
+                local renew_cmd=("$ACME_BIN" "--renew")
+                for domain in "${domains[@]}"; do
+                    renew_cmd+=("-d" "$domain")
+                done
+                renew_cmd+=("--force")
+                
+                if [ "$ca" != "letsencrypt" ]; then
+                    renew_cmd+=("--server" "$ca")
+                fi
+                
+                if "${renew_cmd[@]}"; then
+                    echo -e "${GREEN}[✓] 证书续期成功${NC}"
+                    return 0
+                else
+                    echo -e "${RED}[✗] 证书续期失败${NC}"
+                    return 1
+                fi
+            else
+                echo -e "${RED}[✗] 获取DNS验证信息失败 (exit $exit_code)${NC}"
+                return 1
+            fi
         fi
         
         local exit_code=${PIPESTATUS[0]}
@@ -748,6 +775,10 @@ issue_certificate() {
             
             if [ -z "$txt_record" ]; then
                 txt_record=$(grep -i "_acme-challenge.$domain" "$log_file" -A 3 | grep -i "txt value:" | head -1 | sed 's/.*TXT value:[[:space:]]*//' | tr -d '\"' | tr -d "'")
+            fi
+            
+            if [ -z "$txt_record" ]; then
+                txt_record=$(grep -i "Please add the TXT record" "$log_file" | grep -i "$domain" | sed -n 's/.*: \(.*\)/\1/p' | head -1)
             fi
             
             if [ -z "$txt_record" ]; then
@@ -779,21 +810,35 @@ issue_certificate() {
         echo ""
         echo -e "${YELLOW}[!] 请为每个域名添加上述TXT记录${NC}"
         echo -e "${YELLOW}[!] 添加完成后，等待1-2分钟让DNS生效${NC}"
+        echo -e "${YELLOW}[!] 您可以使用以下命令检查DNS记录:${NC}"
+        echo "  dig +short TXT _acme-challenge.$domain @8.8.8.8"
+        echo "  nslookup -type=TXT _acme-challenge.$domain"
         echo ""
         
+        # 等待用户确认
         read -p "DNS记录添加完成并等待生效后，按回车键继续验证..."
         
+        # 可选：增加固定的等待时间，确保DNS传播
+        echo -e "${BLUE}[*] 等待30秒让DNS记录传播...${NC}"
+        sleep 30
+        
         # 检查所有域名的DNS记录
+        local all_dns_valid=true
         for domain in "${domains[@]}"; do
             local txt_record="${domain_txt_records[$domain]}"
             if [ -n "$txt_record" ]; then
                 echo -e "${BLUE}[*] 检查域名 $domain 的DNS记录...${NC}"
                 if ! check_dns_record "$domain" "$txt_record"; then
                     echo -e "${RED}[✗] 域名 $domain 的DNS验证失败${NC}"
-                    return 1
+                    all_dns_valid=false
                 fi
             fi
         done
+        
+        if [ "$all_dns_valid" = false ]; then
+            echo -e "${RED}[✗] 部分域名DNS验证失败${NC}"
+            return 1
+        fi
         
         # 步骤2：完成证书申请
         echo -e "\n${BLUE}[*] 所有域名DNS验证通过，正在签发证书...${NC}"
@@ -824,7 +869,7 @@ issue_certificate() {
             echo -e "${RED}[✗] 证书签发失败${NC}"
             return 1
         fi
-        
+
     else
         # Cloudflare API自动验证
         echo -e "${YELLOW}[!] 使用Cloudflare API自动验证${NC}"
