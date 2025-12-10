@@ -1581,22 +1581,41 @@ main_menu() {
         read -p "请选择操作(0-5): " choice
         
         case $choice in
-            1) cert_issue_menu ;;
-            2) renew_certificate ;;
-            3) delete_certificate ;;
-            4) list_certificates ;;
-            5) reinstall_acme ;;
+            1) 
+                cert_issue_menu
+                show_continue_prompt=true
+                ;;
+            2) 
+                renew_certificate
+                show_continue_prompt=true
+                ;;
+            3) 
+                delete_certificate
+                show_continue_prompt=true
+                ;;
+            4) 
+                list_certificates
+                show_continue_prompt=false
+                ;;
+            5) 
+                reinstall_acme
+                show_continue_prompt=true
+                ;;
             0) 
                 echo -e "${GREEN}再见！${NC}"
                 exit 0
                 ;;
             *)
                 echo -e "${RED}[✗] 无效的选择${NC}"
+                show_continue_prompt=true
                 ;;
         esac
         
-        echo -e "\n${YELLOW}按回车键继续...${NC}"
-        read -r
+        # 只有需要时才显示"按回车键继续..."
+        if [ "$show_continue_prompt" = true ]; then
+            echo -e "\n${YELLOW}按回车键继续...${NC}"
+            read -r
+        fi
     done
 }
 
