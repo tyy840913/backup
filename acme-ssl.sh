@@ -978,7 +978,40 @@ issue_certificate() {
             return 0
         else
             echo -e "${RED}[✗] 证书签发失败${NC}"
-            return 1
+            # 询问是否重试
+            while true; do
+                read -p "是否重试？(y/n): " retry_choice
+                case $retry_choice in
+                    [Yy]*)
+                        echo -e "${BLUE}[*] 重新尝试签发证书...${NC}"
+                        if "${renew_cmd[@]}"; then
+                            echo -e "${GREEN}[✓] 证书申请成功！${NC}"
+                            # 显示证书信息
+                            echo -e "\n${BLUE}[*] 显示证书信息...${NC}"
+                            local clean_domain="${primary_domain//\*/_}"
+                            list_certificates "$clean_domain"
+                            
+                            # 修复：添加等待用户确认
+                            echo -e "\n${GREEN}[✓] 证书申请操作完成${NC}"
+                            echo -e "${YELLOW}[!] 按回车键返回主菜单...${NC}"
+                            read -r
+
+                            return 0
+                        else
+                            echo -e "${RED}[✗] 重试仍然失败${NC}"
+                            # 继续循环，询问是否再次重试
+                            continue
+                        fi
+                        ;;
+                    [Nn]*|"")
+                        echo -e "${YELLOW}[!] 返回主菜单${NC}"
+                        return 1
+                        ;;
+                    *)
+                        echo -e "${RED}[✗] 请输入 y 或 n${NC}"
+                        ;;
+                esac
+            done
         fi
 
     else
@@ -1061,12 +1094,41 @@ issue_certificate() {
         else
             echo -e "${RED}[✗] 证书申请失败${NC}"
             unset CF_Key CF_Email CF_Token 2>/dev/null
-            
-            # 失败时也添加等待
-            echo -e "\n${YELLOW}[!] 按回车键返回主菜单...${NC}"
-            read -r
-            
-            return 1
+            # 询问是否重试
+            while true; do
+                read -p "是否重试？(y/n): " retry_choice
+                case $retry_choice in
+                    [Yy]*)
+                        echo -e "${BLUE}[*] 重新尝试签发证书...${NC}"
+                        if "${cmd[@]}"; then
+                            echo -e "${GREEN}[✓] 证书申请成功！${NC}"
+                            # 显示证书信息
+                            echo -e "\n${BLUE}[*] 显示证书信息...${NC}"
+                            local clean_domain="${primary_domain//\*/_}"
+                            list_certificates "$clean_domain"
+                            
+                            # 修复：添加等待用户确认
+                            echo -e "\n${GREEN}[✓] 证书申请操作完成${NC}"
+                            echo -e "${YELLOW}[!] 按回车键返回主菜单...${NC}"
+                            read -r
+                    
+                            return 0
+                        else
+                            echo -e "${RED}[✗] 重试仍然失败${NC}"
+                            unset CF_Key CF_Email CF_Token 2>/dev/null
+                            # 继续循环，询问是否再次重试
+                            continue
+                        fi
+                        ;;
+                    [Nn]*|"")
+                        echo -e "${YELLOW}[!] 返回主菜单${NC}"
+                        return 1
+                        ;;
+                    *)
+                        echo -e "${RED}[✗] 请输入 y 或 n${NC}"
+                        ;;
+                esac
+            done
         fi
     fi
 }
