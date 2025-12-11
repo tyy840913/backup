@@ -332,7 +332,7 @@ main() {
     fi
     while true; do
         show_menu
-        echo -e "${YELLOW}请输入你的选择 [0-34]: ${NC}\c" && read choice
+        echo -e "${YELLOW}请输入你的选择 [0-35]: ${NC}\c" && read choice
         
         # 处理空输入（直接按回车）
         if [[ -z "$choice" ]]; then
@@ -340,7 +340,7 @@ main() {
             continue
         fi
         
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [[ $choice -ge 0 && $choice -le 34 ]]; then
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [[ $choice -ge 0 && $choice -le 35 ]]; then
             execute_choice $choice
             # 如果选择的是退出(0)，则直接退出，否则显示返回提示
             if [[ $choice -eq 0 ]]; then
