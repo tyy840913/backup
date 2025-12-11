@@ -243,9 +243,9 @@ show_menu() {
         "========== 面板工具 ========" "18|新版X-UI面板" "19|伊朗版3X-UI面板" "20|Sui面板(Sing-box面板)"
         "========= 系统性能优化 ======" "21|BBR加速脚本" "GREEN|22|系统清理 (清理垃圾文件)" "RED|23|一键DD (重装系统)"
         "========== 监控与探针 =======" "24|哪吒监控面板+探针"
-        "========== 网络与检测 =======" "25|DNS流媒体解锁脚本" "26|流媒体解锁检测工具" "27|SSL证书申请脚本" "28|网络测速与Bench测试"
-        "========== 开发环境 ========" "29|Docker全家桶安装" "30|Python环境配置" "31|Node.js环境部署"
-        "========== 其他代理 ========" "32|OpenVPN一键安装" "33|Telegram代理(MTProto)" "34|HUPproxy代理(docker和github加速)"
+        "========== 网络与检测 =======" "25|DNS流媒体解锁脚本" "26|流媒体解锁检测工具" "27|SSL证书申请脚本" "28|WEB配置文件生成" "29|网络测速与Bench测试"
+        "========== 开发环境 ========" "30|Docker全家桶安装" "31|Python环境配置" "32|Node.js环境部署"
+        "========== 其他代理 ========" "33|OpenVPN一键安装" "34|Telegram代理(MTProto)" "35|HUPproxy代理(docker和github加速)"
     )
     
     for item in "${menu_groups[@]}"; do
@@ -308,13 +308,14 @@ execute_choice() {
         25) echo -e "${YELLOW}执行DNS流媒体解锁脚本...${NC}"; wget -N https://raw.githubusercontent.com/fscarmen/warp/main/warp.sh && chmod +x warp.sh && ./warp.sh menu ;;
         26) echo -e "${YELLOW}执行流媒体解锁检测工具...${NC}"; bash <(curl -L -s https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/main/check.sh) ;;
         27) echo -e "${YELLOW}执行SSL证书申请脚本...${NC}"; bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/acme-ssl.sh) ;;
-        28) echo -e "${YELLOW}执行网络测速与Bench测试...${NC}"; wget -qO- bench.sh | bash ;;
-        29) echo -e "${YELLOW}执行Docker全家桶安装...${NC}"; curl -fsSL https://get.docker.com | bash && curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose ;;
-        30) echo -e "${YELLOW}执行Python环境配置...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/python_setup.sh) ;;
-        31) echo -e "${YELLOW}执行Node.js环境部署...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/nodejs_setup.sh) ;;
-        32) echo -e "${YELLOW}执行OpenVPN一键安装...${NC}"; wget https://git.io/vpn -O openvpn-install.sh && chmod +x openvpn-install.sh && bash openvpn-install.sh ;;
-        33) echo -e "${YELLOW}执行Telegram代理(MTProto)...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/mtp.sh) ;;
-        34) echo -e "${YELLOW}执行HUPproxy代理加速器...${NC}"; curl -fsSL https://raw.githubusercontent.com/sky22333/hubproxy/main/install.sh | bash ;;
+        28) echo -e "${YELLOW}执行WEB配置文件生成...${NC}"; bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webconf.sh) ;;
+        29) echo -e "${YELLOW}执行网络测速与Bench测试...${NC}"; wget -qO- bench.sh | bash ;;
+        30) echo -e "${YELLOW}执行Docker全家桶安装...${NC}"; curl -fsSL https://get.docker.com | bash && curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose ;;
+        31) echo -e "${YELLOW}执行Python环境配置...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/python_setup.sh) ;;
+        32) echo -e "${YELLOW}执行Node.js环境部署...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/nodejs_setup.sh) ;;
+        33) echo -e "${YELLOW}执行OpenVPN一键安装...${NC}"; wget https://git.io/vpn -O openvpn-install.sh && chmod +x openvpn-install.sh && bash openvpn-install.sh ;;
+        34) echo -e "${YELLOW}执行Telegram代理(MTProto)...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/mtp.sh) ;;
+        35) echo -e "${YELLOW}执行HUPproxy代理加速器...${NC}"; curl -fsSL https://raw.githubusercontent.com/sky22333/hubproxy/main/install.sh | bash ;;
         0) echo -e "${GREEN}退出脚本${NC}"; exit 0 ;;
         *) echo -e "${RED}无效选择，请重新输入${NC}"; sleep 2; return 1 ;;
     esac
@@ -331,7 +332,7 @@ main() {
     fi
     while true; do
         show_menu
-        echo -e "${YELLOW}请输入你的选择 [0-30]: ${NC}\c" && read choice
+        echo -e "${YELLOW}请输入你的选择 [0-34]: ${NC}\c" && read choice
         
         # 处理空输入（直接按回车）
         if [[ -z "$choice" ]]; then
