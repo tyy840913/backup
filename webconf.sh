@@ -97,7 +97,8 @@ get_web_config() {
                 
                 echo ""
                 read -p "是否启用HTTPS (SSL)? [y/N]: " enable_ssl
-                if [[ "$enable_ssl" =~ ^[Yy] ]]; then
+                enable_ssl=${enable_ssl:-y}  # 添加默认值处理
+                if [[ "$enable_ssl" =~ ^[Nn] ]]; then
                     http_port=""
                     https_port=$custom_port
                     enable_301_redirect=false
@@ -154,7 +155,8 @@ get_web_config() {
         echo ""
         print_color "=== 安全加固配置 ===" "$BLUE"
         echo "推荐配置包括：HSTS、OCSP Stapling、TLS 1.2+"
-        read -e -p "是否应用推荐的安全配置? [Y/n]: " -i "y" enable_security
+        read -e -p "是否应用推荐的安全配置? [Y/n]: " enable_security
+        enable_security=${enable_security:-y}  # 修复：处理空输入，默认值为 y
         if [[ ! "$enable_security" =~ ^[Nn] ]]; then
             enable_hsts=true
             enable_ocsp=true
@@ -175,7 +177,8 @@ get_web_config() {
     # 性能优化配置（仅在未启用反向代理时询问）
     echo ""
     print_color "=== 性能优化配置 ===" "$BLUE"
-    read -e -p "是否应用性能优化（Gzip、缓存头、静态文件长缓存）? [Y/n]: " -i "y" enable_perf
+    read -e -p "是否应用性能优化（Gzip、缓存头、静态文件长缓存）? [Y/n]: " enable_perf
+    enable_perf=${enable_perf:-y}  # 修复：处理空输入，默认值为 y
     if [[ ! "$enable_perf" =~ ^[Nn] ]]; then
         enable_gzip=true
         enable_static_cache=true
@@ -187,8 +190,9 @@ get_web_config() {
     # 反向代理配置
     echo ""
     print_color "=== 反向代理配置 ===" "$BLUE"
-    read -e -p "是否需要配置反向代理? [y/N]: " -i "n" need_proxy
-    if [[ "$need_proxy" =~ ^[Yy] ]]; then
+    read -e -p "是否需要配置反向代理? [y/N]: " need_proxy
+    need_proxy=${need_proxy:-y}  # 修复：处理空输入，默认值为 y
+    if [[ "$need_proxy" =~ ^[Nn] ]]; then
         enable_proxy=true
         
         while true; do
@@ -219,16 +223,17 @@ get_web_config() {
             elif validate_domain "$backend_host"; then
                 # 如果是域名，让用户选择协议
                 echo "检测到域名，请选择协议:"
-                echo "1. HTTP (默认)"
-                echo "2. HTTPS"
+                echo "1. HTTPS (默认)"
+                echo "2. HTTP"
                 read -p "请选择 [1-2]: " protocol_choice
-                
+                protocol_choice=${protocol_choice:-1}  # 默认选择 HTTP
+
                 case $protocol_choice in
                     2)
-                        backend_url="https://${backend_host}:${backend_port}"
+                        backend_url="http://${backend_host}:${backend_port}"
                         ;;
                     *)
-                        backend_url="http://${backend_host}:${backend_port}"
+                        backend_url="https://${backend_host}:${backend_port}"
                         ;;
                 esac
                 break
@@ -242,7 +247,8 @@ get_web_config() {
             proxy_path="/"
         fi
         
-        read -e -p "是否传递Host头? [Y/n]: " -i "y" pass_host
+        read -e -p "是否传递Host头? [Y/n]: " pass_host
+        pass_host=${pass_host:-y}  # 修复：处理空输入，默认值为 y
         if [[ ! "$pass_host" =~ ^[Nn] ]]; then
             proxy_set_host=true
         else
@@ -266,8 +272,8 @@ copy_nginx_config() {
     
     echo ""
     print_color "=== Nginx配置安装 ===" "$BLUE"
-    read -e -p "是否将配置文件复制到Nginx目录并启用? [Y/n]: " -i "y" install_choice
-    
+    read -e -p "是否将配置文件复制到Nginx目录并启用? [Y/n]: " install_choice
+    install_choice=${install_choice:-y}  # 修复：处理空输入，默认值为 y
     if [[ ! "$install_choice" =~ ^[Nn] ]]; then
         # 检查Nginx目录是否存在
         if [ -d "/etc/nginx/sites-available" ] && [ -d "/etc/nginx/sites-enabled" ]; then
@@ -278,7 +284,8 @@ copy_nginx_config() {
             print_color "测试Nginx配置..." "$YELLOW"
             if sudo nginx -t; then
                 print_color "配置测试成功！" "$GREEN"
-                read -e -p "是否立即重载Nginx配置? [Y/n]: " -i "y" reload_choice
+                read -e -p "是否立即重载Nginx配置? [Y/n]: " reload_choice  
+                reload_choice=${reload_choice:-y}  # 修复：处理空输入，默认值为 y
                 if [[ ! "$reload_choice" =~ ^[Nn] ]]; then
                     sudo systemctl reload nginx
                     print_color "Nginx配置已重载！" "$GREEN"
@@ -544,8 +551,8 @@ generate_caddy_config() {
     # Caddy配置安装功能
     echo ""
     print_color "=== Caddy配置安装 ===" "$BLUE"
-    read -e -p "是否将配置文件添加到Caddyfile并验证? [Y/n]: " -i "y" install_choice
-    
+	read -e -p "是否将配置文件添加到Caddyfile并验证? [Y/n]: " install_choice
+    install_choice=${install_choice:-y}  # 修复：处理空输入，默认值为 y   
     if [[ ! "$install_choice" =~ ^[Nn] ]]; then
         # 检查Caddyfile是否存在
         if [ -f "/etc/caddy/Caddyfile" ]; then
@@ -556,7 +563,8 @@ generate_caddy_config() {
             print_color "验证Caddy配置..." "$YELLOW"
             if sudo caddy validate --config /etc/caddy/Caddyfile; then
                 print_color "配置验证成功！" "$GREEN"
-                read -e -p "是否立即重载Caddy配置? [Y/n]: " -i "y" reload_choice
+                read -e -p "是否立即重载Caddy配置? [Y/n]: " reload_choice
+                reload_choice=${reload_choice:-y}  # 修复：处理空输入，默认值为 y
                 if [[ ! "$reload_choice" =~ ^[Nn] ]]; then
                     sudo systemctl reload caddy
                     print_color "Caddy配置已重载！" "$GREEN"
@@ -574,7 +582,8 @@ generate_caddy_config() {
             # 验证配置
             if sudo caddy validate --config /etc/caddy/Caddyfile; then
                 print_color "配置验证成功！" "$GREEN"
-                read -e -p "是否立即启动Caddy服务? [Y/n]: " -i "y" start_choice
+                read -e -p "是否立即启动Caddy服务? [Y/n]: " start_choice
+                start_choice=${start_choice:-y}  # 处理空输入，默认值为 y
                 if [[ ! "$start_choice" =~ ^[Nn] ]]; then
                     sudo systemctl enable caddy
                     sudo systemctl start caddy
@@ -620,8 +629,9 @@ main() {
         esac
         
         echo ""
-        read -e -p "是否继续生成其他配置? [y/N]: " -i "n" cont
-        if [[ ! "$cont" =~ ^[Yy] ]]; then
+        read -e -p "是否继续生成其他配置? [y/N]: " cont
+        cont=${cont:-y}  # 修复：处理空输入，默认值为 y
+        if [[ ! "$cont" =~ ^[Nn] ]]; then
             print_color "再见！" "$GREEN"
             exit 0
         fi
