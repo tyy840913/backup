@@ -912,7 +912,7 @@ issue_certificate() {
                 echo -e "${YELLOW}记录类型: TXT${NC}"
                 echo -e "${YELLOW}主机名:   _acme-challenge.$domain${NC}"
                 echo -e "${YELLOW}记录值:   $txt_record${NC}"
-                echo -e "${BLUE}------------------------------------------${NC}"
+                echo ""
             fi
         done
 
