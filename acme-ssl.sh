@@ -746,7 +746,77 @@ issue_certificate() {
 
     # 获取主域名（第一个域名，用于显示和目录）
     local primary_domain="${domains[0]}"
-
+    
+    # === 新增：检查证书是否已存在 ===
+    echo -e "${BLUE}[*] 检查证书是否已存在...${NC}"
+    local existing_cert_found=false
+    local existing_domains=()
+    
+    for domain in "${domains[@]}"; do
+        # 使用统一的证书查找函数检查每个域名
+        if find_certificates "$domain" 2>/dev/null; then
+            existing_cert_found=true
+            existing_domains+=("$domain")
+            echo -e "${YELLOW}[!] 发现现有证书: $domain${NC}"
+        fi
+    done
+    
+    # 如果有证书已存在，询问用户操作
+    if [ "$existing_cert_found" = true ]; then
+        echo -e "\n${YELLOW}[!] 检测到以下域名已有证书:${NC}"
+        for domain in "${existing_domains[@]}"; do
+            echo "  - $domain"
+        done
+    
+        echo -e "\n${BLUE}请选择操作:${NC}"
+        echo "1) 续期现有证书"
+        echo "2) 删除后重新申请（覆盖）"
+        echo "3) 取消操作，返回主菜单"
+        echo ""
+        
+        local retry_count=0
+        while [ $retry_count -lt 3 ]; do
+            read -p "请选择(1-3): " cert_exists_choice
+            
+            case $cert_exists_choice in
+                1)
+                    echo -e "${BLUE}[*] 跳转到证书续期...${NC}"
+                    # 直接调用现有的renew_certificate函数，传入域名
+                    if renew_certificate "${existing_domains[@]}"; then
+                        echo -e "${GREEN}[✓] 证书续期完成${NC}"
+                    else
+                        echo -e "${RED}[✗] 证书续期失败${NC}"
+                    fi
+                    return $?
+                    ;;
+                2)
+                    echo -e "${BLUE}[*] 删除现有证书后重新申请...${NC}"
+                    # 直接调用现有的delete_certificate函数，传入域名
+                    if delete_certificate "${existing_domains[@]}"; then
+                        echo -e "${GREEN}[✓] 现有证书已删除，继续申请新证书...${NC}"
+                        # 继续执行申请流程
+                        break
+                    else
+                        echo -e "${RED}[✗] 删除失败，取消申请${NC}"
+                        return 1
+                    fi
+                    ;;
+                3)
+                    echo -e "${BLUE}[*] 取消操作，返回主菜单${NC}"
+                    return 0
+                    ;;
+                *)
+                    echo -e "${RED}[✗] 无效的选择，请输入1-3${NC}"
+                    ((retry_count++))
+                    if [ $retry_count -ge 3 ]; then
+                        echo -e "${RED}[✗] 输入错误次数过多，返回主菜单${NC}"
+                        return 1
+                    fi
+                    ;;
+            esac
+        done
+    fi
+    
     echo -e "${BLUE}[*] 开始申请证书${NC}"
     echo -e "${GREEN}[✓] 域名列表: ${NC}"
     for ((i=0; i<${#domains[@]}; i++)); do
@@ -1180,217 +1250,360 @@ cert_issue_menu() {
     issue_certificate "${domains[@]}" "$ca" "$mode" "$email"
 }
 
-# 证书续期
+# 证书续期 - 支持批量操作和从申请流程调用
 renew_certificate() {
-    echo -e "\n${BLUE}=== 证书续期 ===${NC}"
-
-    # 使用统一的证书查找函数
-    find_certificates
-
-    if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
-        echo -e "${YELLOW}[!] 没有找到证书${NC}"
-        return 1
-    fi
-
-    local certs=("${_CERT_ARRAY[@]}")
-    local cert_dirs=("${_CERT_DIR_ARRAY[@]}")
-
-    # 显示证书列表（带到期时间）
-    for i in "${!certs[@]}"; do
-        local cert_name="${certs[$i]}"
-        local cert_dir="${cert_dirs[$i]}"
-        local cert_file="$cert_dir/$cert_name.cer"
-        if [ ! -f "$cert_file" ]; then
-            cert_file="$cert_dir/$cert_name.crt"
+    local domains=()
+    local interactive_mode=true
+    
+    # 如果传入了参数（从申请流程调用），使用传入的域名
+    if [ $# -gt 0 ]; then
+        domains=("$@")
+        interactive_mode=false
+        
+        echo -e "\n${BLUE}=== 续期现有证书 ===${NC}"
+        echo -e "${GREEN}[✓] 检测到以下域名已有证书，是否续期？${NC}"
+        for domain in "${domains[@]}"; do
+            echo "  - $domain"
+        done
+    else
+        # 否则显示交互式菜单（原逻辑）
+        echo -e "\n${BLUE}=== 证书续期 ===${NC}"
+        
+        # 使用统一的证书查找函数
+        find_certificates
+        
+        if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
+            echo -e "${YELLOW}[!] 没有找到证书${NC}"
+            return 1
         fi
-
-        local expiry_date=""
-        if [ -f "$cert_file" ]; then
-            expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+        
+        local certs=("${_CERT_ARRAY[@]}")
+        local cert_dirs=("${_CERT_DIR_ARRAY[@]}")
+        
+        # 显示证书列表（带到期时间）
+        for i in "${!certs[@]}"; do
+            local cert_name="${certs[$i]}"
+            local cert_dir="${cert_dirs[$i]}"
+            local cert_file="$cert_dir/$cert_name.cer"
+            if [ ! -f "$cert_file" ]; then
+                cert_file="$cert_dir/$cert_name.crt"
+            fi
+            
+            local expiry_date=""
+            if [ -f "$cert_file" ]; then
+                expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+            fi
+            
+            if [ -n "$expiry_date" ]; then
+                echo "$((i+1))) $cert_name - 到期时间: $expiry_date"
+            else
+                echo "$((i+1))) $cert_name"
+            fi
+        done
+        
+        echo ""
+        
+        # 批量选择支持
+        echo -e "${YELLOW}[?] 可以输入单个序号(如: 1)或多个序号(如: 1,2,3)${NC}"
+        read -p "请选择要续期的证书序号 (留空返回主菜单): " cert_index
+        
+        # 处理空输入：返回主菜单
+        if [ -z "$cert_index" ]; then
+            echo -e "${BLUE}[*] 返回主菜单${NC}"
+            return 0
         fi
-
-        if [ -n "$expiry_date" ]; then
-            echo "$((i+1))) $cert_name - 到期时间: $expiry_date"
+        
+        # 处理批量选择：1,2,3 或 1 2 3 格式
+        local selected_indices=()
+        if [[ "$cert_index" =~ , ]]; then
+            # 逗号分隔格式：1,2,3
+            IFS=',' read -ra selected_indices <<< "$cert_index"
+        elif [[ "$cert_index" =~ [[:space:]] ]]; then
+            # 空格分隔格式：1 2 3
+            IFS=' ' read -ra selected_indices <<< "$cert_index"
         else
-            echo "$((i+1))) $cert_name"
+            # 单个序号
+            selected_indices=("$cert_index")
+        fi
+        
+        # 验证输入并收集域名
+        for idx in "${selected_indices[@]}"; do
+            if [ -z "$idx" ] || ! [[ "$idx" =~ ^[0-9]+$ ]] || [ "$idx" -lt 1 ] || [ "$idx" -gt ${#certs[@]} ]; then
+                echo -e "${RED}[✗] 无效的序号: $idx${NC}"
+                return 1
+            fi
+            local domain="${certs[$((idx-1))]}"
+            domains+=("$domain")
+            
+            if [ "$interactive_mode" = true ]; then
+                echo -e "${BLUE}[*] 已选择: $domain${NC}"
+            fi
+        done
+        
+        # 显示证书详情（仅在交互模式下）
+        if [ "$interactive_mode" = true ]; then
+            echo ""
+            for domain in "${domains[@]}"; do
+                local found=false
+                for i in "${!certs[@]}"; do
+                    if [ "${certs[$i]}" = "$domain" ]; then
+                        local cert_dir="${cert_dirs[$i]}"
+                        local cert_file="$cert_dir/$domain.cer"
+                        if [ ! -f "$cert_file" ]; then
+                            cert_file="$cert_dir/$domain.crt"
+                        fi
+                        
+                        if [ -f "$cert_file" ]; then
+                            local expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+                            local start_date=$(openssl x509 -startdate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+                            
+                            echo -e "${GREEN}[✓] $domain 证书详情:${NC}"
+                            echo "开始时间: $start_date"
+                            echo "到期时间: $expiry_date"
+                            echo "证书位置: $cert_dir"
+                            echo ""
+                        fi
+                        found=true
+                        break
+                    fi
+                done
+                if [ "$found" = false ]; then
+                    echo -e "${YELLOW}[!] 未找到证书: $domain 的详细信息${NC}"
+                fi
+            done
+        fi
+    fi
+    
+    # 确认续期（仅在交互模式下询问）
+    if [ "$interactive_mode" = true ]; then
+        echo -e "${YELLOW}[!] 即将开始证书续期...${NC}"
+        read -p "是否继续？(y/n): " confirm
+        if ! [[ $confirm =~ ^[Yy]$ ]]; then
+            echo -e "${YELLOW}[!] 取消续期${NC}"
+            return 0
+        fi
+    fi
+    
+    # 执行续期（支持多域名）
+    echo -e "${BLUE}[*] 正在续期证书...${NC}"
+    
+    local success_count=0
+    local fail_count=0
+    local renewed_domains=()
+    
+    for domain in "${domains[@]}"; do
+        echo -e "\n${BLUE}[*] 续期: $domain${NC}"
+        
+        # 显示当前证书信息（仅在交互模式下）
+        if [ "$interactive_mode" = true ]; then
+            if find_certificates "$domain" 2>/dev/null; then
+                echo -e "${YELLOW}当前证书信息:${NC}"
+                show_cert_detail "$domain" "$_CERT_DIR"
+            fi
+        fi
+        
+        # 执行续期
+        if "$ACME_BIN" --renew --domain "$domain" --force; then
+            echo -e "${GREEN}[✓] 证书 $domain 续期成功${NC}"
+            ((success_count++))
+            renewed_domains+=("$domain")
+            
+            # 显示续期后的信息（仅在交互模式下）
+            if [ "$interactive_mode" = true ]; then
+                if find_certificates "$domain" 2>/dev/null; then
+                    echo -e "${GREEN}续期后证书信息:${NC}"
+                    show_cert_detail "$domain" "$_CERT_DIR"
+                fi
+            fi
+        else
+            echo -e "${RED}[✗] 证书 $domain 续期失败${NC}"
+            ((fail_count++))
         fi
     done
-
-    echo ""
-    read -p "请选择要续期的证书序号: " cert_index
-
-    # 处理空输入：返回主菜单
-    if [ -z "$cert_index" ]; then
-        echo -e "${BLUE}[*] 返回主菜单${NC}"
-        return 0
-    fi
-
-    # 验证输入
-    if [ -z "$cert_index" ] || ! [[ "$cert_index" =~ ^[0-9]+$ ]] || [ "$cert_index" -lt 1 ] || [ "$cert_index" -gt ${#certs[@]} ]; then
-        echo -e "${RED}[✗] 无效的序号${NC}"
-        return 1
-    fi
-
-    local domain="${certs[$((cert_index-1))]}"
-
-    echo -e "${BLUE}[*] 续期证书: $domain${NC}"
-
-    # 显示证书详情
-    local cert_dir="${cert_dirs[$((cert_index-1))]}"
-    local cert_file="$cert_dir/$domain.cer"
-    if [ ! -f "$cert_file" ]; then
-        cert_file="$cert_dir/$domain.crt"
-    fi
-
-    if [ -f "$cert_file" ]; then
-        local expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
-        local start_date=$(openssl x509 -startdate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
-
-        echo -e "${GREEN}[✓] 证书详情:${NC}"
-        echo "域名: $domain"
-        echo "开始时间: $start_date"
-        echo "到期时间: $expiry_date"
-        echo "证书位置: $cert_dir"
-        echo ""
-    fi
-
-    echo -e "${YELLOW}[!] 即将开始证书续期...${NC}"
-    read -p "是否继续？(y/n): " confirm
-    if ! [[ $confirm =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}[!] 取消续期${NC}"
-        return 0
-    fi
-
-    echo -e "${BLUE}[*] 正在续期证书...${NC}"
-
-    # 执行续期
-    if "$ACME_BIN" --renew --domain "$domain" --force; then
-        echo -e "${GREEN}[✓] 证书续期成功${NC}"
-
-        echo -e "\n${BLUE}[*] 显示续期后的证书信息...${NC}"
+    
+    # 显示总结
+    echo -e "\n${BLUE}=== 续期结果 ===${NC}"
+    echo -e "${GREEN}[✓] 成功: $success_count${NC}"
+    echo -e "${RED}[✗] 失败: $fail_count${NC}"
+    
+    if [ $fail_count -eq 0 ]; then
+        echo -e "${GREEN}[✓] 所有证书续期成功${NC}"
         
-        # 显示续期后的到期时间
-        if [ -f "$cert_file" ]; then
-            local new_expiry=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
-            echo -e "${GREEN}[✓] 新到期时间: $new_expiry${NC}"
+        # 在交互模式下显示续期后的证书信息
+        if [ "$interactive_mode" = true ] && [ ${#renewed_domains[@]} -gt 0 ]; then
+            echo -e "\n${BLUE}[*] 显示续期后的证书信息...${NC}"
+            for domain in "${renewed_domains[@]}"; do
+                echo -e "${YELLOW}[*] $domain:${NC}"
+                list_certificates "$domain" | grep -A 20 "证书信息:"
+            done
+            
+            echo -e "\n${GREEN}[✓] 证书续期操作完成${NC}"
+            echo -e "${YELLOW}[!] 按回车键返回主菜单...${NC}"
+            read -r
         fi
-        
-        # 显示完整的证书信息
-        list_certificates "$domain"
-        
-        # 添加等待用户确认
-        echo -e "\n${GREEN}[✓] 证书续期操作完成${NC}"
-        echo -e "${YELLOW}[!] 按回车键返回主菜单...${NC}"
-        read -r
-        
         return 0
     else
         echo -e "${RED}[✗] 证书续期失败${NC}"
-
+        
         # 提供手动续期建议
         echo -e "${YELLOW}[!] 您可以尝试手动续期:${NC}"
-        echo "  $ACME_BIN --renew -d $domain --force --debug"
+        for domain in "${domains[@]}"; do
+            echo "  $ACME_BIN --renew -d $domain --force --debug"
+        done
         
-        # 失败时也添加等待
-        echo -e "\n${YELLOW}[!] 按回车键返回主菜单...${NC}"
-        read -r
-
+        # 失败时也添加等待（仅在交互模式下）
+        if [ "$interactive_mode" = true ]; then
+            echo -e "\n${YELLOW}[!] 按回车键返回主菜单...${NC}"
+            read -r
+        fi
+        
         return 1
     fi
 }
 
-# 删除证书
+# 删除证书 - 支持批量操作和从申请流程调用
 delete_certificate() {
-    echo -e "\n${BLUE}=== 删除证书 ===${NC}"
-
-    # 使用统一的证书查找函数
-    find_certificates
-
-    if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
-        echo -e "${YELLOW}[!] 没有找到证书${NC}"
-        return 1
-    fi
-
-    local certs=("${_CERT_ARRAY[@]}")
-    local cert_dirs=("${_CERT_DIR_ARRAY[@]}")
-    local index=1
-
-    # 显示证书列表
-    for i in "${!certs[@]}"; do
-        local cert_name="${certs[$i]}"
-        local cert_dir="${cert_dirs[$i]}"
-        local cert_file="$cert_dir/$cert_name.cer"
-        if [ ! -f "$cert_file" ]; then
-            cert_file="$cert_dir/$cert_name.crt"
-        fi
-
-        if [ -f "$cert_file" ]; then
-            local expiry_date
-            expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
-
-            local file_type="证书"
-            if [[ "$cert_dir" == *"_ecc" ]]; then
-                file_type="ECC证书"
-            elif [ -f "$cert_dir/fullchain.cer" ] || [ -f "$cert_dir/fullchain.crt" ]; then
-                file_type="完整链证书"
-            fi
-
-            if [ -n "$expiry_date" ]; then
-                echo "$index) $cert_name - $file_type"
-                echo "    到期时间: $expiry_date"
-                echo "    目录位置: $cert_dir"
-            else
-                echo "$index) $cert_name - $file_type"
-                echo "    目录位置: $cert_dir"
-            fi
-        else
-            echo "$index) $cert_name"
-            echo "    目录位置: $cert_dir"
-        fi
-        ((index++))
-    done
-
-    echo ""
-    read -p "请选择要删除的证书序号: " cert_index
-
-    # 处理空输入：返回主菜单
-    if [ -z "$cert_index" ]; then
-        echo -e "${BLUE}[*] 返回主菜单${NC}"
-        return 0
-    fi
-
-    if ! [[ "$cert_index" =~ ^[0-9]+$ ]] || [ "$cert_index" -lt 1 ] || [ "$cert_index" -gt ${#certs[@]} ]; then
-        echo -e "${RED}[✗] 无效的序号${NC}"
-        return 1
-    fi
-
-    local domain="${certs[$((cert_index-1))]}"
-    local cert_dir="${cert_dirs[$((cert_index-1))]}"
-
-    read -p "确定要删除证书 $domain 吗？(y/n): " confirm
-    if ! [[ $confirm =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}[!] 取消删除${NC}"
-        return 0
-    fi
-
-    # 删除证书
-    echo -e "${BLUE}[*] 删除证书: $domain${NC}"
-
-    # 尝试使用acme.sh删除
-    if "$ACME_BIN" --remove --domain "$domain" 2>/dev/null; then
-        echo -e "${GREEN}[✓] 证书从acme.sh中移除${NC}"
+    local domains=()
+    local interactive_mode=true
+    
+    # 如果传入了参数（从申请流程调用），使用传入的域名
+    if [ $# -gt 0 ]; then
+        domains=("$@")
+        interactive_mode=false
+        
+        echo -e "\n${BLUE}=== 删除现有证书 ===${NC}"
+        echo -e "${GREEN}[✓] 检测到以下域名已有证书，是否删除？${NC}"
+        for domain in "${domains[@]}"; do
+            echo "  - $domain"
+        done
     else
-        echo -e "${YELLOW}[!] 无法通过acme.sh移除证书，尝试手动删除文件${NC}"
+        # 否则显示交互式菜单（原逻辑）
+        echo -e "\n${BLUE}=== 删除证书 ===${NC}"
+        
+        # 使用统一的证书查找函数
+        find_certificates
+        
+        if [ ${#_CERT_ARRAY[@]} -eq 0 ]; then
+            echo -e "${YELLOW}[!] 没有找到证书${NC}"
+            return 1
+        fi
+        
+        local certs=("${_CERT_ARRAY[@]}")
+        local cert_dirs=("${_CERT_DIR_ARRAY[@]}")
+        
+        echo -e "${GREEN}[✓] 找到 ${#certs[@]} 个证书:${NC}\n"
+        
+        # 显示证书列表（带序号）
+        for i in "${!certs[@]}"; do
+            local cert_name="${certs[$i]}"
+            local cert_dir="${cert_dirs[$i]}"
+            
+            echo "$((i+1))) $cert_name"
+        done
+        
+        echo ""
+        
+        # 批量选择支持
+        echo -e "${YELLOW}[?] 可以输入单个序号(如: 1)或多个序号(如: 1,2,3)${NC}"
+        read -p "请选择要删除的证书序号 (留空返回主菜单): " cert_index
+        
+        # 处理空输入：返回主菜单
+        if [ -z "$cert_index" ]; then
+            echo -e "${BLUE}[*] 返回主菜单${NC}"
+            return 0
+        fi
+        
+        # 处理批量选择：1,2,3 或 1 2 3 格式
+        local selected_indices=()
+        if [[ "$cert_index" =~ , ]]; then
+            # 逗号分隔格式：1,2,3
+            IFS=',' read -ra selected_indices <<< "$cert_index"
+        elif [[ "$cert_index" =~ [[:space:]] ]]; then
+            # 空格分隔格式：1 2 3
+            IFS=' ' read -ra selected_indices <<< "$cert_index"
+        else
+            # 单个序号
+            selected_indices=("$cert_index")
+        fi
+        
+        # 验证输入并收集域名
+        for idx in "${selected_indices[@]}"; do
+            if [ -z "$idx" ] || ! [[ "$idx" =~ ^[0-9]+$ ]] || [ "$idx" -lt 1 ] || [ "$idx" -gt ${#certs[@]} ]; then
+                echo -e "${RED}[✗] 无效的序号: $idx${NC}"
+                return 1
+            fi
+            local domain="${certs[$((idx-1))]}"
+            domains+=("$domain")
+            
+            if [ "$interactive_mode" = true ]; then
+                echo -e "${BLUE}[*] 已选择: $domain${NC}"
+            fi
+        done
     fi
-
-    # 清理所有可能的位置
-    echo -e "${BLUE}[*] 清理证书文件...${NC}"
-    rm -rf "$ACME_DIR/${domain}_ecc" 2>/dev/null
-    rm -rf "$ACME_DIR/$domain" 2>/dev/null
-    rm -rf "$cert_dir" 2>/dev/null
-
-    echo -e "${GREEN}[✓] 证书删除成功${NC}"
-    return 0
+    
+    # 确认删除（仅在交互模式下询问，从申请流程调用时会在issue_certificate中确认）
+    if [ "$interactive_mode" = true ]; then
+        echo ""
+        echo -e "${RED}[!] 警告：此操作不可恢复！${NC}"
+        echo -e "${YELLOW}[!] 即将删除以下证书:${NC}"
+        for domain in "${domains[@]}"; do
+            echo "  - $domain"
+        done
+        
+        read -p "确定要删除吗？(y/n): " confirm
+        if ! [[ $confirm =~ ^[Yy]$ ]]; then
+            echo -e "${YELLOW}[!] 取消删除${NC}"
+            return 0
+        fi
+    fi
+    
+    # 执行删除（支持多域名）
+    echo -e "${BLUE}[*] 正在删除证书...${NC}"
+    
+    local success_count=0
+    local fail_count=0
+    
+    for domain in "${domains[@]}"; do
+        echo -e "\n${BLUE}[*] 删除: $domain${NC}"
+        
+        # 查找证书目录
+        if find_certificates "$domain" 2>/dev/null; then
+            local cert_dir="$_CERT_DIR"
+            
+            echo -e "${YELLOW}[!] 证书目录: $cert_dir${NC}"
+            
+            # 使用acme.sh删除
+            if "$ACME_BIN" --remove --domain "$domain" 2>/dev/null; then
+                echo -e "${GREEN}[✓] 证书从acme.sh中移除${NC}"
+            else
+                echo -e "${YELLOW}[!] 无法通过acme.sh移除证书，尝试手动删除文件${NC}"
+            fi
+            
+            # 清理所有可能的位置
+            rm -rf "$ACME_DIR/${domain}_ecc" 2>/dev/null
+            rm -rf "$ACME_DIR/$domain" 2>/dev/null
+            rm -rf "$cert_dir" 2>/dev/null
+            
+            echo -e "${GREEN}[✓] 证书 $domain 删除成功${NC}"
+            ((success_count++))
+        else
+            echo -e "${YELLOW}[!] 未找到证书 $domain 的目录${NC}"
+            ((fail_count++))
+        fi
+    done
+    
+    # 显示总结
+    echo -e "\n${BLUE}=== 删除完成 ===${NC}"
+    echo -e "${GREEN}[✓] 成功: $success_count${NC}"
+    echo -e "${RED}[✗] 失败: $fail_count${NC}"
+    
+    if [ $fail_count -eq 0 ]; then
+        echo -e "${GREEN}[✓] 所有证书删除成功${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}[!] 部分证书删除失败${NC}"
+        return 1
+    fi
 }
 
 # 列出证书 - 优化版：支持按序号查看详细路径信息，可接收参数
