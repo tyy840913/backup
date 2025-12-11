@@ -906,11 +906,11 @@ issue_certificate() {
         for domain in "${domains[@]}"; do
             local txt_record="${domain_txt_records[$domain]}"
             if [ -n "$txt_record" ]; then
-                echo -e "${YELLOW}域名: $domain${NC}"
-                echo -e "${YELLOW}记录类型: TXT${NC}"
+                echo -e "${YELLOW}域名:    $domain${NC}"
+                echo -e "${YELLOW}类型:    TXT${NC}"
                 echo -e "${YELLOW}主机名:   _acme-challenge.$domain${NC}"
                 echo -e "${YELLOW}记录值:   $txt_record${NC}"
-                echo -e "${BLUE}------------------------------------------${NC}"
+                echo ""
             fi
         done
 
