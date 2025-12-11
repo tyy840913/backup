@@ -51,7 +51,13 @@ check_dependencies() {
         core_missing+=("crontab")
         echo -e "${YELLOW}[!] 缺失核心命令: crontab${NC}"
     fi
-
+    
+    # dig 必须（DNS检查）
+    if ! command -v dig &> /dev/null; then
+        core_missing+=("dig")
+        echo -e "${YELLOW}[!] 缺失核心命令: dig${NC}"
+    fi
+    
     # 2. 如果有缺失的核心依赖，尝试安装
     if [ ${#core_missing[@]} -gt 0 ]; then
         echo -e "${YELLOW}[!] 发现缺失核心命令: ${core_missing[*]}${NC}"
@@ -73,13 +79,6 @@ check_dependencies() {
         echo -e "${YELLOW}[!] 可选依赖缺失: socat${NC}"
         echo -e "${BLUE}[!] 如需使用HTTP验证模式（Standalone），请手动安装:${NC}"
         echo -e "  或使用 DNS 验证模式（推荐）"
-    fi
-
-    # dig: 用于手动DNS验证的检查（比 nslookup 更好）
-    if ! command -v dig &> /dev/null; then
-        echo -e "${YELLOW}[!] 可选依赖缺失: dig${NC}"
-        echo -e "${BLUE}[!] 如需更准确的DNS记录检查，请手动安装:${NC}"
-        echo -e "  可使用 nslookup 作为替代方案"
     fi
 
     # git: 用于GitHub安装方式（备选方案）
