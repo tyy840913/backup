@@ -96,9 +96,9 @@ get_web_config() {
                 done
                 
                 echo ""
-                read -p "是否启用HTTPS (SSL)? [y/N]: " enable_ssl
+                read -p "是否启用HTTPS (SSL)? [Y/n]: " enable_ssl
                 enable_ssl=${enable_ssl:-y}  # 添加默认值处理
-                if [[ "$enable_ssl" =~ ^[Nn] ]]; then
+                if [[ ! "$enable_ssl" =~ ^[Nn] ]]; then
                     http_port=""
                     https_port=$custom_port
                     enable_301_redirect=false
@@ -190,11 +190,11 @@ get_web_config() {
     # 反向代理配置
     echo ""
     print_color "=== 反向代理配置 ===" "$BLUE"
-    read -e -p "是否需要配置反向代理? [y/N]: " need_proxy
-    need_proxy=${need_proxy:-y}  # 修复：处理空输入，默认值为 y
-    if [[ "$need_proxy" =~ ^[Nn] ]]; then
+    read -e -p "是否需要配置反向代理? [Y/n]: " need_proxy
+    need_proxy=${need_proxy:-y}
+    if [[ ! "$need_proxy" =~ ^[Nn] ]]; then
         enable_proxy=true
-        
+    
         while true; do
             read -p "请输入后端服务地址 (IP、域名或带端口的地址，如 127.0.0.1:8080): " backend_input
             
@@ -226,7 +226,7 @@ get_web_config() {
                 echo "1. HTTPS (默认)"
                 echo "2. HTTP"
                 read -p "请选择 [1-2]: " protocol_choice
-                protocol_choice=${protocol_choice:-1}  # 默认选择 HTTP
+                protocol_choice=${protocol_choice:-1}
 
                 case $protocol_choice in
                     2)
@@ -629,9 +629,9 @@ main() {
         esac
         
         echo ""
-        read -e -p "是否继续生成其他配置? [y/N]: " cont
-        cont=${cont:-y}  # 修复：处理空输入，默认值为 y
-        if [[ ! "$cont" =~ ^[Nn] ]]; then
+        read -e -p "是否继续生成其他配置? [Y/n]: " cont
+        cont=${cont:-y}
+        if [[ "$cont" =~ ^[Nn] ]]; then  # 如果是 N/n
             print_color "再见！" "$GREEN"
             exit 0
         fi
