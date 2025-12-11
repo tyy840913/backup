@@ -653,7 +653,7 @@ check_dns_record() {
         # 获取当前要查询的DNS服务器
         local current_dns="${dns_servers[$dns_server_index]}"
         
-        # 使用您提供的格式显示检查次数
+        # 显示检查次数
         echo -ne "${YELLOW}[!] 检查 $check_count 次，当前DNS: $current_dns\r${NC}"
         
         # 使用dig查询TXT记录
@@ -676,46 +676,18 @@ check_dns_record() {
         
         # 使用非阻塞读取检测按键（3秒超时）
         if read -t 3 -n 1 -s key; then
-            echo -e "\n${BLUE}[*] 检测到按键，暂停检查${NC}"
+            echo -e "\n${BLUE}[*] 检测到按键，已暂停${NC}"
+            echo -e "${YELLOW}[!] 按回车键继续检查...${NC}"
             
-            # 显示暂停菜单，默认继续检查
-            echo -e "${YELLOW}[!] 按回车键继续检查，输入 2 跳过检查，输入 3 取消检查${NC}"
+            # 等待用户按回车键继续
+            read -s
             
-            # 设置3秒超时，默认选择继续检查
-            if read -t 3 -p "请选择[继续]: " pause_choice; then
-                # 用户输入了选择
-                case $pause_choice in
-                    ""|"1")
-                        echo -e "${BLUE}[*] 继续检查...${NC}"
-                        echo -e "${YELLOW}[!] 按任意键暂停检查${NC}"
-                        echo ""
-                        continue
-                        ;;
-                    "2")
-                        echo -e "${YELLOW}[!] 跳过检查，直接尝试验证...${NC}"
-                        echo -e "${YELLOW}[!] 注意：这可能会导致验证失败${NC}"
-                        return 0
-                        ;;
-                    "3")
-                        echo -e "${YELLOW}[!] 取消DNS检查${NC}"
-                        return 1
-                        ;;
-                    *)
-                        echo -e "${RED}[✗] 无效选择，继续检查${NC}"
-                        echo -e "${YELLOW}[!] 按任意键暂停检查${NC}"
-                        echo ""
-                        continue
-                        ;;
-                esac
-            else
-                # 超时，默认继续检查
-                echo -e "\n${BLUE}[*] 超时，自动继续检查...${NC}"
-                echo -e "${YELLOW}[!] 按任意键暂停检查${NC}"
-                echo ""
-                continue
-            fi
+            echo -e "${BLUE}[*] 继续检查...${NC}"
+            echo ""
+            # 继续循环（会重新显示进度）
+            continue
         else
-            # 3秒超时，自动继续检查（不换行，继续显示进度）
+            # 3秒超时，自动继续检查
             continue
         fi
     done
@@ -907,8 +879,8 @@ issue_certificate() {
             local txt_record="${domain_txt_records[$domain]}"
             if [ -n "$txt_record" ]; then
                 echo ""
-                echo -e "${YELLOW}域名:    $domain${NC}"
-                echo -e "${YELLOW}类型:    TXT${NC}"
+                echo -e "${YELLOW}域名:     $domain${NC}"
+                echo -e "${YELLOW}类型:     TXT${NC}"
                 echo -e "${YELLOW}主机名:   _acme-challenge.$domain${NC}"
                 echo -e "${YELLOW}记录值:   $txt_record${NC}"
                 echo ""
