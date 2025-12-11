@@ -625,7 +625,7 @@ show_cert_detail() {
     fi
 }
 
-# 检查DNS记录 - 优化版：每次只查询一个DNS服务器，轮询查询
+# 检查DNS记录 - 优化版：每3秒查询一个DNS服务器，轮询查询
 check_dns_record() {
     local domain="$1"
     local txt_record="$2"
@@ -636,9 +636,7 @@ check_dns_record() {
     local dns_servers=("8.8.8.8" "1.1.1.1" "1.0.0.1" "8.8.4.4" "9.9.9.9" "149.112.112.112")
     local dns_server_count=${#dns_servers[@]}
     
-    echo -e "${BLUE}[*] 开始检查DNS记录传播...${NC}"
-    echo -e "${YELLOW}[!] 正在检查: _acme-challenge.$domain${NC}"
-    echo -e "${YELLOW}[!] 记录值: $txt_record${NC}"
+    echo -e "${BLUE}[*] 正在检查DNS记录传播...${NC}"
     echo -e "${YELLOW}[!] 按任意键暂停检查${NC}"
     echo ""
 
@@ -647,7 +645,6 @@ check_dns_record() {
     if [[ "$domain" == **\** ]]; then
         # 如果是通配符域名，需要检查通配符记录
         check_domain="_acme-challenge.${domain#\*}"
-        echo -e "${YELLOW}[!] 通配符域名检测: 实际检查 $check_domain${NC}"
     fi
 
     # 主检查循环 - 无限循环直到成功或用户中断
@@ -657,7 +654,8 @@ check_dns_record() {
         # 获取当前要查询的DNS服务器
         local current_dns="${dns_servers[$dns_server_index]}"
         
-        echo -e "${YELLOW}[!] 第 $check_count 次检查 - 使用DNS服务器: $current_dns${NC}"
+        # 使用您提供的格式显示检查次数
+        echo -ne "${YELLOW}[!] 检查 $check_count 次，当前DNS: $current_dns\r${NC}"
         
         # 使用dig查询TXT记录
         local query_result
@@ -669,63 +667,42 @@ check_dns_record() {
         
         # 检查是否包含TXT记录
         if [[ "$cleaned_result" == *"$txt_record"* ]]; then
-            echo -e "${GREEN}[✓] DNS记录验证成功！${NC}"
-            echo -e "${GREEN}[✓] DNS服务器: $current_dns${NC}"
-            echo -e "${GREEN}[✓] 查询结果: $cleaned_result${NC}"
+            echo -e "\n${GREEN}[✓] DNS记录验证成功！${NC}"
+            echo -e "${GREEN}[✓] 获取成功的DNS服务器: $current_dns${NC}"
             return 0
-        else
-            echo -e "${YELLOW}[!] 未找到记录 (服务器: $current_dns)${NC}"
-            
-            # 轮询下一个DNS服务器
-            dns_server_index=$(( (dns_server_index + 1) % dns_server_count ))
-            
-            # 如果已经检查了多个服务器，显示提示信息
-            if [ $((check_count % 6)) -eq 0 ]; then
-                echo -e "${YELLOW}[!] 已进行 $check_count 次检查，DNS记录可能还未生效${NC}"
-                echo -e "${YELLOW}[!] 请确认已在DNS控制台正确添加TXT记录${NC}"
-                echo -e "${YELLOW}[!] 按任意键暂停，按回车键继续检查...${NC}"
-            else
-                echo -e "${YELLOW}[!] 等待3秒后继续检查...${NC}"
-            fi
         fi
+        
+        # 轮询下一个DNS服务器（下一次循环时使用）
+        dns_server_index=$(( (dns_server_index + 1) % dns_server_count ))
         
         # 使用非阻塞读取检测按键（3秒超时）
         if read -t 3 -n 1 -s key; then
             echo -e "\n${BLUE}[*] 检测到按键，暂停检查${NC}"
             
             # 显示暂停菜单，默认继续检查
-            echo ""
-            echo -e "${BLUE}=== 暂停菜单 ===${NC}"
-            echo "1) 继续检查（默认）"
-            echo "2) 尝试验证"
-            echo "3) 取消检查"
-            echo ""
-            echo -e "${YELLOW}[!] 按回车键继续检查，或输入选择(1-3)${NC}"
+            echo -e "${YELLOW}[!] 按回车键继续检查，输入 2 跳过检查，输入 3 取消检查${NC}"
             
-            # 设置5秒超时，默认选择继续检查
-            if read -t 5 -p "请选择[1]: " pause_choice; then
+            # 设置3秒超时，默认选择继续检查
+            if read -t 3 -p "请选择[继续]: " pause_choice; then
                 # 用户输入了选择
                 case $pause_choice in
-                    1|"")
+                    ""|"1")
                         echo -e "${BLUE}[*] 继续检查...${NC}"
-                        # 重新开始检查前等待1秒
-                        sleep 1
                         echo -e "${YELLOW}[!] 按任意键暂停检查${NC}"
                         echo ""
                         continue
                         ;;
-                    2)
+                    "2")
                         echo -e "${YELLOW}[!] 跳过检查，直接尝试验证...${NC}"
                         echo -e "${YELLOW}[!] 注意：这可能会导致验证失败${NC}"
                         return 0
                         ;;
-                    3)
+                    "3")
                         echo -e "${YELLOW}[!] 取消DNS检查${NC}"
                         return 1
                         ;;
                     *)
-                        echo -e "${RED}[✗] 无效选择，使用默认选项（继续检查）${NC}"
-                        sleep 1
+                        echo -e "${RED}[✗] 无效选择，继续检查${NC}"
                         echo -e "${YELLOW}[!] 按任意键暂停检查${NC}"
                         echo ""
                         continue
@@ -734,13 +711,12 @@ check_dns_record() {
             else
                 # 超时，默认继续检查
                 echo -e "\n${BLUE}[*] 超时，自动继续检查...${NC}"
-                sleep 1
                 echo -e "${YELLOW}[!] 按任意键暂停检查${NC}"
                 echo ""
                 continue
             fi
         else
-            # 3秒超时，自动继续检查
+            # 3秒超时，自动继续检查（不换行，继续显示进度）
             continue
         fi
     done
