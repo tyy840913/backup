@@ -628,14 +628,5 @@ main() {
     done
 }
 
-# 检查root
-if [ "$EUID" -eq 0 ]; then 
-    print_color "警告: 不建议以root用户运行此脚本" "$YELLOW"
-    read -e -p "是否继续? [y/N]: " -i "n" cont
-    if [[ ! "$continue_as_root" =~ ^[Yy] ]]; then
-        exit 1
-    fi
-fi
-
 # 运行
 main
