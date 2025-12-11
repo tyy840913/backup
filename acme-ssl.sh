@@ -625,83 +625,102 @@ show_cert_detail() {
     fi
 }
 
-# 检查DNS记录 - 精简修复版（解决第一次失败后后续不成功的问题）
+# 检查DNS记录 - 支持通配符域名
 check_dns_record() {
     local domain="$1"
     local txt_record="$2"
-    local max_attempts=10
-    local attempt=1
+    local check_count=0
     
     echo -e "${BLUE}[*] 检查DNS记录: _acme-challenge.$domain${NC}"
-    
+
     # 处理通配符域名
     local check_domain="_acme-challenge.$domain"
-    if [[ "${domain:0:2}" == "*." ]]; then
-        check_domain="_acme-challenge.${domain:2}"
+    if [[ "$domain" == **\** ]]; then
+        # 如果是通配符域名，需要检查通配符记录
+        check_domain="_acme-challenge.${domain#\*}"
         echo -e "${YELLOW}[!] 通配符域名检测: 实际检查 $check_domain${NC}"
     fi
-    
-    # DNS服务器列表（多个服务器）
-    local dns_servers=(
-        "8.8.8.8"     # Google
-        "8.8.4.4"     # Google备用
-        "1.1.1.1"     # Cloudflare
-        "1.0.0.1"     # Cloudflare备用
-        "223.5.5.5"   # 阿里DNS
-        "119.29.29.29" # 腾讯DNS
-        "114.114.114.114" # 114DNS
-    )
-    
-    local required_success=2  # 至少需要2个DNS服务器返回正确结果
-    
-    while [ $attempt -le $max_attempts ]; do
-        echo -ne "${YELLOW}[!] 尝试 $attempt/$max_attempts...${NC}"
+
+    # 主检查循环 - 无限循环，直到成功或用户选择停止
+    while true; do
+        ((check_count++))
+        echo -e "${YELLOW}[!] 第 $check_count 次检查...${NC}"
         
-        local success=0
-        
-        # 关键修复：每次查询都执行完整检查，不重用变量
+        local dns_servers=("8.8.8.8" "1.1.1.1" "1.0.0.1" "8.8.4.4")
+        local success_count=0
+        local server_results=()
+
+        # 检查每个DNS服务器
         for dns_server in "${dns_servers[@]}"; do
-            # 每次查询都使用新的变量
             local query_result
             query_result=$(dig +short TXT "$check_domain" @"$dns_server" 2>/dev/null)
-            
-            # 清理结果
-            if [ -n "$query_result" ]; then
-                # 合并多行
-                local cleaned_result
-                cleaned_result=$(echo "$query_result" | tr '\n' ' ' | xargs)
+
+            local cleaned_result
+            cleaned_result=$(echo "$query_result" | sed 's/"//g')
+
+            if [[ "$cleaned_result" == *"$txt_record"* ]]; then
+                ((success_count++))
+                server_results+=("$dns_server: ✓ (记录匹配)")
+                echo -e "${GREEN}[✓] DNS服务器 $dns_server 验证成功${NC}"
                 
-                # 检查是否匹配
-                if [[ "$cleaned_result" == *"$txt_record"* ]]; then
-                    ((success++))
+                # 关键修改：只要有一个DNS服务器成功就立即返回
+                if [ $success_count -ge 1 ]; then
+                    echo -e "${GREEN}[✓] DNS记录验证成功！${NC}"
+                    echo -e "${BLUE}[*] 详细检查结果:${NC}"
+                    for result in "${server_results[@]}"; do
+                        echo "  $result"
+                    done
+                    echo -e "${GREEN}[✓] 满足条件：至少有一个DNS服务器验证成功${NC}"
+                    return 0
                 fi
+            else
+                server_results+=("$dns_server: ✗ (未找到记录)")
+                echo -e "${YELLOW}[!] DNS服务器 $dns_server 未找到记录${NC}"
             fi
         done
-        
-        if [ $success -ge $required_success ]; then
-            echo -e "\n${GREEN}[✓] DNS记录已在 $success/${#dns_servers[@]} 个DNS服务器生效${NC}"
-            return 0
+
+        # 如果没有DNS服务器成功
+        if [ $success_count -eq 0 ]; then
+            echo -e "${YELLOW}[!] 本次检查结果: 0/${#dns_servers[@]} 个DNS服务器验证成功${NC}"
+            echo -e "${BLUE}[*] 详细检查结果:${NC}"
+            for result in "${server_results[@]}"; do
+                echo "  $result"
+            done
+
+            # 每5次检查后询问用户
+            if [ $((check_count % 5)) -eq 0 ]; then
+                echo -e "${YELLOW}[!] 已进行 $check_count 次检查，DNS记录仍未生效${NC}"
+                echo ""
+                read -p "是否继续检查？(y=继续检查, n=直接尝试验证, q=取消): " user_choice
+                
+                case $user_choice in
+                    [Yy]*)
+                        echo -e "${BLUE}[*] 继续检查，等待5秒后重试...${NC}"
+                        sleep 5
+                        continue
+                        ;;
+                    [Nn]*)
+                        echo -e "${YELLOW}[!] 跳过检查，直接尝试验证...${NC}"
+                        echo -e "${YELLOW}[!] 注意：这可能会导致验证失败，但您可以稍后手动重试${NC}"
+                        return 0
+                        ;;
+                    [Qq]*|"")
+                        echo -e "${YELLOW}[!] 用户取消DNS检查${NC}"
+                        return 1
+                        ;;
+                    *)
+                        echo -e "${YELLOW}[!] 无效输入，继续检查...${NC}"
+                        sleep 5
+                        continue
+                        ;;
+                esac
+            else
+                # 如果不是第5次检查，自动继续
+                echo -e "${BLUE}[*] 等待5秒后继续检查...${NC}"
+                sleep 5
+            fi
         fi
-        
-        # 如果不是最后一次尝试，等待5秒
-        if [ $attempt -lt $max_attempts ]; then
-            sleep 5
-        fi
-        
-        ((attempt++))
     done
-    
-    # 所有尝试都失败
-    echo -e "\n${YELLOW}[!] DNS记录检查超时: $check_domain${NC}"
-    
-    # 直接询问是否继续
-    read -p "是否继续尝试验证？(y/n): " continue_anyway
-    if [[ $continue_anyway =~ ^[Yy]$ ]]; then
-        return 0
-    else
-        echo -e "${YELLOW}[!] 您可以稍后手动执行续期${NC}"
-        return 1
-    fi
 }
 
 # 注册证书颁发机构
