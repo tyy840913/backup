@@ -399,17 +399,14 @@ get_dns_txt_records() {
     cmd+=("--server" "letsencrypt" "--yes-I-know-dns-manual-mode-enough-go-ahead-please")
     
     # 执行命令 - 修改这里：实时显示输出
-    echo -e "${BLUE}==========================================${NC}"
     echo -e "${YELLOW}[!] 正在执行acme.sh命令...${NC}"
-    echo ""
-    
+    echo -e "${BLUE}==========================================${NC}"
     # 实时显示输出并保存到日志文件
     if ! "${cmd[@]}" 2>&1 | tee "$log_file"; then
         echo -e "${BLUE}==========================================${NC}"
         print_error "获取DNS验证信息失败"
         return 1
     fi
-    echo ""
     echo -e "${BLUE}==========================================${NC}"
     
     # 从日志文件读取输出用于解析
@@ -863,7 +860,7 @@ main_menu() {
         echo "3) 删除证书"
         echo "4) 列出证书"
         echo "5) 重新安装"
-        echo "0) 退出"
+        echo "0) 退出脚本"
         echo ""
         read -p "请选择操作(0-5): " choice
         
