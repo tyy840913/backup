@@ -13,6 +13,11 @@ https://github.com/ACL4SSR/ACL4SSR/tree/master
 bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/acme-ssl.sh)
 ```
 
+# WEB配置文件快速生成
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webconf.sh)
+```
+
 # 主脚本
 ```bash
 bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/main.sh)"
