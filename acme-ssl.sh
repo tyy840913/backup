@@ -1162,13 +1162,6 @@ renew_certificate() {
         else
             echo "$((i+1))) $cert_name"
         fi
-        
-        local now_seconds=$(date +%s)
-            local expiry_seconds=$(date -d "$not_after" +%s 2>/dev/null || echo "")
-            if [ -n "$expiry_seconds" ] && [ "$expiry_seconds" -gt "$now_seconds" ]; then
-                local days_left=$(( (expiry_seconds - now_seconds) / 86400 ))
-                echo "  剩余天数: $days_left 天"
-            fi
     done
 
     echo ""
@@ -1426,13 +1419,6 @@ list_certificates() {
             echo "    目录位置: $cert_dir"
         fi
         echo ""
-        
-        local now_seconds=$(date +%s)
-            local expiry_seconds=$(date -d "$not_after" +%s 2>/dev/null || echo "")
-            if [ -n "$expiry_seconds" ] && [ "$expiry_seconds" -gt "$now_seconds" ]; then
-                local days_left=$(( (expiry_seconds - now_seconds) / 86400 ))
-                echo "  剩余天数: $days_left 天"
-            fi
     done
 
        while true; do
