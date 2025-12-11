@@ -633,7 +633,7 @@ check_dns_record() {
     local dns_server_index=0
     
     # DNS服务器列表（轮询查询）
-    local dns_servers=("8.8.8.8" "1.1.1.1" "1.0.0.1" "8.8.4.4" "9.9.9.9" "149.112.112.112")
+    local dns_servers=("8.8.8.8" "1.1.1.1" "1.0.0.1" "8.8.4.4")
     local dns_server_count=${#dns_servers[@]}
     
     echo -e "${BLUE}[*] 正在检查DNS记录传播...${NC}"
