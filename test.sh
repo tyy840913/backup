@@ -42,7 +42,7 @@ print_color() {
 # 显示标题
 print_title() {
     echo "========================================="
-    echo "    Web服务器配置生成器（V2.3 终极优化版）"
+    echo "    Web服务器配置生成器（V2.4 最终版）"
     echo "========================================="
     echo ""
 }
@@ -295,24 +295,22 @@ get_web_config() {
 
     # 3. SSL/TLS 配置（仅在启用了 SSL 时询问证书）
     if "$ssl_enabled"; then
-        print_color "--- SSL/TLS 证书配置 (允许留空) ---" "$CYAN"
+        print_color "--- SSL/TLS 证书配置 (支持手动填写/自签证书) ---" "$CYAN"
         
         while true; do
-            read -e -p "请输入 SSL 证书文件绝对路径 (.crt/.pem) [留空]: " ssl_cert
-            if validate_file_if_not_empty "$ssl_cert"; then
-                break
-            fi
+            read -e -p "请输入 SSL 证书文件绝对路径 (.crt/.pem) [留空，需手动填写]: " ssl_cert
+            # 允许为空，无需检查文件存在
+            break
         done
         
         while true; do
-            read -e -p "请输入 SSL 密钥文件绝对路径 (.key) [留空]: " ssl_key
-            if validate_file_if_not_empty "$ssl_key"; then
-                break
-            fi
+            read -e -p "请输入 SSL 密钥文件绝对路径 (.key) [留空，需手动填写]: " ssl_key
+            # 允许为空，无需检查文件存在
+            break
         done
         
         if [[ -z "$ssl_cert" || -z "$ssl_key" ]]; then
-            print_color "警告: 您启用了 SSL，但证书或密钥路径为空。生成的配置可能无法启动 HTTPS 服务。" "$YELLOW"
+            print_color "警告: 证书或密钥路径为空。请在生成配置后手动补全路径，否则服务可能无法启动 HTTPS。" "$YELLOW"
         fi
 
         # 默认 Y
@@ -368,7 +366,12 @@ get_web_config() {
             echo "根路径 '/' 如何处理 (如果路径反代中未明确包含 '/')?"
             echo "1. 返回 404 错误 (不响应)"
             echo "2. 反向代理到特定后端"
-            read -p "请选择 [1-2]: " root_choice
+            # 如果是混合模式，提供第三个选项
+            if [[ "$WORK_MODE" == "mixed" ]]; then
+                echo "3. 服务静态文件 (Root: $root_path)"
+            fi
+            read -p "请选择 [1-3, 纯反代模式只有 1-2]: " root_choice
+            
             case "$root_choice" in
                 1)
                     ROOT_ACTION="404"
@@ -386,11 +389,22 @@ get_web_config() {
                     print_color "已选择: 根路径 '/' 反向代理至 $root_backend_url" "$GREEN"
                     break
                     ;;
+                3)
+                    if [[ "$WORK_MODE" == "mixed" ]]; then
+                        ROOT_ACTION="static"
+                        print_color "已选择: 根路径 '/' 服务静态文件" "$GREEN"
+                        break
+                    else
+                        print_color "无效选择，请重试" "$RED"
+                    fi
+                    ;;
                 *)
                     print_color "无效选择，请重试" "$RED"
                     ;;
             esac
         done
+    elif [[ "$WORK_MODE" == "static" ]]; then
+        ROOT_ACTION="static" # 纯静态模式下，根路径默认服务静态文件
     fi
 
     print_color "配置信息收集完成。" "$GREEN"
@@ -431,18 +445,25 @@ generate_nginx_config() {
             echo "    }" >> "$config_file"
         fi
         
-        # 证书配置 (仅当路径不为空时写入)
-        if [[ -n "$ssl_cert" && -n "$ssl_key" ]]; then
-            echo "    ssl_certificate \"$ssl_cert\";" >> "$config_file"
-            echo "    ssl_certificate_key \"$ssl_key\";" >> "$config_file"
-            echo "    ssl_session_cache shared:SSL:10m;" >> "$config_file"
-            echo "    ssl_session_timeout 10m;" >> "$config_file"
-            echo "    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';" >> "$config_file"
-            echo "    ssl_prefer_server_ciphers on;" >> "$config_file"
-            echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
-        else
-            echo "    # 警告: 证书路径为空，请手动配置证书！" >> "$config_file"
+        # 证书配置 (支持自签证书，路径允许为空，供用户手动填写)
+        echo "    # --- SSL 证书配置 (支持自签证书) ---" >> "$config_file"
+        if [[ -z "$ssl_cert" ]]; then
+            echo "    # !!! 警告: 请手动填写证书文件绝对路径 (.crt/.pem)" >> "$config_file"
         fi
+        echo "    ssl_certificate \"$ssl_cert\";" >> "$config_file"
+
+        if [[ -z "$ssl_key" ]]; then
+            echo "    # !!! 警告: 请手动填写密钥文件绝对路径 (.key)" >> "$config_file"
+        fi
+        echo "    ssl_certificate_key \"$ssl_key\";" >> "$config_file"
+
+        echo "    ssl_session_cache shared:SSL:10m;" >> "$config_file"
+        echo "    ssl_session_timeout 10m;" >> "$config_file"
+        echo "    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';" >> "$config_file"
+        echo "    ssl_prefer_server_ciphers on;" >> "$config_file"
+        echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
+        echo "    # --- SSL 证书配置结束 ---" >> "$config_file"
+
 
         if "$hsts_enabled"; then
             echo "    # 启用 HSTS (半年)" >> "$config_file"
@@ -463,7 +484,7 @@ generate_nginx_config() {
         echo "    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;" >> "$config_file"
     fi
 
-    # --- 1. 静态文件/纯静态模式的默认配置 ---
+    # --- 1. 静态文件配置 (仅静态/混合模式) ---
     if [[ "$WORK_MODE" == "static" || "$WORK_MODE" == "mixed" ]]; then
         echo "    # 静态文件根目录" >> "$config_file"
         echo "    root \"$root_path\";" >> "$config_file"
@@ -500,6 +521,11 @@ generate_nginx_config() {
             echo "    location = / {" >> "$config_file"
             echo "        return 404;" >> "$config_file"
             echo "    }" >> "$config_file"
+        elif [[ "$ROOT_ACTION" == "static" ]]; then
+            echo "    # 根路径 '/' 服务静态文件 (精确匹配)" >> "$config_file"
+            echo "    location = / {" >> "$config_file"
+            echo "        try_files \$uri \$uri/ =404;" >> "$config_file"
+            echo "    }" >> "$config_file"
         elif [[ "$ROOT_ACTION" =~ ^proxy\| ]]; then
             IFS='|' read -r _ root_backend_url root_set_host <<< "$ROOT_ACTION"
             echo "    # 根路径 '/' 反向代理: / -> $root_backend_url (精确匹配)" >> "$config_file"
@@ -521,23 +547,21 @@ generate_nginx_config() {
     fi
 
     # --- 4. 默认/兜底处理 (location /) ---
-    echo "    # 默认/兜底处理: location /" >> "$config_file"
+    echo "    # 默认/兜底处理: location / (处理未匹配的子路径)" >> "$config_file"
     echo "    location / {" >> "$config_file"
+    
     if [[ "$WORK_MODE" == "static" || "$WORK_MODE" == "mixed" ]]; then
         echo "        # 混合模式或纯静态模式下，处理未匹配到的静态文件" >> "$config_file"
         echo "        try_files \$uri \$uri/ =404;" >> "$config_file"
     elif [[ "$WORK_MODE" == "proxy" ]]; then
-        if [ ${#PROXY_RULES[@]} -eq 0 ] && [[ "$ROOT_ACTION" =~ ^proxy\| ]]; then
-            # 纯反代模式下，如果没有路径规则，且根路径已代理，则不需要额外的 location / 块，除非有特殊的 catch-all 需求。
-            # 为了避免冗余，这里不写入 location /
-            :
-        elif [ ${#PROXY_RULES[@]} -eq 0 ] && [[ "$ROOT_ACTION" == "404" ]]; then
-            # 如果是纯反代模式，没有路径规则，且根路径是404，那么所有请求都将返回404
+        # 纯反代模式下，如果没有路径规则，也没有代理根路径，则返回404作为安全措施
+        if [ ${#PROXY_RULES[@]} -eq 0 ] && [[ "$ROOT_ACTION" == "404" ]]; then
+            echo "        # 纯反代模式，没有路径规则，默认返回 404" >> "$config_file"
             echo "        return 404;" >> "$config_file"
         else
-            # 纯反代模式下，如果没有定义路径规则，通常需要一个兜底代理
-             print_color "警告：纯反代模式下未检测到路径规则或 '/' 精确匹配规则，兜底 location / 返回 404。" "$YELLOW"
-             echo "        return 404;" >> "$config_file"
+            # 否则，如果前面没有精确匹配的根路径代理，这里也返回 404，因为代理逻辑应该在精确匹配中处理。
+            echo "        # 未匹配到任何显式 location 规则，返回 404" >> "$config_file"
+            echo "        return 404;" >> "$config_file"
         fi
     fi
     echo "    }" >> "$config_file"
@@ -554,10 +578,8 @@ generate_nginx_config() {
             
             if "$ssl_enabled"; then
                 echo "    listen $listen_port ssl http2;" >> "$config_file"
-                if [[ -n "$ssl_cert" && -n "$ssl_key" ]]; then
-                    echo "    ssl_certificate \"$ssl_cert\";" >> "$config_file"
-                    echo "    ssl_certificate_key \"$ssl_key\";" >> "$config_file"
-                fi
+                echo "    ssl_certificate \"$ssl_cert\";" >> "$config_file" # 确保路径被写入
+                echo "    ssl_certificate_key \"$ssl_key\";" >> "$config_file" # 确保路径被写入
             else
                 echo "    listen $listen_port;" >> "$config_file"
             fi
@@ -609,17 +631,19 @@ generate_caddy_config() {
 
     # Caddy SSL/TLS 证书配置 (手动模式)
     if "$ssl_enabled"; then
+        echo "    # --- SSL 证书配置 (支持自签/内置/外部) ---" >> "$config_file"
         if [[ -n "$ssl_cert" && -n "$ssl_key" ]]; then
-            echo "    # 手动指定证书" >> "$config_file"
+            echo "    # 使用用户提供的证书路径" >> "$config_file"
             echo "    tls \"$ssl_cert\" \"$ssl_key\"" >> "$config_file"
         else
-            # 如果是标准 443 端口，Caddy 会尝试自动ACME。
-            # 如果是非标准端口，则使用内部证书，除非明确配置了外部证书。
-            echo "    # 证书路径为空，Caddy将尝试自动申请证书或使用内部证书" >> "$config_file"
-            echo "    tls internal" >> "$config_file"
+            echo "    # 证书路径为空，使用 Caddy 内置的证书管理 (自签或ACME)" >> "$config_file"
+            if [ "$listen_port" -eq 443 ]; then
+                 echo "    tls" # 默认启用ACME
+            else
+                 echo "    tls internal" # 非标准端口，默认使用内部自签名
+            fi
         fi
-        
-        # Caddy 会自动处理 80 到 443 的重定向以及非标准端口上的 HTTP 请求
+        echo "    # --- SSL 证书配置结束 ---" >> "$config_file"
     fi
 
     # Gzip 配置 (Caddy 默认使用 encode gzip zstd)
@@ -641,7 +665,7 @@ generate_caddy_config() {
         echo "    file_server" >> "$config_file"
     fi
 
-    # --- 2. 路径反代配置 (优先级最高) ---
+    # --- 2. 路径反代配置 (优先级高) ---
     if [[ "$PROXY_CONFIG_TYPE" == "path" ]]; then
         for rule in "${PROXY_RULES[@]}"; do
             IFS='|' read -r proxy_path backend_url proxy_set_host <<< "$rule"
@@ -658,14 +682,17 @@ generate_caddy_config() {
 
     # --- 3. 根路径 '/' 特殊处理 (处理根路径精确匹配) ---
     if [[ "$WORK_MODE" != "static" && -n "$ROOT_ACTION" ]]; then
+        echo "    # 根路径 '/' 精确匹配处理" >> "$config_file"
         if [[ "$ROOT_ACTION" == "404" ]]; then
-            echo "    # 根路径 '/' 返回 404 (精确匹配)" >> "$config_file"
             echo "    route / {" >> "$config_file"
             echo "        respond 404" >> "$config_file"
             echo "    }" >> "$config_file"
+        elif [[ "$ROOT_ACTION" == "static" ]]; then
+            echo "    route / {" >> "$config_file"
+            echo "        file_server" >> "$config_file"
+            echo "    }" >> "$config_file"
         elif [[ "$ROOT_ACTION" =~ ^proxy\| ]]; then
             IFS='|' read -r _ root_backend_url root_set_host <<< "$ROOT_ACTION"
-            echo "    # 根路径 '/' 反向代理: / -> $root_backend_url (精确匹配)" >> "$config_file"
             echo "    route / {" >> "$config_file"
             echo "        reverse_proxy \"$root_backend_url\"" >> "$config_file"
             
@@ -680,16 +707,18 @@ generate_caddy_config() {
 
     # --- 4. 子域名反代配置 (每个子域名独立 Server 块) ---
     if [[ "$PROXY_CONFIG_TYPE" == "subdomain" ]]; then
-        print_color "注意: 子域名反代将生成独立的 Server 块。" "$YELLOW"
+        print_color "注意: 子域名反代将生成独立的 Server 块，使用与主域名相同的端口和 SSL 证书设置。" "$YELLOW"
         for rule in "${SUBDOMAIN_PROXIES[@]}"; do
             IFS='|' read -r subdomain backend_url <<< "$rule"
             echo "" >> "$config_file"
             echo "$subdomain {" >> "$config_file"
             
-            if "$ssl_enabled" && [[ -n "$ssl_cert" && -n "$ssl_key" ]]; then
-                echo "    tls \"$ssl_cert\" \"$ssl_key\"" >> "$config_file"
-            else
-                echo "    tls internal" >> "$config_file"
+            if "$ssl_enabled"; then
+                 if [[ -n "$ssl_cert" && -n "$ssl_key" ]]; then
+                    echo "    tls \"$ssl_cert\" \"$ssl_key\"" >> "$config_file"
+                else
+                    echo "    tls internal"
+                fi
             fi
             
             echo "    # 子域名代理: $subdomain -> $backend_url" >> "$config_file"
@@ -715,7 +744,14 @@ main() {
     while true; do
         show_menu
         local choice
+        # 确保 choice 变量在 read 之前被声明
+        choice="" 
         read -p "请选择 [0-2]: " choice
+
+        # 确保 choice 不为空，如果为空，可能导致 set -u 报错
+        if [ -z "$choice" ]; then
+            choice="-1" # 使用一个无效值
+        fi
 
         case "$choice" in
             0)
@@ -740,13 +776,20 @@ main() {
         echo ""
         while true; do
             local cont
+            cont=""
             read -e -p "是否继续生成其他配置? [Y/n/0退出]: " cont
+            
+            # 如果 cont 为空，默认视为 Y
+            if [ -z "$cont" ]; then
+                cont="Y"
+            fi
+
             case "$cont" in
                 0)
                     print_color "再见！" "$GREEN"
                     exit 0
                     ;;
-                ""|y|Y)
+                y|Y)
                     break  # 继续
                     ;;
                 n|N)
