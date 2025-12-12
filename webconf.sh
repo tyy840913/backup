@@ -42,7 +42,7 @@ print_color() {
 # 显示标题
 print_title() {
     echo "========================================="
-    echo "  Web服务器配置生成器（v1.2 最终版）"
+    echo "  Web服务器配置生成器（v1.3 最终版）"
     echo "========================================="
     echo ""
 }
@@ -213,7 +213,7 @@ get_path_based_proxies() {
         if [[ -z "$raw_proxy_path" ]]; then
             print_color "路径不能为空" "$RED"
         else
-            proxy_path=$(normalize_proxy_path "$raw_proxy_path") # Call the new normalization function
+            proxy_path=$(normalize_proxy_path "$raw_proxy_path") # 调用路径标准化函数
             break
         fi
     done
@@ -285,6 +285,7 @@ get_web_config() {
     local ssl_choice_std
 
     while true; do
+        # 默认 Y
         read -p "是否使用标准端口 (HTTP: 80, HTTPS: 443)? [Y/n]: " port_choice
         if [[ "$port_choice" =~ ^[nN]$ ]]; then
             # 非标准端口
@@ -306,7 +307,7 @@ get_web_config() {
                 fi
             done
         elif [[ "$port_choice" =~ ^[yY]$ || "$port_choice" == "" ]]; then
-            # 标准端口
+            # 标准端口 (默认 Y)
             # 询问是否启用 HTTPS/SSL (默认 Y)
             read -p "是否启用 HTTPS/SSL? (标准端口，将使用 80 重定向至 443) [Y/n]: " ssl_choice_std
             if [[ "$ssl_choice_std" =~ ^[yY]$ || "$ssl_choice_std" == "" ]]; then
@@ -326,6 +327,7 @@ get_web_config() {
     
     # 2. 域名输入 (根据用户要求修改逻辑)
     local server_names_input
+    # 允许留空，并给出提示
     read -e -p "请输入域名 (多个用空格分隔) [留空，将使用 'localhost']: " server_names_input
     
     # 如果用户输入为空，使用 localhost
@@ -670,6 +672,10 @@ generate_nginx_config() {
                     echo "    ssl_certificate     $ssl_cert;" >> "$config_file"
                     echo "    ssl_certificate_key $ssl_key;" >> "$config_file"
                 fi
+                # 子域名也应用 HSTS
+                if "$hsts_enabled"; then
+                    echo "    add_header Strict-Transport-Security \"max-age=15768000; includeSubDomains\" always;" >> "$config_file"
+                fi
             else
                 echo "    listen $listen_port;" >> "$config_file"
                 echo "    server_name $subdomain;" >> "$config_file"
@@ -689,6 +695,12 @@ generate_nginx_config() {
             echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> "$config_file"
             
             echo "        proxy_set_header Host \$host;" >> "$config_file" # 子域名代理默认设置 Host
+            
+            # WebSocket 支持
+            echo "        proxy_http_version 1.1;" >> "$config_file"
+            echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
+            echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
+
             echo "    }" >> "$config_file"
             echo "}" >> "$config_file"
         done
@@ -719,22 +731,6 @@ generate_caddy_config() {
         final_root_path="$root_path" # 使用用户输入或 /var/www/html 默认值
     fi
 
-    # Caddyfile 头部 (主域名)
-    local address
-    
-    # Caddy 使用 server_names 中的第一个域名作为地址，或者直接使用 :port
-    local first_server_name=$(echo "$server_names" | awk '{print $1}')
-
-    if "$ssl_enabled"; then
-        # Caddy 会自动处理非标准 HTTPS 端口的证书和重定向
-        address="$server_names:$listen_port"
-    elif [ "$listen_port" -eq 80 ]; then
-        # Caddy 在 80 端口时，可以省略端口，直接使用域名
-        address="$server_names"
-    else
-        # 非标准 HTTP 端口
-        address="$server_names:$listen_port"
-    fi
     
     # Caddy 不允许 server_names 后面有空格，所以将空格替换为逗号，并在末尾添加端口
     local caddy_address=""
@@ -756,17 +752,14 @@ generate_caddy_config() {
             echo "    tls $ssl_cert $ssl_key" >> "$config_file"
         else
             echo "    # 证书路径为空，使用 Caddy 内置的证书管理 (自签或ACME)" >> "$config_file"
-            # Caddy 会在标准端口 (443) 自动尝试 ACME，非标准端口默认使用内部自签名
             if [ "$listen_port" -eq 443 ]; then
                  echo "    tls" # 标准 443 端口，默认启用ACME (Let's Encrypt)
             else
                  echo "    tls internal" # 非标准端口，默认使用内部自签名
             fi
         fi
+        echo "    # Caddy 会自动处理 80 -> 443 的重定向" >> "$config_file"
         echo "    # --- SSL 证书配置结束 ---" >> "$config_file"
-
-        # 如果是标准端口 443，Caddy 会自动设置 80 -> 443 重定向。
-        # 如果是非标准端口，Caddy 会自动处理 HTTP 到 HTTPS 的跳转。
     fi
 
     # Gzip 配置 (Caddy 默认使用 encode gzip zstd)
@@ -822,9 +815,8 @@ generate_caddy_config() {
             echo "        respond 404" >> "$config_file"
             echo "    }" >> "$config_file"
         elif [[ "$ROOT_ACTION" == "static" ]]; then
-            echo "    route / {" >> "$config_file"
-            echo "        file_server" >> "$config_file"
-            echo "    }" >> "$config_file"
+            # 静态文件已由 file_server 模块处理，这里不需要再重复
+            : # No need for explicit route / if file_server is defined
         elif [[ "$ROOT_ACTION" =~ ^proxy\| ]]; then
             IFS='|' read -r _ root_backend_url root_set_host <<< "$ROOT_ACTION"
             echo "    route / {" >> "$config_file"
@@ -864,6 +856,9 @@ generate_caddy_config() {
                 fi
             fi
             
+            # 纯反代模式，设置默认 root 避免 Caddy 报错
+            echo "    root * $final_root_path" >> "$config_file"
+
             echo "    # 子域名代理: $subdomain -> $backend_url" >> "$config_file"
             echo "    reverse_proxy $backend_url" >> "$config_file"
             echo "}" >> "$config_file"
@@ -889,6 +884,7 @@ main() {
         local choice
         # 确保 choice 变量在 read 之前被声明
         choice="" 
+        # 确保 read -p 捕获输入，如果输入为空，下面会处理为 "-1"
         read -p "请选择 [0-2]: " choice
 
         # 确保 choice 不为空，如果为空，使用一个无效值
@@ -920,9 +916,10 @@ main() {
         while true; do
             local cont
             cont=""
+            # 增加提示清晰度
             read -e -p "是否继续生成其他配置? [Y/n/0退出]: " cont
             
-            # 如果 cont 为空，默认视为 Y
+            # 如果 cont 为空，默认视为 Y (继续)
             if [ -z "$cont" ]; then
                 cont="Y"
             fi
