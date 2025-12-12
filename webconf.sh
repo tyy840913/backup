@@ -92,27 +92,51 @@ get_domain_config() {
 # 获取端口配置
 get_port_config() {
     while true; do
-        read -e -p "请输入 HTTP 监听端口 (默认 80): " port_80_input
-        http_port=${port_80_input:-80}
-        if [[ "$http_port" =~ ^[0-9]+$ && "$http_port" -gt 0 && "$http_port" -le 65535 ]]; then
-            break
-        else
-            print_color "端口号无效，请输入 1-65535 之间的数字。" "$RED"
-        fi
-    done
-
-    while true; do
-        read -e -p "请输入 HTTPS 监听端口 (默认 443): " port_443_input
-        https_port=${port_443_input:-443}
-        if [[ "$https_port" =~ ^[0-9]+$ && "$https_port" -gt 0 && "$https_port" -le 65535 ]]; then
-            if [ "$https_port" -eq "$http_port" ]; then
-                print_color "HTTPS 端口不能与 HTTP 端口相同，请重新输入。" "$RED"
-            else
+        echo "请选择端口配置方案:"
+        echo "1. 使用标准端口 (HTTP: 80, HTTPS: 443)"
+        echo "2. 自定义端口 (输入 HTTP 和 HTTPS 端口)"
+        read -e -p "请选择 [1-2]: " port_choice
+        
+        case $port_choice in
+            1)
+                http_port=80
+                https_port=443
+                print_color "已选择标准端口: HTTP 80, HTTPS 443。" "$GREEN"
                 break
-            fi
-        else
-            print_color "端口号无效，请输入 1-65535 之间的数字。" "$RED"
-        fi
+                ;;
+            2)
+                # 自定义 HTTP 端口
+                while true; do
+                    read -e -p "请输入自定义 HTTP 监听端口: " http_port_input
+                    http_port=${http_port_input}
+                    if [[ "$http_port" =~ ^[0-9]+$ && "$http_port" -gt 0 && "$http_port" -le 65535 ]]; then
+                        break
+                    else
+                        print_color "端口号无效，请输入 1-65535 之间的数字。" "$RED"
+                    fi
+                done
+                
+                # 自定义 HTTPS 端口
+                while true; do
+                    read -e -p "请输入自定义 HTTPS 监听端口: " https_port_input
+                    https_port=${https_port_input}
+                    if [[ "$https_port" =~ ^[0-9]+$ && "$https_port" -gt 0 && "$https_port" -le 65535 ]]; then
+                        if [ "$https_port" -eq "$http_port" ]; then
+                            print_color "HTTPS 端口不能与 HTTP 端口相同，请重新输入。" "$RED"
+                        else
+                            break
+                        fi
+                    else
+                        print_color "端口号无效，请输入 1-65535 之间的数字。" "$RED"
+                    fi
+                done
+                print_color "已选择自定义端口: HTTP $http_port, HTTPS $https_port。" "$GREEN"
+                break
+                ;;
+            *)
+                print_color "无效选择，请重新输入 1 或 2。" "$RED"
+                ;;
+        esac
     done
 }
 
