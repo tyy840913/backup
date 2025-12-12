@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 # 全局变量
 declare -a PROXY_MAPPINGS 
 # 存储映射，格式: TYPE|MATCHER|BACKEND_URL/ROOT_PATH|SET_HOST_BOOL
-
+config_output_file=""  # 自定义输出文件名
 # 打印带颜色的消息 (重定向到 stderr 以防被变量捕获)
 print_color() {
     echo -e "${2}${1}${NC}" >&2
@@ -253,6 +253,27 @@ get_generic_config() {
     fi
 }
 
+# 获取用户自定义文件名
+get_filename_choice() {
+    local default_name=""
+    if [ "$choice" == "1" ]; then
+        default_name="nginx_${server_names%% *}.conf"
+    else
+        default_name="caddy_${server_names%% *}.caddyfile"
+    fi
+
+    print_color "=== 文件命名 ===" "$BLUE"
+    read -e -p "请输入配置文件名称 (默认: $default_name): " custom_name
+    config_output_file=${custom_name:-$default_name}
+    
+    # Nginx 自动补 .conf
+    if [ "$choice" == "1" ] && [[ ! "\( config_output_file" =~ \.conf \) ]]; then
+        config_output_file="${config_output_file}.conf"
+    fi
+    
+    print_color "配置文件将保存为: $config_output_file" "$GREEN"
+}
+
 # 获取反代和静态映射配置
 get_proxy_mappings() {
     PROXY_MAPPINGS=() # 清空旧映射
@@ -363,7 +384,7 @@ generate_nginx_ssl_config() {
             config+="    ssl_ciphers HIGH:!aNULL:!MD5;\n"
         fi
         
-        [ "$enable_ocsp" = true ] && config+="    ssl_stapling on; ssl_stapling_verify on; resolver 8.8.8.8 8.8.4.4 valid=300s; resolver_timeout 5s;\n"
+        [ "$enable_ocsp" = true ] && config+="    ssl_stapling on; ssl_stapling_verify on; ssl_trusted_certificate $ssl_cert; resolver 8.8.8.8 8.8.4.4 valid=300s; resolver_timeout 5s;\n"
     fi
     echo -e "$config"
 }
@@ -422,8 +443,8 @@ generate_caddy_security_and_performance() {
 
 # 生成Nginx配置 
 generate_nginx_config() {
-    local config_file="nginx_${server_names%% *}_$(date +%Y%m%d_%H%M%S).conf"
-    
+    local config_file="$config_output_file"  # 使用自定义文件名
+
     echo "# Nginx配置文件 - 生成于 $(date)" > "$config_file"
     echo "# 版本: v1.0.1 权威生产版" >> "$config_file"
     echo "# 遵循模块化设计，通用配置已单独提取" >> "$config_file"
@@ -596,8 +617,8 @@ generate_nginx_config() {
 
 # 生成Caddy配置 
 generate_caddy_config() {
-    local config_file="caddy_${server_names%% *}_$(date +%Y%m%d_%H%M%S).caddyfile"
-    
+    local config_file="$config_output_file"  # 使用自定义文件名
+
     echo "# Caddy配置文件 - 生成于 $(date)" > "$config_file"
     echo "# 版本: v1.0.1 权威生产版" >> "$config_file"
     echo "# 遵循模块化设计，通用配置已单独提取" >> "$config_file"
@@ -732,7 +753,10 @@ main() {
                 # 3. 获取所有映射配置 (根路径、路径/子域名反代)
                 get_proxy_mappings
                 
-                # 4. 生成配置
+                # 4.自定义命名
+                get_filename_choice
+                
+                # 5. 生成配置
                 if [ "$choice" == "1" ]; then
                     generate_nginx_config
                 else
