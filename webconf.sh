@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =======================================================
-# Web服务器配置生成器 (v3.4 模块化/通用配置共享版)
+# Web服务器配置生成器 (v4.0 修复IPv6和反代地址填充)
 # =======================================================
 
 # 颜色定义
@@ -23,7 +23,7 @@ print_color() {
 # 显示标题
 print_title() {
     echo "=========================================="
-    echo " Web服务器配置生成器 (v3.4 模块化优化版)"
+    echo " Web服务器配置生成器 (v4.0 模块化优化版)"
     echo "=========================================="
     echo ""
 }
@@ -88,7 +88,7 @@ get_backend_info() {
     
     while true; do
         echo "请输入后端服务地址"
-        echo "支持格式: 8080 (自动补全为 http://127.0.0.1:8080)"
+        echo "支持格式: 8080 (自动补全为 http://127.0.0.1:8080) 或 192.168.1.1:8000"
         read -p "地址: " backend_input
         
         if [ -z "$backend_input" ]; then print_color "错误: 地址不能为空" "$RED"; continue; fi
@@ -127,7 +127,7 @@ get_backend_info() {
             protocol_choice=${protocol_choice:-1}
             [ "$protocol_choice" == "2" ] && backend_url="https://${backend_host}:${backend_port}" || backend_url="http://${backend_host}:${backend_port}"
         else
-            print_color "错误: 格式无效" "$RED"
+            print_color "错误: Host格式无效" "$RED"
             continue
         fi
         break
@@ -183,7 +183,7 @@ get_generic_config() {
     echo ""
     print_color "=== Web服务通用配置 ===" "$BLUE"
 
-    # 1. 端口模式选择 (逻辑保持不变)
+    # 1. 端口模式选择
     while true; do
         echo "请选择端口配置模式: 1. 标准(80/443) 2. 自定义"
         read -p "请选择 [1-2]: " port_mode
@@ -422,11 +422,12 @@ generate_nginx_config() {
         fi
     done
 
-    # --- 2. 生成 CONSOLIDATED HTTP 重定向块 ---
+    # --- 2. 生成 CONSOLIDATED HTTP 重定向块 (IPv4 和 IPv6) ---
     if [ -n "$http_port" ] && [ "$enable_301_redirect" = true ] && [ -n "$https_port" ]; then
         echo "server {" >> "$config_file"
-        echo "    # HTTP 重定向到 HTTPS (适用于所有域名)" >> "$config_file"
+        echo "    # HTTP 重定向到 HTTPS (同时监听 IPv4 和 IPv6)" >> "$config_file"
         echo "    listen $http_port;" >> "$config_file"
+        echo "    listen [::]:$http_port;" >> "$config_file" # 修复: 增加 IPv6 监听
         echo "    server_name $all_server_names;" >> "$config_file"
         echo "    return 301 https://\$host\$request_uri;" >> "$config_file"
         echo "}" >> "$config_file"
@@ -445,9 +446,11 @@ generate_nginx_config() {
         
         if [ -n "$https_port" ]; then
             echo "    listen ${https_port} ssl http2;" >> "$config_file"
+            echo "    listen [::]:${https_port} ssl http2;" >> "$config_file" # 修复: 增加 IPv6 监听
             [ "$need_497" = true ] && echo "    error_page 497 https://\$host:${https_port}\$request_uri;" >> "$config_file"
         elif [ -n "$http_port" ]; then
             echo "    listen $http_port;" >> "$config_file"
+            echo "    listen [::]:$http_port;" >> "$config_file" # 修复: 增加 IPv6 监听
         fi
         
         echo "    server_name $block_server_names;" >> "$config_file"
@@ -471,22 +474,24 @@ generate_nginx_config() {
                     
                     echo "    location ${matcher}/ {" >> "$config_file"
                     echo "        # 路径反向代理: Nginx会自动剥离路径尾部的 '/' 并转发" >> "$config_file"
-                    echo "        proxy_pass $backend_url/;" >> "$config_file"
+                    echo "        proxy_pass $backend_url/;" >> "$config_file" # 修复: 确保后端地址被正确填充
                     [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
                     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-                    echo "        proxy_set_header Upgrade \$http_upgrade;\n        proxy_set_header Connection \"upgrade\";" >> "$config_file"
+                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file" # 修复: 清除 \n 换行符
+                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file" # 修复: 清除 \n 换行符
                     echo "    }" >> "$config_file"
 
                 elif [ "$type" == "ROOT_PROXY" ]; then
                     local set_host=$root_or_set_host
                     echo "    location / {" >> "$config_file"
                     echo "        # 根路径全站反向代理" >> "$config_file"
-                    echo "        proxy_pass $backend_url;" >> "$config_file"
+                    echo "        proxy_pass $backend_url;" >> "$config_file" # 修复: 确保后端地址被正确填充
                     [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
                     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-                    echo "        proxy_set_header Upgrade \$http_upgrade;\n        proxy_set_header Connection \"upgrade\";" >> "$config_file"
+                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file" # 修复: 清除 \n 换行符
+                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file" # 修复: 清除 \n 换行符
                     echo "    }" >> "$config_file"
 
                 elif [ "$type" == "ROOT_STATIC" ]; then
@@ -517,11 +522,12 @@ generate_nginx_config() {
                     local set_host=$root_or_set_host
                     echo "    location / {" >> "$config_file" 
                     echo "        # 子域名全站反向代理" >> "$config_file"
-                    echo "        proxy_pass $backend_url;" >> "$config_file"
+                    echo "        proxy_pass $backend_url;" >> "$config_file" # 修复: 确保后端地址被正确填充
                     [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
                     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-                    echo "        proxy_set_header Upgrade \$http_upgrade;\n        proxy_set_header Connection \"upgrade\";" >> "$config_file"
+                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file" # 修复: 清除 \n 换行符
+                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file" # 修复: 清除 \n 换行符
                     echo "    }" >> "$config_file"
                     break 
                  fi
@@ -536,12 +542,13 @@ generate_nginx_config() {
     copy_nginx_config "$config_file"
 }
 
-# 生成Caddy配置
+# 生成Caddy配置 (保持不变，Caddy天然支持IPv6)
 generate_caddy_config() {
     local config_file="caddy_${server_names%% *}_$(date +%Y%m%d_%H%M%S).caddyfile"
     
     echo "# Caddy配置文件 - 生成于 $(date)" > "$config_file"
     echo "# 遵循模块化设计，通用配置已单独提取" >> "$config_file"
+    echo "# Caddy 默认支持 IPv6，无需单独配置 listen [::]:<port>" >> "$config_file"
     echo "" >> "$config_file"
     
     # --- 1. 定义所有要生成的 Caddy Block ---
