@@ -92,7 +92,7 @@ get_backend_info() {
     while true; do
         echo "请输入后端服务地址" >&2
         echo "支持格式: 8080 (自动补全为 http://127.0.0.1:8080) 或 192.168.1.1:8000" >&2
-        read -p "地址: " backend_input
+        read -p "请输入IP & PORT: " backend_input
         
         if [ -z "$backend_input" ]; then print_color "错误: 地址不能为空" "$RED"; continue; fi
 
@@ -188,9 +188,9 @@ get_generic_config() {
 
     # 1. 端口模式选择 
     while true; do
-        echo "请选择端口配置模式:" >&2
+        echo "请选择监听端口:" >&2
         echo "1. 标准 (80/443，启用HTTP->HTTPS重定向)" >&2
-        echo "2. 自定义" >&2
+        echo "2. 自定义端口" >&2
         read -p "请选择 [1-2]: " port_mode
         case $port_mode in
             1) http_port=80; https_port=443; enable_301_redirect=true; break ;;
@@ -225,12 +225,12 @@ get_generic_config() {
     if [ -n "$https_port" ]; then
         echo "" >&2
         print_color "=== SSL证书配置 ===" "$BLUE"
+        echo "注意：请优先使用证书链" >&2
         read -p "SSL证书路径 (默认: /etc/ssl/certs/fullchain.pem): " ssl_cert
         [ -z "$ssl_cert" ] && ssl_cert="/etc/ssl/certs/fullchain.pem"
         read -p "SSL私钥路径 (默认: /etc/ssl/private/privkey.key): " ssl_key
         [ -z "$ssl_key" ] && ssl_key="/etc/ssl/private/privkey.key"
     fi
-    # 4. 高级配置精简：已删除所有 HSTS/OCSP/Gzip/缓存 的用户交互
     echo "" >&2
 }
 
@@ -265,7 +265,7 @@ get_proxy_mappings() {
     while true; do
         echo "请定义主域名根路径 '/' 的默认行为:" >&2
         echo "1. 静态网站" >&2
-        echo "2. 全站反向代理" >&2
+        echo "2. 反向代理" >&2
         read -p "请选择 [1-2]: " root_mode
         
         if [ "$root_mode" == "1" ]; then
