@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==========================================
-# Web服务器配置生成器 (v3.0 高级映射版)
+# Web服务器配置生成器 (v3.0 高级映射完整版)
 # ==========================================
 
 # 颜色定义
@@ -39,7 +39,7 @@ show_menu() {
     echo ""
 }
 
-# 验证函数 (省略，与v2.1一致，确保代码完整性)
+# 输入验证函数
 validate_port() {
     local port=$1
     if [[ ! "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
@@ -47,6 +47,8 @@ validate_port() {
     fi
     return 0
 }
+
+# 验证IP地址格式
 validate_ip() {
     local ip=$1
     if [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -55,24 +57,26 @@ validate_ip() {
         return 1
     fi
 }
+
+# 验证域名格式
 validate_domain() {
     local domain=$1
+    # 简单的域名验证正则
     if [[ $domain =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
         return 0
     else
         return 1
     fi
 }
-# ==========================================
 
 # 智能路径规范化: 强制左斜杠，去除右斜杠
 normalize_path() {
     local path=$1
-    # 1. Strip potential leading '/'
+    # 1. 去除开头的 '/'
     path=${path#/}
-    # 2. Strip potential trailing '/'
+    # 2. 去除末尾的 '/'
     path=${path%/}
-    # 3. Add mandatory leading '/'
+    # 3. 添加强制的开头的 '/'
     echo "/$path"
 }
 
@@ -143,8 +147,52 @@ get_backend_info() {
     echo "$backend_url"
 }
 
+# 自动复制Nginx配置文件
+copy_nginx_config() {
+    local config_file=$1
+    echo ""
+    print_color "=== Nginx配置安装 ===" "$BLUE"
+    read -e -p "是否将配置文件复制到Nginx目录并启用? [Y/n]: " install_choice
+    install_choice=${install_choice:-y}
+    if [[ ! "$install_choice" =~ ^[Nn] ]]; then
+        if [ -d "/etc/nginx/sites-available" ] && [ -d "/etc/nginx/sites-enabled" ]; then
+            sudo cp "$config_file" "/etc/nginx/sites-available/"
+            sudo ln -sf "/etc/nginx/sites-available/$config_file" "/etc/nginx/sites-enabled/"
+            print_color "测试Nginx配置..." "$YELLOW"
+            if sudo nginx -t; then
+                print_color "配置测试成功！" "$GREEN"
+                read -e -p "是否立即重载Nginx配置? [Y/n]: " reload_choice  
+                reload_choice=${reload_choice:-y}
+                if [[ ! "$reload_choice" =~ ^[Nn] ]]; then
+                    sudo systemctl reload nginx
+                    print_color "Nginx配置已重载！" "$GREEN"
+                fi
+            else
+                print_color "配置测试失败，请检查文件！已自动清理链接。" "$RED"
+                sudo rm -f "/etc/nginx/sites-enabled/$config_file"
+                # 保留 sites-available 中的文件供用户手动检查
+            fi
+        else
+            print_color "错误: Nginx sites-available/sites-enabled 目录不存在" "$RED"
+        fi
+    fi
+}
+
 # 获取通用配置 (端口、SSL、安全、性能)
 get_generic_config() {
+    # 确保变量在每次运行时清空
+    http_port=""
+    https_port=""
+    server_names=""
+    ssl_cert=""
+    ssl_key=""
+    enable_301_redirect=false
+    need_497=false
+    enable_hsts=false
+    strong_security=false
+    enable_gzip=false
+    enable_static_cache=false
+
     echo ""
     print_color "=== Web服务通用配置 ===" "$BLUE"
 
@@ -212,7 +260,6 @@ get_generic_config() {
 # 获取反代和静态映射配置 (高级逻辑)
 get_proxy_mappings() {
     PROXY_MAPPINGS=() # 清空旧映射
-    root_path=""
     
     print_color "=== 映射配置 (根路径 '/') ===" "$BLUE"
     
@@ -260,7 +307,7 @@ get_proxy_mappings() {
                 read -p "请输入路径 (例如: api): " path_input
                 local path_matcher=$(normalize_path "$path_input")
                 
-                # 检查路径是否冲突 (冲突指的是 / 或者已经配置过的路径)
+                # 检查路径是否冲突 (不应该和 / 冲突)
                 if [[ "$path_matcher" == "/" ]]; then
                     print_color "错误: 根路径 '/' 已配置，请选择路径反代。" "$RED"
                 else
@@ -272,13 +319,16 @@ get_proxy_mappings() {
             read -e -p "是否传递Host头? [Y/n]: " pass_host
             pass_host=${pass_host:-y}
             local set_host=$([[ ! "$pass_host" =~ ^[Nn] ]] && echo "true" || echo "false")
+            
+            # Nginx 路径反代需要左斜杠，右侧不带斜杠，但 proxy_pass 后面必须带斜杠才能保持路径不变
+            # 这里的 matcher 是 /api，但我们在生成 Nginx 配置时会用 $matcher/ 形式来设置 proxy_pass。
             PROXY_MAPPINGS+=("PATH_PROXY|$path_matcher|$backend_url|$set_host")
             print_color ">> 路径反代 [$path_matcher] -> [$backend_url] 已添加" "$GREEN"
             
         elif [ "$map_type" == "2" ]; then
             # 子域名反代
             while true; do
-                read -p "请输入子域名部分 (例如: api 或 *.dev): " subdomain_input
+                read -p "请输入子域名部分 (例如: api 或 *): " subdomain_input
                 if [ -z "$subdomain_input" ]; then
                     print_color "子域名不能为空" "$RED"
                 else
@@ -296,37 +346,6 @@ get_proxy_mappings() {
             print_color "无效选择，请重试" "$RED"
         fi
     done
-}
-
-# 自动复制Nginx配置文件 (与v2.1一致，省略)
-copy_nginx_config() {
-    local config_file=$1
-    echo ""
-    print_color "=== Nginx配置安装 ===" "$BLUE"
-    read -e -p "是否将配置文件复制到Nginx目录并启用? [Y/n]: " install_choice
-    install_choice=${install_choice:-y}
-    if [[ ! "$install_choice" =~ ^[Nn] ]]; then
-        if [ -d "/etc/nginx/sites-available" ] && [ -d "/etc/nginx/sites-enabled" ]; then
-            sudo cp "$config_file" "/etc/nginx/sites-available/"
-            sudo ln -sf "/etc/nginx/sites-available/$config_file" "/etc/nginx/sites-enabled/"
-            print_color "测试Nginx配置..." "$YELLOW"
-            if sudo nginx -t; then
-                print_color "配置测试成功！" "$GREEN"
-                read -e -p "是否立即重载Nginx配置? [Y/n]: " reload_choice  
-                reload_choice=${reload_choice:-y}
-                if [[ ! "$reload_choice" =~ ^[Nn] ]]; then
-                    sudo systemctl reload nginx
-                    print_color "Nginx配置已重载！" "$GREEN"
-                fi
-            else
-                print_color "配置测试失败，已自动清理！" "$RED"
-                sudo rm -f "/etc/nginx/sites-enabled/$config_file"
-                sudo rm -f "/etc/nginx/sites-available/$config_file"
-            fi
-        else
-            print_color "错误: Nginx目录不存在" "$RED"
-        fi
-    fi
 }
 
 # 生成Nginx配置
@@ -349,11 +368,8 @@ generate_nginx_config() {
         if [ "$type" == "SUBDOMAIN_PROXY" ]; then
             local sub_server_names=""
             for domain in $server_names; do
-                if [ "$matcher" == "*" ]; then
-                    sub_server_names+=" $matcher.${domain} www.$matcher.${domain}"
-                else
-                    sub_server_names+=" ${matcher}.${domain}"
-                fi
+                local full_sub_domain="${matcher}.${domain}"
+                sub_server_names+=" ${full_sub_domain}"
             done
             # Subdomains use the same port settings as main domain
             all_nginx_server_blocks+=("SUB|$sub_server_names")
@@ -393,20 +409,27 @@ generate_nginx_config() {
         
         # SSL配置 (仅HTTPS)
         if [ -n "$https_port" ]; then
+            echo "    # SSL/TLS配置" >> "$config_file"
             echo "    ssl_certificate $ssl_cert;" >> "$config_file"
             echo "    ssl_certificate_key $ssl_key;" >> "$config_file"
             echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
             # 简化或高级加密套件
-            [ "$strong_security" = true ] && echo "    ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:..." >> "$config_file" || echo "    ssl_ciphers HIGH:!aNULL:!MD5;" >> "$config_file"
+            if [ "$strong_security" = true ]; then
+                 echo "    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;" >> "$config_file"
+                 echo "    ssl_prefer_server_ciphers off;" >> "$config_file"
+            else
+                 echo "    ssl_ciphers HIGH:!aNULL:!MD5;" >> "$config_file"
+            fi
+            
             [ "$enable_hsts" = true ] && echo "    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" >> "$config_file"
-            [ "$enable_ocsp" = true ] && echo "    ssl_stapling on; ssl_stapling_verify on;" >> "$config_file"
+            [ "$enable_ocsp" = true ] && echo "    ssl_stapling on; ssl_stapling_verify on; resolver 8.8.8.8 8.8.4.4 valid=300s; resolver_timeout 5s;" >> "$config_file"
             echo "" >> "$config_file"
         fi
         
         # 通用头
         echo "    add_header X-Frame-Options \"SAMEORIGIN\" always;" >> "$config_file"
         
-        # 性能优化 (仅适用于主块或静态块)
+        # 性能优化 
         if [ "$enable_gzip" = true ]; then
             echo "    gzip on; gzip_types text/plain text/css application/json application/javascript text/xml;" >> "$config_file"
         fi
@@ -417,15 +440,29 @@ generate_nginx_config() {
             
             # 路径反代/根路径/静态配置 只在 主域名 server block 中处理
             if [ "$block_type" == "MAIN" ]; then
-                if [ "$type" == "PATH_PROXY" ] || [ "$type" == "ROOT_PROXY" ]; then
+                if [ "$type" == "PATH_PROXY" ]; then
                     local set_host=$root_or_set_host
-                    echo "    location ${matcher} {" >> "$config_file"
-                    echo "        proxy_pass $backend_url;" >> "$config_file"
+                    # 使用 location /path/ { proxy_pass http://backend/path/; } 保持路径不变
+                    echo "    location ${matcher}/ {" >> "$config_file"
+                    echo "        proxy_pass $backend_url${matcher}/;" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
+                    echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
                     echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
                     echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
                     echo "    }" >> "$config_file"
+
+                elif [ "$type" == "ROOT_PROXY" ]; then
+                    local set_host=$root_or_set_host
+                    echo "    location / {" >> "$config_file"
+                    echo "        proxy_pass $backend_url;" >> "$config_file"
+                    [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
+                    echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
+                    echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
+                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
+                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
+                    echo "    }" >> "$config_file"
+
                 elif [ "$type" == "ROOT_STATIC" ]; then
                     local root_path=$root_or_set_host
                     echo "    root $root_path;" >> "$config_file"
@@ -436,24 +473,31 @@ generate_nginx_config() {
                     echo "    }" >> "$config_file"
                     
                     if [ "$enable_static_cache" = true ]; then
-                        echo "    location ~* \.(jpg|png|css|js|woff) { expires 1y; add_header Cache-Control \"public, immutable\"; }" >> "$config_file"
+                        echo "    # 静态文件长期缓存" >> "$config_file"
+                        echo "    location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|eot|ttf|otf|svg)$ {" >> "$config_file"
+                        echo "        expires 1y;" >> "$config_file"
+                        echo "        add_header Cache-Control \"public, immutable\";" >> "$config_file"
+                        echo "    }" >> "$config_file"
                     fi
                 fi
             fi
             
             # 子域名反代 只在 子域名 server block 中处理
             if [ "$block_type" == "SUB" ] && [ "$type" == "SUBDOMAIN_PROXY" ]; then
-                 local sub_matcher=$(echo "$block_server_names" | awk '{print $1}') # 取第一个子域名作为判断依据
-                 if [[ "$sub_matcher" == *"${matcher}"* ]]; then
+                 # 检查当前 block 的 server_name 是否包含这个子域名模式
+                 # 这里是粗略匹配，因为 block_server_names 是所有子域名集合
+                 local sub_prefix=$(echo "$block_server_names" | awk '{print $1}' | cut -d. -f1) # 拿到第一个子域的前缀
+                 if [ "$sub_prefix" == "$matcher" ] || [ "$matcher" == "*" ]; then
                     local set_host=$root_or_set_host
                     echo "    location / {" >> "$config_file" # 子域名块默认代理整个 /
                     echo "        proxy_pass $backend_url;" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
+                    echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
                     echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
                     echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
                     echo "    }" >> "$config_file"
-                    break # 跳出内层循环，因为子域名块已完成
+                    break # 子域名块只包含一个 location /
                  fi
             fi
         done
@@ -466,101 +510,130 @@ generate_nginx_config() {
     copy_nginx_config "$config_file"
 }
 
-# 生成Caddy配置 (简化，Caddyfile在一个文件中处理所有域名)
+# 生成Caddy配置
 generate_caddy_config() {
     config_file="caddy_${server_names%% *}_$(date +%Y%m%d_%H%M%S).caddyfile"
     
     echo "# Caddy配置文件 - 生成于 $(date)" > "$config_file"
-    
-    # Caddy 主块 (包含主域名和所有子域名)
-    local all_domains="$server_names"
-    for mapping in "${PROXY_MAPPINGS[@]}"; do
-        IFS='|' read -r type matcher backend_url set_host <<< "$mapping"
-        if [ "$type" == "SUBDOMAIN_PROXY" ]; then
-            for domain in $server_names; do
-                all_domains+=" ${matcher}.${domain}"
-            done
-        fi
-    done
-    
-    echo "$all_domains {" >> "$config_file"
-    
-    # 端口和重定向 (Caddy自动处理443/80，无需手动写)
-    if [ -n "$http_port" ] && [ "$enable_301_redirect" = true ]; then
-        echo "    # Caddy默认会自动将 HTTP 重定向到 HTTPS" >> "$config_file"
-    fi
-    if [ -n "$https_port" ]; then
-        echo "    # Caddy会自动签发并管理证书" >> "$config_file"
-    fi
-    
-    # 通用头
-    echo "    header X-Frame-Options SAMEORIGIN" >> "$config_file"
-    [ "$enable_hsts" = true ] && echo "    header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\"" >> "$config_file"
-    
-    # 性能
-    [ "$enable_gzip" = true ] && echo "    encode gzip zstd" >> "$config_file"
-
-    # --- 映射列表 ---
-    for mapping in "${PROXY_MAPPINGS[@]}"; do
-        IFS='|' read -r type matcher backend_url root_or_set_host <<< "$mapping"
-        
-        if [ "$type" == "ROOT_STATIC" ]; then
-            local root_path=$root_or_set_host
-            echo "    root * $root_path" >> "$config_file"
-            echo "    file_server" >> "$config_file"
-            [ "$enable_static_cache" = true ] && echo "    header * Cache-Control \"public, max-age=31536000, immutable\"" >> "$config_file"
-            
-        elif [ "$type" == "ROOT_PROXY" ] || [ "$type" == "PATH_PROXY" ]; then
-            local set_host=$root_or_set_host
-            # Caddy路径匹配要求左侧斜杠，右侧星号匹配 (但我们只匹配精确路径，所以不需要星号)
-            echo "    reverse_proxy ${matcher} $backend_url {" >> "$config_file"
-            [ "$set_host" = "true" ] && echo "        header_up Host {host}" >> "$config_file"
-            echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
-            echo "    }" >> "$config_file"
-
-        elif [ "$type" == "SUBDOMAIN_PROXY" ]; then
-            local set_host=$root_or_set_host
-            # Caddy 子域名反代需要一个新的 block，但为了简化，这里假设 Caddy 会将所有子域名合并处理 (这在 Caddy 中是默认行为)
-            # 或者我们必须为每个子域名单独创建一个 block
-            # 考虑到 Nginx 已经拆分了，Caddy 也应该拆分以确保配置明确
-            
-            # --- Caddy 必须为 SUBDOMAIN 创建独立块 ---
-            # 暂时跳过 SUBDOMAIN PROXY 在主块中的处理，稍后单独生成
-            : # do nothing
-        fi
-    done
-    
-    echo "}" >> "$config_file"
     echo "" >> "$config_file"
     
-    # --- 单独生成子域名块 ---
+    # --- 1. 定义所有要生成的 Caddy Block ---
+    declare -a all_caddy_blocks
+    
+    # a. 添加主域名块 (Caddy可以一行写多个域名)
+    local all_domains="$server_names"
+    all_caddy_blocks+=("MAIN|$all_domains")
+    
+    # b. 添加子域名块
     for mapping in "${PROXY_MAPPINGS[@]}"; do
         IFS='|' read -r type matcher backend_url set_host <<< "$mapping"
         if [ "$type" == "SUBDOMAIN_PROXY" ]; then
             for domain in $server_names; do
                 local sub_domain="${matcher}.${domain}"
-                echo "${sub_domain} {" >> "$config_file"
-                echo "    reverse_proxy $backend_url {" >> "$config_file"
-                [ "$set_host" = "true" ] && echo "        header_up Host {host}" >> "$config_file"
-                echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
-                echo "    }" >> "$config_file"
-                echo "}" >> "$config_file"
-                echo "" >> "$config_file"
+                all_caddy_blocks+=("SUB|$sub_domain")
             done
         fi
     done
     
+    # --- 2. 循环生成 Caddy block ---
+    
+    for block_info in "${all_caddy_blocks[@]}"; do
+        IFS='|' read -r block_type block_server_names <<< "$block_info"
+        
+        echo "$block_server_names {" >> "$config_file"
+        
+        # 强制HTTPS重定向 (Caddy自动处理，只需配置TLS)
+        if [ -n "$https_port" ]; then
+            echo "    # Caddy会自动处理 80 -> 443 的重定向和证书签发" >> "$config_file"
+            
+            # 手动指定证书
+            if [ -n "$ssl_cert" ] && [ "$ssl_cert" != "/etc/ssl/certs/fullchain.pem" ]; then
+                echo "    tls $ssl_cert $ssl_key" >> "$config_file"
+            fi
+        fi
+        
+        # 通用头
+        echo "    header X-Frame-Options SAMEORIGIN" >> "$config_file"
+        [ "$enable_hsts" = true ] && echo "    header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\"" >> "$config_file"
+        
+        # 性能
+        [ "$enable_gzip" = true ] && echo "    encode gzip zstd" >> "$config_file"
+
+        # --- 映射列表 ---
+        for mapping in "${PROXY_MAPPINGS[@]}"; do
+            IFS='|' read -r type matcher backend_url root_or_set_host <<< "$mapping"
+            
+            if [ "$block_type" == "MAIN" ]; then
+                # 静态根目录
+                if [ "$type" == "ROOT_STATIC" ]; then
+                    local root_path=$root_or_set_host
+                    echo "    root * $root_path" >> "$config_file"
+                    echo "    file_server" >> "$config_file"
+                    [ "$enable_static_cache" = true ] && echo "    header * Cache-Control \"public, max-age=31536000, immutable\"" >> "$config_file"
+                    
+                # 全站代理或路径代理
+                elif [ "$type" == "ROOT_PROXY" ] || [ "$type" == "PATH_PROXY" ]; then
+                    local set_host=$root_or_set_host
+                    # Caddy路径匹配要求左侧斜杠，这里是精确匹配
+                    local path_match=$matcher
+                    # Caddy reverse_proxy /api 不需要 proxy_pass 后的斜杠，它会自动处理路径
+                    echo "    reverse_proxy $path_match* $backend_url {" >> "$config_file"
+                    [ "$set_host" = "true" ] && echo "        header_up Host {host}" >> "$config_file"
+                    echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
+                    echo "    }" >> "$config_file"
+                fi
+            
+            elif [ "$block_type" == "SUB" ] && [ "$type" == "SUBDOMAIN_PROXY" ]; then
+                 # 子域名块处理
+                 local sub_domain=$(echo "$block_server_names" | awk '{print $1}')
+                 local expected_domain="${matcher}.${server_names%% *}" # 取第一个主域名判断
+
+                 # 简单检查子域名是否匹配当前 block
+                 if [[ "$sub_domain" == *"$matcher".* ]]; then
+                    local set_host=$root_or_set_host
+                    echo "    reverse_proxy $backend_url {" >> "$config_file" # 子域名块默认为 /
+                    [ "$set_host" = "true" ] && echo "        header_up Host {host}" >> "$config_file"
+                    echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
+                    echo "    }" >> "$config_file"
+                    break # 跳出内层循环，子域名块只配置一次代理
+                 fi
+            fi
+        done
+        
+        echo "}" >> "$config_file"
+        echo "" >> "$config_file"
+    done
+    
     print_color "Caddy配置文件已生成: $config_file" "$GREEN"
-    # Caddy安装逻辑 (省略，与v2.1一致)
+    
+    # Caddy安装逻辑 (简单复制和验证)
+    read -e -p "是否将配置内容追加到 /etc/caddy/Caddyfile 并验证? [Y/n]: " install_choice
+    install_choice=${install_choice:-y}
+    if [[ ! "$install_choice" =~ ^[Nn] ]]; then
+        if [ -f "/etc/caddy/Caddyfile" ]; then
+            echo "" >> "/etc/caddy/Caddyfile"
+            cat "$config_file" >> "/etc/caddy/Caddyfile"
+            
+            if sudo caddy validate --config /etc/caddy/Caddyfile; then
+                print_color "配置验证成功！请手动重载 Caddy 服务。" "$GREEN"
+                # 不自动重载，避免破坏现有服务
+            else
+                print_color "配置验证失败，请手动检查 /etc/caddy/Caddyfile 中的错误！" "$RED"
+            fi
+        else
+            print_color "错误: Caddyfile 路径 /etc/caddy/Caddyfile 不存在" "$RED"
+        fi
+    fi
 }
 
 # 主程序
 main() {
     while true; do
-        # 1. 通用配置 (端口、SSL、安全、性能)
+        
+        # 1. 获取所有通用配置 (端口、SSL、安全、性能)
         get_generic_config
         
-        # 2. 映射配置 (根路径、路径/子域名反代)
+        # 2. 获取所有映射配置 (根路径、路径/子域名反代)
         get_proxy_mappings
         
         # 3. 服务器类型选择与生成
