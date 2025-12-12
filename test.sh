@@ -42,7 +42,7 @@ print_color() {
 # 显示标题
 print_title() {
     echo "========================================="
-    echo "    Web服务器配置生成器（V2.6 最终版）"
+    echo "    Web服务器配置生成器（V2.7 最终版）"
     echo "========================================="
     echo ""
 }
@@ -84,7 +84,7 @@ normalize_backend_url() {
     fi
 }
 
-# 路径标准化：确保路径有前导斜杠，除非是通配符路径，否则确保有尾部斜杠
+# 路径标准化：只保证有前导斜杠，不强制添加尾部斜杠，解决路径匹配文件和目录的冲突。
 normalize_proxy_path() {
     local path=$1
     
@@ -93,12 +93,10 @@ normalize_proxy_path() {
         path="/$path"
     fi
 
-    # 2. 确保有尾部斜杠，除非路径末尾是通配符 '*'
-    # 匹配末尾是否为 '/' 且末尾不是 '*'
-    if [[ ! "$path" =~ /$ && ! "$path" =~ \*$ ]]; then
-        path="${path}/"
-    fi
-
+    # 2. 不强制添加尾部斜杠
+    # 如果用户输入的是 /api/，则保留 /api/
+    # 如果用户输入的是 /api，则保留 /api (可以匹配 /api 和 /api/...)
+    
     echo "$path"
 }
 
@@ -523,9 +521,38 @@ generate_nginx_config() {
         # 遍历所有路径反代规则
         for rule in "${PROXY_RULES[@]}"; do
             IFS='|' read -r proxy_path backend_url proxy_set_host <<< "$rule"
-            echo "    # 反向代理: $proxy_path -> $backend_url" >> "$config_file"
-            echo "    location \"$proxy_path\" {" >> "$config_file"
-            echo "        proxy_pass \"$backend_url\";" >> "$config_file"
+            
+            # 使用 "^~"（前缀最长匹配）确保代理规则的优先级高于 location /
+            # 路径末尾不再强制添加 /，因此需要添加一个可选的 (.*) 来匹配 /api 后面的所有内容
+            # /api 可以匹配 /api (文件) 和 /api/ (目录)
+            echo "    # 反向代理: $proxy_path (前缀最长匹配 ^~)" >> "$config_file"
+            echo "    location ^~ \"$proxy_path\" {" >> "$config_file"
+            
+            # 内部逻辑：将 proxy_path 后面的路径段替换为空
+            # 例如：请求 /api/users/123，匹配 /api。
+            # 此时 $uri 是 /api/users/123
+            # $1 将匹配 (.*) 里的内容，即 /users/123
+            # 如果 proxy_path 是 /api/，则 $uri 匹配 /api/， $1 匹配 users/123
+            
+            # 检查 proxy_path 是否以通配符 * 结尾，如果是，则不需要特殊处理，直接使用 proxy_pass
+            if [[ "$proxy_path" =~ \*$ ]]; then
+                 # 示例: location /data/* { proxy_pass http://backend; }
+                 echo "        proxy_pass \"$backend_url\";" >> "$config_file"
+            # 检查 proxy_path 是否以 / 结尾 (目录/前缀匹配)，如果不是，则表示可能是文件或路径的前缀
+            elif [[ ! "$proxy_path" =~ /$ ]]; then
+                # 如果是 /api 这样的路径，使用 rewrite 确保能匹配 /api/ 或 /api/xxx
+                # 注意: proxy_path 使用 alias/root 匹配时必须以 / 结尾，但我们这里是 proxy_pass
+                # 为了同时兼容 /api 和 /api/ 及其后的路径，使用非正则 location ^~ 配合一个可选的内部匹配
+                
+                # 如果用户想要的是剥离前缀，他需要在后端地址添加 /
+                # 如果用户不想剥离前缀，则不需要添加 /
+                echo "        # Nginx 默认行为：proxy_pass 值无 / 则不剥离前缀，有 / 则剥离前缀。" >> "$config_file"
+                echo "        proxy_pass \"$backend_url\$request_uri\";" >> "$config_file"
+            else
+                # proxy_path 以 / 结尾，例如 /api/
+                echo "        proxy_pass \"$backend_url\";" >> "$config_file"
+            fi
+            
             echo "        proxy_redirect off;" >> "$config_file"
             echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
             echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
@@ -697,8 +724,8 @@ generate_caddy_config() {
         for rule in "${PROXY_RULES[@]}"; do
             IFS='|' read -r proxy_path backend_url proxy_set_host <<< "$rule"
             echo "    # 反向代理: $proxy_path -> $backend_url" >> "$config_file"
-            # Caddy 的 route 匹配规则更灵活，但路径末尾的斜杠处理与 Nginx 略有不同，这里使用最常用的匹配方式
-            echo "    route \"$proxy_path\"* {" >> "$config_file"
+            # Caddy 使用 handle 确保精确匹配，并使用 * 来匹配所有子路径
+            echo "    handle \"$proxy_path\" \"$proxy_path/*\" {" >> "$config_file"
             echo "        reverse_proxy \"$backend_url\"" >> "$config_file"
             
             if [[ "$proxy_set_host" == "true" ]]; then
@@ -824,7 +851,7 @@ main() {
                     print_color "再见！" "$GREEN"
                     exit 0
                     ;;
-                *)
+                *)\
                     print_color "无效选择，请重试" "$RED"
                     ;;
             esac
