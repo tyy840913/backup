@@ -267,7 +267,7 @@ get_filename_choice() {
     config_output_file=${custom_name:-$default_name}
     
     # Nginx 自动补 .conf
-    if [ "$choice" == "1" ] && [[ ! "\( config_output_file" =~ \.conf \) ]]; then
+    if [ "$choice" == "1" ] && [[ ! "$config_output_file" =~ \.conf$ ]]; then
         config_output_file="${config_output_file}.conf"
     fi
     
