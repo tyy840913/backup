@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# ==========================================
-# Web服务器配置生成器 (v3.0 高级映射完整版)
-# ==========================================
+# =======================================================
+# Web服务器配置生成器 (v3.1 高级映射完整修复版)
+# =======================================================
 
 # 颜色定义
 RED='\033[0;31m'
@@ -24,7 +24,7 @@ print_color() {
 # 显示标题
 print_title() {
     echo "=========================================="
-    echo "    Web服务器配置生成器 (v3.0 高级映射)"
+    echo "    Web服务器配置生成器 (v3.1 高级映射)"
     echo "=========================================="
     echo ""
 }
@@ -61,7 +61,6 @@ validate_ip() {
 # 验证域名格式
 validate_domain() {
     local domain=$1
-    # 简单的域名验证正则
     if [[ $domain =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
         return 0
     else
@@ -100,7 +99,7 @@ get_backend_info() {
         backend_input=${backend_input#http://}
         backend_input=${backend_input#https://}
         
-        # 2. 仅端口自动补全逻辑
+        # 2. 仅端口自动补全逻辑 (用户输入纯数字)
         if [[ "$backend_input" =~ ^[0-9]+$ ]]; then
             if validate_port "$backend_input"; then
                 backend_host="127.0.0.1"
@@ -119,16 +118,19 @@ get_backend_info() {
             backend_host=$(echo "$backend_input" | cut -d: -f1)
             backend_port=$(echo "$backend_input" | cut -d: -f2)
         else
+            # 如果没有端口，默认80，但通常IP或域名反代会带端口
             backend_host="$backend_input"
             backend_port="80"
         fi
         
         # 4. 验证与协议选择
         if validate_ip "$backend_host" || [ "$backend_host" == "localhost" ]; then
+            # 如果是 IP 地址，默认使用 HTTP (通常是内网或本地服务)
             backend_url="http://${backend_host}:${backend_port}"
             print_color "检测到IP地址，使用HTTP协议: $backend_url" "$YELLOW"
             break
         elif validate_domain "$backend_host"; then
+            # 如果是域名，询问协议
             echo "检测到域名，请选择后端协议:"
             echo "1. HTTP (默认)"
             echo "2. HTTPS"
@@ -168,9 +170,8 @@ copy_nginx_config() {
                     print_color "Nginx配置已重载！" "$GREEN"
                 fi
             else
-                print_color "配置测试失败，请检查文件！已自动清理链接。" "$RED"
+                print_color "配置测试失败，请手动检查文件！已自动清理链接。" "$RED"
                 sudo rm -f "/etc/nginx/sites-enabled/$config_file"
-                # 保留 sites-available 中的文件供用户手动检查
             fi
         else
             print_color "错误: Nginx sites-available/sites-enabled 目录不存在" "$RED"
@@ -288,18 +289,19 @@ get_proxy_mappings() {
         fi
     done
     
-    # 2. 循环添加其他映射
+    # 2. 循环添加其他映射 (修复后的菜单循环)
     while true; do
-        print_color "=== 添加新的映射 ===" "$BLUE"
+        echo ""
+        print_color "=== 添加额外的映射 ===" "$BLUE"
         echo "当前已配置 ${#PROXY_MAPPINGS[@]} 个映射"
-        
-        read -e -p "是否添加额外的路径反代或子域名反代? [Y/n]: " continue_add
-        if [[ ! "$continue_add" =~ ^[Yy] ]]; then break; fi
         
         echo "请选择要添加的映射类型:"
         echo "1. 路径反向代理 (例如: /api)"
         echo "2. 子域名反向代理 (例如: api.yourdomain.com)"
-        read -p "请选择 [1-2]: " map_type
+        echo "3. 完成添加，进入配置生成菜单"
+        read -p "请选择 [1-3]: " map_type
+        
+        if [ "$map_type" == "3" ]; then break; fi
         
         if [ "$map_type" == "1" ]; then
             # 路径反代
@@ -307,9 +309,8 @@ get_proxy_mappings() {
                 read -p "请输入路径 (例如: api): " path_input
                 local path_matcher=$(normalize_path "$path_input")
                 
-                # 检查路径是否冲突 (不应该和 / 冲突)
                 if [[ "$path_matcher" == "/" ]]; then
-                    print_color "错误: 根路径 '/' 已配置，请选择路径反代。" "$RED"
+                    print_color "错误: 根路径 '/' 已配置，请选择非根路径进行反代。" "$RED"
                 else
                     break
                 fi
@@ -320,8 +321,6 @@ get_proxy_mappings() {
             pass_host=${pass_host:-y}
             local set_host=$([[ ! "$pass_host" =~ ^[Nn] ]] && echo "true" || echo "false")
             
-            # Nginx 路径反代需要左斜杠，右侧不带斜杠，但 proxy_pass 后面必须带斜杠才能保持路径不变
-            # 这里的 matcher 是 /api，但我们在生成 Nginx 配置时会用 $matcher/ 形式来设置 proxy_pass。
             PROXY_MAPPINGS+=("PATH_PROXY|$path_matcher|$backend_url|$set_host")
             print_color ">> 路径反代 [$path_matcher] -> [$backend_url] 已添加" "$GREEN"
             
@@ -371,7 +370,6 @@ generate_nginx_config() {
                 local full_sub_domain="${matcher}.${domain}"
                 sub_server_names+=" ${full_sub_domain}"
             done
-            # Subdomains use the same port settings as main domain
             all_nginx_server_blocks+=("SUB|$sub_server_names")
         fi
     done
@@ -413,7 +411,6 @@ generate_nginx_config() {
             echo "    ssl_certificate $ssl_cert;" >> "$config_file"
             echo "    ssl_certificate_key $ssl_key;" >> "$config_file"
             echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
-            # 简化或高级加密套件
             if [ "$strong_security" = true ]; then
                  echo "    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;" >> "$config_file"
                  echo "    ssl_prefer_server_ciphers off;" >> "$config_file"
@@ -438,11 +435,10 @@ generate_nginx_config() {
         for mapping in "${PROXY_MAPPINGS[@]}"; do
             IFS='|' read -r type matcher backend_url root_or_set_host <<< "$mapping"
             
-            # 路径反代/根路径/静态配置 只在 主域名 server block 中处理
+            # 路径反代/根路径/静态配置 只在 主域名 server block (MAIN) 中处理
             if [ "$block_type" == "MAIN" ]; then
                 if [ "$type" == "PATH_PROXY" ]; then
                     local set_host=$root_or_set_host
-                    # 使用 location /path/ { proxy_pass http://backend/path/; } 保持路径不变
                     echo "    location ${matcher}/ {" >> "$config_file"
                     echo "        proxy_pass $backend_url${matcher}/;" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
@@ -482,11 +478,9 @@ generate_nginx_config() {
                 fi
             fi
             
-            # 子域名反代 只在 子域名 server block 中处理
+            # 子域名反代 只在 子域名 server block (SUB) 中处理
             if [ "$block_type" == "SUB" ] && [ "$type" == "SUBDOMAIN_PROXY" ]; then
-                 # 检查当前 block 的 server_name 是否包含这个子域名模式
-                 # 这里是粗略匹配，因为 block_server_names 是所有子域名集合
-                 local sub_prefix=$(echo "$block_server_names" | awk '{print $1}' | cut -d. -f1) # 拿到第一个子域的前缀
+                 local sub_prefix=$(echo "$block_server_names" | awk '{print $1}' | cut -d. -f1) 
                  if [ "$sub_prefix" == "$matcher" ] || [ "$matcher" == "*" ]; then
                     local set_host=$root_or_set_host
                     echo "    location / {" >> "$config_file" # 子域名块默认代理整个 /
@@ -497,7 +491,7 @@ generate_nginx_config() {
                     echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
                     echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
                     echo "    }" >> "$config_file"
-                    break # 子域名块只包含一个 location /
+                    break 
                  fi
             fi
         done
@@ -546,7 +540,6 @@ generate_caddy_config() {
         if [ -n "$https_port" ]; then
             echo "    # Caddy会自动处理 80 -> 443 的重定向和证书签发" >> "$config_file"
             
-            # 手动指定证书
             if [ -n "$ssl_cert" ] && [ "$ssl_cert" != "/etc/ssl/certs/fullchain.pem" ]; then
                 echo "    tls $ssl_cert $ssl_key" >> "$config_file"
             fi
@@ -574,9 +567,9 @@ generate_caddy_config() {
                 # 全站代理或路径代理
                 elif [ "$type" == "ROOT_PROXY" ] || [ "$type" == "PATH_PROXY" ]; then
                     local set_host=$root_or_set_host
-                    # Caddy路径匹配要求左侧斜杠，这里是精确匹配
                     local path_match=$matcher
-                    # Caddy reverse_proxy /api 不需要 proxy_pass 后的斜杠，它会自动处理路径
+                    
+                    # Caddy的路径匹配默认是前缀匹配，PATH_PROXY使用 * 确保代理路径的所有子路径
                     echo "    reverse_proxy $path_match* $backend_url {" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        header_up Host {host}" >> "$config_file"
                     echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
@@ -584,18 +577,14 @@ generate_caddy_config() {
                 fi
             
             elif [ "$block_type" == "SUB" ] && [ "$type" == "SUBDOMAIN_PROXY" ]; then
-                 # 子域名块处理
                  local sub_domain=$(echo "$block_server_names" | awk '{print $1}')
-                 local expected_domain="${matcher}.${server_names%% *}" # 取第一个主域名判断
-
-                 # 简单检查子域名是否匹配当前 block
                  if [[ "$sub_domain" == *"$matcher".* ]]; then
                     local set_host=$root_or_set_host
-                    echo "    reverse_proxy $backend_url {" >> "$config_file" # 子域名块默认为 /
+                    echo "    reverse_proxy $backend_url {" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        header_up Host {host}" >> "$config_file"
                     echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
                     echo "    }" >> "$config_file"
-                    break # 跳出内层循环，子域名块只配置一次代理
+                    break
                  fi
             fi
         done
@@ -616,7 +605,6 @@ generate_caddy_config() {
             
             if sudo caddy validate --config /etc/caddy/Caddyfile; then
                 print_color "配置验证成功！请手动重载 Caddy 服务。" "$GREEN"
-                # 不自动重载，避免破坏现有服务
             else
                 print_color "配置验证失败，请手动检查 /etc/caddy/Caddyfile 中的错误！" "$RED"
             fi
@@ -655,3 +643,4 @@ main() {
 }
 
 main
+
