@@ -30,7 +30,7 @@ root_path="" # 默认使用 /var/www/html 或 /usr/share/nginx/html，用户可�
 WORK_MODE="" # static, proxy, mixed
 PROXY_CONFIG_TYPE="" # path, subdomain
 PROXY_RULES=() # 路径反代规则数组: "path|backend_url|proxy_set_host"
-SUBDOMAIN_PROXIES=() # 子域名反代规则数组: "subdomain|backend_url"
+SUBDOMAIN_PROXIES=() # 子域名反代规则数组: "subdomain|backend_url|proxy_set_host"
 ROOT_ACTION="" # 根路径处理: "404", "static", 或 "proxy|backend_url|set_host"
 
 
@@ -42,7 +42,7 @@ print_color() {
 # 显示标题
 print_title() {
     echo "========================================="
-    echo "  Web服务器配置生成器（v1.3 最终版）"
+    echo " Web服务器配置生成器（v3.0 逻辑一致性版）"
     echo "========================================="
     echo ""
 }
@@ -68,13 +68,14 @@ validate_port() {
 }
 
 # 后端地址标准化：如果只输入端口号，默认使用 http://127.0.0.1:
+# 这是确保所有代理配置一致性的关键函数
 normalize_backend_url() {
     local url=$1
     if [[ "$url" =~ ^[0-9]+$ ]]; then
-        # 仅是端口号
+        # 仅是端口号 -> 默认使用本机 HTTP
         echo "http://127.0.0.1:$url"
     elif [[ "$url" =~ ^:[0-9]+$ ]]; then
-        # 仅是 :端口号
+        # 仅是 :端口号 -> 默认使用本机 HTTP
         echo "http://127.0.0.1$url"
     elif [[ ! "$url" =~ ^https?:// ]]; then
         # 缺少协议，默认添加 http://
@@ -172,7 +173,7 @@ get_work_mode() {
             print_color "--- 反向代理规则类型 ---" "$CYAN"
             echo "请选择代理规则的定义方式:"
             echo "1. 基于路径的反向代理 (例如: /api/ -> backend)"
-            echo "2. 基于子域名的反向代理 (例如: sub.domain.com -> backend)"
+            echo "2. 基于子域名的反向代理 (例如: api.domain.com -> backend)"
             read -p "请选择 [1-2]: " proxy_type_choice
 
             case "$proxy_type_choice" in
@@ -218,10 +219,11 @@ get_path_based_proxies() {
         fi
     done
 
+    # 关键：使用 normalize_backend_url 确保端口输入自动解析到 http://127.0.0.1:
     read -e -p "请输入后端服务地址 (例如: http://127.0.0.1:8080 或只输入端口 8080): " raw_backend_url
     backend_url=$(normalize_backend_url "$raw_backend_url")
 
-    # 默认 Y
+    # Host Header 一致性配置
     read -p "是否设置 Proxy Header 'Host' 为原始域名 (默认: Y)? [Y/n]: " set_host_choice
     if [[ "$set_host_choice" =~ ^[nN]$ ]]; then
         proxy_set_host="false"
@@ -240,22 +242,38 @@ get_subdomain_based_proxies() {
     local subdomain
     local raw_backend_url
     local backend_url
+    local proxy_set_host="true"
+    local set_host_choice # 确保所有代理类型都有一致的配置选项
 
     while true; do
-        read -e -p "请输入子域名 (例如: api.example.com): " subdomain
+        # 明确要求 FQDN 域名
+        read -e -p "请输入子域名 (必须是完整域名, 例如: api.example.com): " subdomain
         if [[ -z "$subdomain" ]]; then
             print_color "子域名不能为空" "$RED"
-        else
+        # 简单检查是否包含 . (避免输入裸词如 api)
+        elif [[ ! "$subdomain" =~ \. ]]; then
+             print_color "警告: 建议输入完整域名 (FQDN)，例如 api.example.com" "$YELLOW"
+        fi
+        
+        if [[ -n "$subdomain" ]]; then
             break
         fi
     done
 
+    # 关键：使用 normalize_backend_url 确保端口输入自动解析到 http://127.0.0.1:
     read -e -p "请输入后端服务地址 (例如: http://127.0.0.1:8080 或只输入端口 8080): " raw_backend_url
     backend_url=$(normalize_backend_url "$raw_backend_url")
+    
+    # Host Header 一致性配置 (与路径代理一致)
+    read -p "是否设置 Proxy Header 'Host' 为原始域名 (默认: Y)? [Y/n]: " set_host_choice
+    if [[ "$set_host_choice" =~ ^[nN]$ ]]; then
+        proxy_set_host="false"
+    fi
+
 
     # 存储规则到全局数组: SUBDOMAIN_PROXIES
-    SUBDOMAIN_PROXIES+=("${subdomain}|${backend_url}")
-    print_color "已添加子域名规则: $subdomain -> $backend_url" "$GREEN"
+    SUBDOMAIN_PROXIES+=("${subdomain}|${backend_url}|${proxy_set_host}")
+    print_color "已添加子域名规则: $subdomain -> $backend_url (设置Host: $proxy_set_host)" "$GREEN"
     return 0
 }
 
@@ -325,7 +343,7 @@ get_web_config() {
         fi
     done
     
-    # 2. 域名输入 (根据用户要求修改逻辑)
+    # 2. 域名输入 
     local server_names_input
     # 允许留空，并给出提示
     read -e -p "请输入域名 (多个用空格分隔) [留空，将使用 'localhost']: " server_names_input
@@ -422,10 +440,11 @@ get_web_config() {
                     break
                     ;;
                 2)
+                    # 关键：使用 normalize_backend_url 确保端口输入自动解析到 http://127.0.0.1:
                     read -e -p "请输入根路径 '/' 对应的后端服务地址 (例如: http://127.0.0.1:3000 或只输入端口 3000): " raw_root_backend_url
                     root_backend_url=$(normalize_backend_url "$raw_root_backend_url")
 
-                    # 默认 Y
+                    # Host Header 一致性配置
                     read -p "是否设置根路径 Proxy Header 'Host' 为原始域名? [Y/n]: " root_set_host_choice
                     if [[ "$root_set_host_choice" =~ ^[nN]$ ]]; then
                         root_set_host="false"
@@ -469,13 +488,27 @@ generate_nginx_config() {
         final_root_path="$root_path" # 使用用户输入或 /var/www/html 默认值
     fi
     
+    # 定义统一的代理通用配置块 (实现通用配置一致性)
+    local nginx_proxy_common_headers
+    nginx_proxy_common_headers=$(cat <<EOF
+        proxy_redirect off;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+EOF
+)
+
     # HTTP 重定向块 (仅在启用了 SSL 且使用的是标准端口 443 时生成 301 重定向)
     if "$ssl_enabled" && [ "$listen_port" -eq 443 ]; then
         echo "server {" > "$config_file"
         echo "    listen 80;" >> "$config_file"
-        echo "    server_name $server_names;" >> "$config_file"
+        # 80 端口必须匹配真实域名才能跳转
+        echo "    server_name $server_names;" >> "$config_file" 
         echo "    # 标准端口(80)重定向到 HTTPS (443)" >> "$config_file"
-        echo "    return 301 https://\$host\$request_uri;" >> "$config_file"
+        echo "    return 301 https://\$server_name\$request_uri;" >> "$config_file" 
         echo "}" >> "$config_file"
         echo "" >> "$config_file"
     fi
@@ -494,10 +527,10 @@ generate_nginx_config() {
             echo "    error_page 497 https://\$host:\$server_port\$request_uri;" >> "$config_file"
         fi
         
-        # SSL 证书配置 (不能使用空字符串 "" )
+        # SSL 证书配置
         echo "    # --- SSL 证书配置 (支持自签证书) ---" >> "$config_file"
         if [[ -z "$ssl_cert" || -z "$ssl_key" ]]; then
-            echo "    # !!! 警告: 证书或密钥路径为空。请手动修改以下两行！" >> "$config_file"
+            echo "    # !!! 警告: 证书或密钥路径为空。配置中将使用默认占位符，请在部署前务必手动修改！" >> "$config_file"
             echo "    ssl_certificate     /etc/ssl/certs/nginx-default.crt;" >> "$config_file"
             echo "    ssl_certificate_key /etc/ssl/private/nginx-default.key;" >> "$config_file"
         else
@@ -516,7 +549,7 @@ generate_nginx_config() {
 
         # HSTS 加上 always
         if "$hsts_enabled"; then
-            echo "    # 启用 HSTS (半年), 确保 always" >> "$config_file"
+            echo "    # 启用 HSTS 强制安全连接 (半年), 确保 always" >> "$config_file"
             echo "    add_header Strict-Transport-Security \"max-age=15768000; includeSubDomains\" always;" >> "$config_file"
         fi
     else
@@ -537,7 +570,6 @@ generate_nginx_config() {
         echo "    gzip on;" >> "$config_file"
         echo "    gzip_min_length 1k;" >> "$config_file"
         echo "    gzip_comp_level 5;" >> "$config_file"
-        # 优化：移除重复条目并添加 image/svg+xml
         echo "    gzip_types text/plain text/css application/json application/javascript text/xml application/xml+rss image/svg+xml;" >> "$config_file"
     fi
 
@@ -547,10 +579,9 @@ generate_nginx_config() {
     echo "    index index.html index.htm;" >> "$config_file"
 
     # --- 静态资源超长缓存（性能优化） ---
-    # 静态资源缓存时间 7 天 (7d)
-    echo "    # 静态资源长缓存（性能优化: 7 天缓存）" >> "$config_file"
+    echo "    # 静态资源长缓存（性能优化: 1 年缓存）" >> "$config_file"
     echo "    location ~* \\.(?:jpg|jpeg|png|gif|ico|svg|woff2?|ttf|eot|css|js)\$ {" >> "$config_file"
-    echo "        expires 7d;" >> "$config_file"
+    echo "        expires 1y;" >> "$config_file" 
     echo "        add_header Cache-Control \"public, immutable\";" >> "$config_file"
     echo "        access_log off;" >> "$config_file" # 不记录静态文件访问日志
     echo "    }" >> "$config_file"
@@ -564,36 +595,22 @@ generate_nginx_config() {
             IFS='|' read -r proxy_path backend_url proxy_set_host <<< "$rule"
             
             # 使用 "^~"（前缀最长匹配）确保代理规则的优先级高于 location /
-            echo "    # 反向代理: $proxy_path (前缀最长匹配 ^~)" >> "$config_file"
+            echo "    # 反向代理: $proxy_path -> $backend_url (Host: $proxy_set_host)" >> "$config_file"
             echo "    location ^~ $proxy_path {" >> "$config_file" 
             
-            # proxy_pass 移除引号 + 路径处理
-            if [[ "$proxy_path" =~ \*$ ]]; then
-                 # location /data/* { proxy_pass http://backend; }
-                 echo "        proxy_pass $backend_url;" >> "$config_file"
-            elif [[ ! "$proxy_path" =~ /$ ]]; then
-                # /api 这样的路径，使用 $request_uri 确保完整路径发送
-                echo "        # Nginx 默认行为：proxy_pass 值无 / 则不剥离前缀，使用 \$request_uri 确保路径完整传递。" >> "$config_file"
-                echo "        proxy_pass $backend_url\$request_uri;" >> "$config_file"
-            else
-                # proxy_path 以 / 结尾，例如 /api/
-                echo "        proxy_pass $backend_url;" >> "$config_file"
-            fi
+            # 统一使用不带斜杠的 proxy_pass
+            echo "        proxy_pass $backend_url;" >> "$config_file" 
             
-            echo "        proxy_redirect off;" >> "$config_file"
-            echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
-            echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-            # 关键头：添加 X-Forwarded-Proto (解决后端识别协议问题)
-            echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> "$config_file"
+            # 插入通用配置
+            echo "$nginx_proxy_common_headers" | while IFS= read -r line; do
+                echo "    $line" >> "$config_file"
+            done
             
+            # Host Header 根据用户选择配置
             if [[ "$proxy_set_host" == "true" ]]; then
                 echo "        proxy_set_header Host \$host;" >> "$config_file"
             fi
             
-            # WebSocket 支持
-            echo "        proxy_http_version 1.1;" >> "$config_file"
-            echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
-            echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
             echo "    }" >> "$config_file"
         done
     fi
@@ -612,26 +629,22 @@ generate_nginx_config() {
             echo "    }" >> "$config_file"
         elif [[ "$ROOT_ACTION" =~ ^proxy\| ]]; then
             IFS='|' read -r _ root_backend_url root_set_host <<< "$ROOT_ACTION"
-            echo "    # 根路径 '/' 反向代理: / -> $root_backend_url (精确匹配)" >> "$config_file"
+            echo "    # 根路径 '/' 反向代理: / -> $root_backend_url (Host: $root_set_host, 精确匹配)" >> "$config_file"
             echo "    location = / {" >> "$config_file"
             
             # proxy_pass 移除引号
             echo "        proxy_pass $root_backend_url;" >> "$config_file"
             
-            echo "        proxy_redirect off;" >> "$config_file"
-            echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
-            echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-            # 关键头：添加 X-Forwarded-Proto
-            echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> "$config_file"
+            # 插入通用配置
+            echo "$nginx_proxy_common_headers" | while IFS= read -r line; do
+                echo "    $line" >> "$config_file"
+            done
 
+            # Host Header 根据用户选择配置
             if [[ "$root_set_host" == "true" ]]; then
                 echo "        proxy_set_header Host \$host;" >> "$config_file"
             fi
             
-            # WebSocket 支持
-            echo "        proxy_http_version 1.1;" >> "$config_file"
-            echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
-            echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
             echo "    }" >> "$config_file"
         fi
     fi
@@ -641,12 +654,30 @@ generate_nginx_config() {
     echo "    location / {" >> "$config_file"
     
     if [[ "$WORK_MODE" == "static" || "$WORK_MODE" == "mixed" ]]; then
-        echo "        # 混合模式或纯静态模式下，处理未匹配到的静态文件" >> "$config_file"
+        echo "        # 静态/混合模式下，处理未匹配到的静态文件" >> "$config_file"
         echo "        try_files \$uri \$uri/ =404;" >> "$config_file"
     elif [[ "$WORK_MODE" == "proxy" ]]; then
-        # 纯反代模式下，默认 location / 返回 404 (代理逻辑应在精确匹配的 location 中处理)
-        echo "        # 纯反代模式，未匹配到任何显式 location 规则，返回 404" >> "$config_file"
-        echo "        return 404;" >> "$config_file"
+        # 纯反代模式下，未被 location ^~ 明确捕获的流量，全部代理到根路径的后端 (如果根路径选择是代理)
+        if [[ "$ROOT_ACTION" =~ ^proxy\| ]]; then
+            IFS='|' read -r _ root_backend_url root_set_host <<< "$ROOT_ACTION"
+            echo "        # 纯反代模式：未被 location ^~ 明确捕获的流量，全部代理到根路径的后端" >> "$config_file"
+            echo "        proxy_pass $root_backend_url;" >> "$config_file"
+            
+            # 插入通用配置
+            echo "$nginx_proxy_common_headers" | while IFS= read -r line; do
+                echo "    $line" >> "$config_file"
+            done
+
+            # Host Header 根据用户选择配置
+            if [[ "$root_set_host" == "true" ]]; then
+                echo "        proxy_set_header Host \$host;" >> "$config_file"
+            fi
+            
+        else
+            # 如果 ROOT_ACTION 是 404 (或未配置)，则兜底 404
+            echo "        # 纯反代模式，未匹配到任何显式 location 规则，返回 404" >> "$config_file"
+            echo "        return 404;" >> "$config_file"
+        fi
     fi
     echo "    }" >> "$config_file"
     
@@ -654,9 +685,9 @@ generate_nginx_config() {
 
     # --- 子域名反代配置 (每个子域名独立 server 块) ---
     if [[ "$PROXY_CONFIG_TYPE" == "subdomain" ]]; then
-        print_color "注意: 子域名反代将生成独立的 Server 块，它们使用与主域名相同的端口和 SSL 证书设置。" "$YELLOW"
+        print_color "注意: 子域名反代将生成独立的 Server 块，它们使用与主域名相同的端口和 SSL/HSTS 设置。" "$YELLOW"
         for rule in "${SUBDOMAIN_PROXIES[@]}"; do
-            IFS='|' read -r subdomain backend_url <<< "$rule"
+            IFS='|' read -r subdomain backend_url proxy_set_host <<< "$rule" # <-- 读取 Host 配置
             echo "" >> "$config_file"
             echo "server {" >> "$config_file"
             
@@ -664,7 +695,7 @@ generate_nginx_config() {
                 echo "    listen $listen_port ssl http2;" >> "$config_file"
                 echo "    server_name $subdomain;" >> "$config_file"
                 
-                # 使用主配置中的证书路径逻辑
+                # 统一 SSL 证书配置 (与主块一致)
                 if [[ -z "$ssl_cert" || -z "$ssl_key" ]]; then
                     echo "    ssl_certificate     /etc/ssl/certs/nginx-default.crt;" >> "$config_file"
                     echo "    ssl_certificate_key /etc/ssl/private/nginx-default.key;" >> "$config_file"
@@ -672,7 +703,7 @@ generate_nginx_config() {
                     echo "    ssl_certificate     $ssl_cert;" >> "$config_file"
                     echo "    ssl_certificate_key $ssl_key;" >> "$config_file"
                 fi
-                # 子域名也应用 HSTS
+                # 子域名也应用 HSTS (与主块一致)
                 if "$hsts_enabled"; then
                     echo "    add_header Strict-Transport-Security \"max-age=15768000; includeSubDomains\" always;" >> "$config_file"
                 fi
@@ -684,23 +715,21 @@ generate_nginx_config() {
             # 纯反代模式，设置默认 root 避免 Nginx 报错
             echo "    root $final_root_path;" >> "$config_file"
 
-            echo "    # 子域名代理: $subdomain -> $backend_url" >> "$config_file"
+            echo "    # 子域名代理: $subdomain -> $backend_url (Host: $proxy_set_host)" >> "$config_file"
             echo "    location / {" >> "$config_file"
-            # proxy_pass 移除引号
+            # 统一 proxy_pass
             echo "        proxy_pass $backend_url;" >> "$config_file"
 
-            echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
-            echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-            # 关键头：添加 X-Forwarded-Proto
-            echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> "$config_file"
+            # 插入通用配置 (保持一致性)
+            echo "$nginx_proxy_common_headers" | while IFS= read -r line; do
+                echo "    $line" >> "$config_file"
+            done
             
-            echo "        proxy_set_header Host \$host;" >> "$config_file" # 子域名代理默认设置 Host
+            # Host Header 根据用户选择配置 (保持一致性)
+            if [[ "$proxy_set_host" == "true" ]]; then
+                echo "        proxy_set_header Host \$host;" >> "$config_file" 
+            fi
             
-            # WebSocket 支持
-            echo "        proxy_http_version 1.1;" >> "$config_file"
-            echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
-            echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
-
             echo "    }" >> "$config_file"
             echo "}" >> "$config_file"
         done
@@ -725,12 +754,11 @@ generate_caddy_config() {
     local config_file="caddy_$(echo "$server_names" | awk '{print $1}' | tr -cd '[:alnum:]_-')_$(date +%Y%m%d_%H%M%S).Caddyfile"
     print_color "--- 正在生成 Caddyfile 配置 ---" "$CYAN"
     
-    # Nginx 默认的安全路径，如果 root_path (用户输入/默认值) 为空，则使用此路径
+    # 确定最终 root 路径
     local final_root_path="/usr/share/nginx/html" 
     if [[ -n "$root_path" ]]; then
-        final_root_path="$root_path" # 使用用户输入或 /var/www/html 默认值
+        final_root_path="$root_path"
     fi
-
     
     # Caddy 不允许 server_names 后面有空格，所以将空格替换为逗号，并在末尾添加端口
     local caddy_address=""
@@ -758,7 +786,7 @@ generate_caddy_config() {
                  echo "    tls internal" # 非标准端口，默认使用内部自签名
             fi
         fi
-        echo "    # Caddy 会自动处理 80 -> 443 的重定向" >> "$config_file"
+        echo "    # Caddy 会自动处理 80 -> HTTPS 的重定向" >> "$config_file"
         echo "    # --- SSL 证书配置结束 ---" >> "$config_file"
     fi
 
@@ -784,8 +812,8 @@ generate_caddy_config() {
     if [[ "$WORK_MODE" == "static" || "$WORK_MODE" == "mixed" ]]; then
         echo "    # 静态文件配置" >> "$config_file"
         echo "    root * $final_root_path" >> "$config_file"
-        # 静态资源缓存时间 7 天 (604800s)
-        echo "    header Cache-Control \"public, max-age=604800, immutable\"" >> "$config_file" 
+        # 静态资源缓存时间 1 年 (31536000s)
+        echo "    header Cache-Control \"public, max-age=31536000, immutable\"" >> "$config_file" 
         echo "    file_server" >> "$config_file"
     fi
 
@@ -793,12 +821,13 @@ generate_caddy_config() {
     if [[ "$PROXY_CONFIG_TYPE" == "path" ]]; then
         for rule in "${PROXY_RULES[@]}"; do
             IFS='|' read -r proxy_path backend_url proxy_set_host <<< "$rule"
-            echo "    # 反向代理: $proxy_path -> $backend_url" >> "$config_file"
+            echo "    # 反向代理: $proxy_path -> $backend_url (Host: $proxy_set_host)" >> "$config_file"
             
-            # Caddy 路径处理：使用 route 确保精确路径控制，并利用 URI 匹配
+            # 使用 route 确保精确路径控制，并利用 URI 匹配
             echo "    route $proxy_path $proxy_path/* {" >> "$config_file"
             echo "        reverse_proxy $backend_url" >> "$config_file"
             
+            # Host Header 根据用户选择配置 (一致性)
             if [[ "$proxy_set_host" == "true" ]]; then
                 echo "        header_up Host {http.request.host}" >> "$config_file"
             fi
@@ -815,13 +844,19 @@ generate_caddy_config() {
             echo "        respond 404" >> "$config_file"
             echo "    }" >> "$config_file"
         elif [[ "$ROOT_ACTION" == "static" ]]; then
-            # 静态文件已由 file_server 模块处理，这里不需要再重复
-            : # No need for explicit route / if file_server is defined
+            : # 静态文件已由 file_server 模块处理
         elif [[ "$ROOT_ACTION" =~ ^proxy\| ]]; then
             IFS='|' read -r _ root_backend_url root_set_host <<< "$ROOT_ACTION"
             echo "    route / {" >> "$config_file"
-            echo "        reverse_proxy $root_backend_url" >> "$config_file"
             
+            if [[ "$WORK_MODE" == "proxy" ]]; then
+                # 纯反代模式：所有未被捕获的流量全部代理到根路径的后端
+                echo "        reverse_proxy /* $root_backend_url" >> "$config_file" 
+            else
+                 echo "        reverse_proxy $root_backend_url" >> "$config_file"
+            fi
+            
+            # Host Header 根据用户选择配置 (一致性)
             if [[ "$root_set_host" == "true" ]]; then
                 echo "        header_up Host {http.request.host}" >> "$config_file"
             fi
@@ -833,9 +868,9 @@ generate_caddy_config() {
 
     # --- 4. 子域名反代配置 (每个子域名独立 Server 块) ---
     if [[ "$PROXY_CONFIG_TYPE" == "subdomain" ]]; then
-        print_color "注意: 子域名反代将生成独立的 Server 块，使用与主域名相同的端口和 SSL 证书设置。" "$YELLOW"
+        print_color "注意: 子域名反代将生成独立的 Server 块，使用与主域名相同的端口和 SSL/HSTS 设置。" "$YELLOW"
         for rule in "${SUBDOMAIN_PROXIES[@]}"; do
-            IFS='|' read -r subdomain backend_url <<< "$rule"
+            IFS='|' read -r subdomain backend_url proxy_set_host <<< "$rule" # <-- 读取 Host 配置
             echo "" >> "$config_file"
             
             local subdomain_address
@@ -854,13 +889,22 @@ generate_caddy_config() {
                 else
                     echo "    tls internal"
                 fi
+                 if "$hsts_enabled"; then
+                    echo "    header Strict-Transport-Security \"max-age=31536000; includeSubDomains\"" >> "$config_file"
+                fi
             fi
             
             # 纯反代模式，设置默认 root 避免 Caddy 报错
             echo "    root * $final_root_path" >> "$config_file"
 
-            echo "    # 子域名代理: $subdomain -> $backend_url" >> "$config_file"
+            echo "    # 子域名代理: $subdomain -> $backend_url (Host: $proxy_set_host)" >> "$config_file"
             echo "    reverse_proxy $backend_url" >> "$config_file"
+            
+            # Host Header 根据用户选择配置 (一致性)
+            if [[ "$proxy_set_host" == "true" ]]; then
+                echo "    header_up Host {http.request.host}" >> "$config_file" 
+            fi
+            
             echo "}" >> "$config_file"
         done
     fi
@@ -884,7 +928,7 @@ main() {
         local choice
         # 确保 choice 变量在 read 之前被声明
         choice="" 
-        # 确保 read -p 捕获输入，如果输入为空，下面会处理为 "-1"
+        # 确保 read -p 捕获输入
         read -p "请选择 [0-2]: " choice
 
         # 确保 choice 不为空，如果为空，使用一个无效值
