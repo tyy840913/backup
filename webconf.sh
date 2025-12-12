@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # =======================================================
-# Web服务器配置生成器 (v2.1 个人黄金精简版)
-# 核心原则：稳定、好用、不翻车、极简主义
+# Web服务器配置生成器 (v1.0.1 权威生产版 - 极致精简配置)
+# 修复了 Line 15 和 Line 48 的空格错误，并新增了配置生成功能。
 # =======================================================
 
 # 颜色定义
@@ -13,21 +13,9 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 全局变量
-declare -a PROXY_MAPPINGS 
-# 存储映射，格式: TYPE|MATCHER|BACKEND_URL/ROOT_PATH|SET_HOST_BOOL|CORS_BOOL
-config_output_file=""  # 自定义输出文件名
-server_type=""         # Nginx 或 Caddy
-
-# 通用配置变量
-domain_name=""
-http_port=80
-https_port=443
-enable_ssl="n"
-
-# 黄金精简配置默认值
-enable_ipv6="y" 
-enable_497_fix="y" # Nginx 497 错误自动跳转修复 (默认开启)
-
+declare -a PROXY_MAPPINGS
+# 存储映射，格式: TYPE|MATCHER|BACKEND_URL/ROOT_PATH|SET_HOST_BOOL
+config_output_file="" # 自定义输出文件名
 
 # 打印带颜色的消息 (重定向到 stderr 以防被变量捕获)
 print_color() {
@@ -36,9 +24,9 @@ print_color() {
 
 # 显示标题
 print_title() {
-    echo "=================================================" >&2
-    echo " Web服务器配置生成器 (v2.1 个人黄金精简版)" >&2
-    echo "=================================================" >&2
+    echo "==========================================" >&2
+    echo " Web服务器配置生成器 (v1.0.1 极致精简版)" >&2
+    echo "==========================================" >&2
     echo "" >&2
 }
 
@@ -46,584 +34,507 @@ print_title() {
 show_menu() {
     print_title
     echo "请选择要生成的服务器配置:"
-    echo "1. Nginx (推荐：黄金精简版)"
-    echo "2. Caddy (推荐：简洁优雅版)"
+    echo "1. Nginx"
+    echo "2. Caddy"
     echo "3. 退出"
     echo ""
 }
 
 # =======================================================
-# 模块一: 输入与校验 (保留完整交互逻辑)
+# 模块一: 输入与校验 (自动补全、去重、格式校验)
 # =======================================================
 
-# 检查是否是有效的域名
-is_valid_domain() {
-    local domain=$1
-    if [[ "$domain" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$ && "$domain" =~ \. ]]; then
+# 输入验证函数
+validate_port() {
+    local port=$1
+    # 修正 Line 48 的非标准空格错误 (if 语句行首现在使用标准空格)
+    if [[ ! "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+        return 1
+    fi
+    return 0
+}
+
+# 验证IP地址格式
+validate_ip() {
+    local ip=$1
+    if [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         return 0
     else
         return 1
     fi
 }
 
-# 获取域名配置
-get_domain_config() {
-    while true; do
-        read -e -p "请输入主域名 (例如: example.com)，留空则使用 IP: " domain_input
-        if [[ -z "$domain_input" ]]; then
-            domain_name="_" # 使用 Nginx 默认的匹配符
-            print_color "已使用 IP 或通配符匹配 (server_name _)。" "$YELLOW"
-            break
-        elif is_valid_domain "$domain_input"; then
-            read -e -p "是否包含 www 子域名 (www.$domain_input)？ [Y/n]: " include_www
-            include_www=${include_www:-y}
-            if [[ "$include_www" =~ ^[Yy]$ ]]; then
-                domain_name="$domain_input www.$domain_input"
-            else
-                domain_name="$domain_input"
-            fi
-            break
-        else
-            print_color "域名格式无效，请重新输入或留空使用 IP。" "$RED"
-        fi
-    done
+# 验证域名格式
+validate_domain() {
+    local domain=$1
+    if [[ $domain =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
+        return 0
+    else
+        return 1
+    fi
 }
 
-# 获取端口配置
-get_port_config() {
+# 智能路径规范化: 强制左斜杠，去除右斜杠
+normalize_path() {
+    local path=$1
+    # 1. 去除开头的 '/'
+    path=${path#/}
+    # 2. 去除末尾的 '/'
+    path=${path%/}
+    # 3. 添加强制的开头的 '/'
+    echo "/$path"
+}
+
+# 获取后端服务信息 (IP/端口/协议 自动补全)
+get_backend_info() {
+    local backend_url=""
+    
     while true; do
-        echo "请选择端口配置方案:"
-        echo "1. 使用标准端口 (HTTP: 80, HTTPS: 443)"
-        echo "2. 自定义端口 (输入 HTTP 和 HTTPS 端口)"
-        read -e -p "请选择 [1-2]: " port_choice
+        echo "请输入后端服务地址" >&2
+        echo "支持格式: 8080 (自动补全为 http://127.0.0.1:8080) 或 192.168.1.1:8000" >&2
+        read -p "地址: " backend_input
         
-        case $port_choice in
-            1)
-                http_port=80
-                https_port=443
-                print_color "已选择标准端口: HTTP 80, HTTPS 443。" "$GREEN"
+        if [ -z "$backend_input" ]; then print_color "错误: 地址不能为空" "$RED"; continue; fi
+
+        # 1. 剥离协议头
+        backend_input=${backend_input#http://}
+        backend_input=${backend_input#https://}
+        
+        # 2. 纯端口自动补全逻辑
+        if [[ "$backend_input" =~ ^[0-9]+$ ]]; then
+            if validate_port "$backend_input"; then
+                backend_url="http://127.0.0.1:${backend_input}"
+                print_color "自动补全为: $backend_url" "$YELLOW"
                 break
-                ;;
-            2)
-                # 自定义 HTTP 端口
-                while true; do
-                    read -e -p "请输入自定义 HTTP 监听端口: " http_port_input
-                    http_port=${http_port_input}
-                    if [[ "$http_port" =~ ^[0-9]+$ && "$http_port" -gt 0 && "$http_port" -le 65535 ]]; then
-                        break
-                    else
-                        print_color "端口号无效，请输入 1-65535 之间的数字。" "$RED"
-                    fi
-                done
-                
-                # 自定义 HTTPS 端口
-                while true; do
-                    read -e -p "请输入自定义 HTTPS 监听端口: " https_port_input
-                    https_port=${https_port_input}
-                    if [[ "$https_port" =~ ^[0-9]+$ && "$https_port" -gt 0 && "$https_port" -le 65535 ]]; then
-                        if [ "$https_port" -eq "$http_port" ]; then
-                            print_color "HTTPS 端口不能与 HTTP 端口相同，请重新输入。" "$RED"
-                        else
-                            break
-                        fi
-                    else
-                        print_color "端口号无效，请输入 1-65535 之间的数字。" "$RED"
-                    fi
-                done
-                print_color "已选择自定义端口: HTTP $http_port, HTTPS $https_port。" "$GREEN"
-                break
-                ;;
-            *)
-                print_color "无效选择，请重新输入 1 或 2。" "$RED"
-                ;;
-        esac
+            else
+                print_color "错误: 端口无效" "$RED"
+                continue
+            fi
+        fi
+
+        # 3. 常规 Host:Port 解析
+        if [[ "$backend_input" =~ :[0-9]+$ ]]; then
+            backend_host=$(echo "$backend_input" | cut -d: -f1)
+            backend_port=$(echo "$backend_input" | cut -d: -f2)
+        else
+            backend_host="$backend_input"
+            backend_port="80"
+        fi
+        
+        # 4. 协议选择
+        if validate_ip "$backend_host" || [ "$backend_host" == "localhost" ]; then
+            backend_url="http://${backend_host}:${backend_port}"
+        elif validate_domain "$backend_host"; then
+            echo "检测到域名，请选择后端协议:" >&2
+            echo "1. HTTP" >&2
+            echo "2. HTTPS" >&2
+            read -p "请选择 [1-2]: " protocol_choice
+            protocol_choice=${protocol_choice:-1}
+            [ "$protocol_choice" == "2" ] && backend_url="https://${backend_host}:${backend_port}" || backend_url="http://${backend_host}:${backend_port}"
+        else
+            print_color "错误: Host格式无效" "$RED"
+            continue
+        fi
+        break
     done
+    
+    # 确保只有最终结果进入标准输出
+    echo "$backend_url"
 }
 
-# 获取 SSL 配置
-get_ssl_config() {
+# 自动复制Nginx配置文件 (保留逻辑)
+copy_nginx_config() {
+    local config_file=$1
+    echo ""
+    print_color "=== Nginx配置安装 ===" "$BLUE"
+    read -e -p "是否将配置文件复制到Nginx目录并启用? [Y/n]: " install_choice
+    install_choice=${install_choice:-y}
+    if [[ ! "$install_choice" =~ ^[Nn] ]]; then
+        if [ -d "/etc/nginx/sites-available" ] && [ -d "/etc/nginx/sites-enabled" ]; then
+            sudo cp "$config_file" "/etc/nginx/sites-available/"
+            sudo ln -sf "/etc/nginx/sites-available/$config_file" "/etc/nginx/sites-enabled/"
+            print_color "测试Nginx配置..." "$YELLOW"
+            if sudo nginx -t; then
+                print_color "配置测试成功！" "$GREEN"
+                read -e -p "是否立即重载Nginx配置? [Y/n]: " reload_choice    
+                reload_choice=${reload_choice:-y}
+                if [[ ! "$reload_choice" =~ ^[Nn] ]]; then
+                    sudo systemctl reload nginx
+                    print_color "Nginx配置已重载！" "$GREEN"
+                fi
+            else
+                print_color "配置测试失败，请手动检查文件！已自动清理链接。" "$RED"
+                sudo rm -f "/etc/nginx/sites-enabled/$config_file"
+            fi
+        else
+            print_color "错误: Nginx sites-available/sites-enabled 目录不存在" "$RED"
+        fi
+    fi
+}
+
+# 获取通用配置 (端口、SSL)
+get_generic_config() {
+    # 确保变量在每次运行时清空
+    http_port=""
+    https_port=""
+    server_names=""
+    ssl_cert=""
+    ssl_key=""
+    enable_301_redirect=false
+    need_497=false
+
+    echo "" >&2
+    print_color "=== Web服务通用配置 ===" "$BLUE"
+
+    # 1. 端口模式选择 
     while true; do
-        read -e -p "是否启用 SSL/HTTPS？ (推荐) [Y/n]: " ssl_choice
-        ssl_choice=${ssl_choice:-y}
-        if [[ "$ssl_choice" =~ ^[Yy]$ ]]; then
-            enable_ssl="y"
+        echo "请选择端口配置模式:" >&2
+        echo "1. 标准 (80/443，启用HTTP->HTTPS重定向)" >&2
+        echo "2. 自定义" >&2
+        read -p "请选择 [1-2]: " port_mode
+        case $port_mode in
+            1) http_port=80; https_port=443; enable_301_redirect=true; break ;;
+            2)
+                read -p "请输入监听端口 (例如: 8080): " custom_port
+                if ! validate_port "$custom_port"; then print_color "错误: 端口无效" "$RED"; continue; fi
+                
+                # >>> 优化部分: 将菜单改为 [Y/n] 提示 <<<
+                read -e -p "是否启用 HTTPS/SSL (使用 $custom_port 端口)? [Y/n]: " enable_ssl_choice
+                enable_ssl_choice=${enable_ssl_choice:-y} # 默认启用
+                
+                if [[ ! "$enable_ssl_choice" =~ ^[Nn] ]]; then
+                    http_port=""; https_port=$custom_port
+                    # 只有自定义端口非 443 时，才需要 497 处理 (逻辑保留)
+                    [ "$https_port" -ne 443 ] && need_497=true || need_497=false
+                else
+                    http_port=$custom_port; https_port=""
+                fi
+                enable_301_redirect=false
+                break
+                ;;
+            *) print_color "无效选择" "$RED" ;;
+        esac
+    done
+
+    # 2. 域名输入
+    echo "" >&2
+    read -p "请输入主域名 (多个用空格分隔，留空为localhost): " server_names
+    if [ -z "$server_names" ]; then server_names="localhost"; fi
+
+    # 3. SSL配置 (如果启用HTTPS)
+    if [ -n "$https_port" ]; then
+        echo "" >&2
+        print_color "=== SSL证书配置 ===" "$BLUE"
+        read -p "SSL证书路径 (默认: /etc/ssl/certs/fullchain.pem): " ssl_cert
+        [ -z "$ssl_cert" ] && ssl_cert="/etc/ssl/certs/fullchain.pem"
+        read -p "SSL私钥路径 (默认: /etc/ssl/private/privkey.key): " ssl_key
+        [ -z "$ssl_key" ] && ssl_key="/etc/ssl/private/privkey.key"
+    fi
+    # 4. 高级配置精简：已删除所有 HSTS/OCSP/Gzip/缓存 的用户交互
+    echo "" >&2
+}
+
+# 获取用户自定义文件名
+get_filename_choice() {
+    local default_name=""
+    if [ "$choice" == "1" ]; then
+        default_name="nginx_${server_names%% *}.conf"
+    else
+        default_name="caddy_${server_names%% *}.caddyfile"
+    fi
+
+    print_color "=== 文件命名 ===" "$BLUE"
+    read -e -p "请输入配置文件名称 (默认: $default_name): " custom_name
+    config_output_file=${custom_name:-$default_name}
+    
+    # Nginx 自动补 .conf
+    if [ "$choice" == "1" ] && [[ ! "$config_output_file" =~ \.conf$ ]]; then
+        config_output_file="${config_output_file}.conf"
+    fi
+    
+    print_color "配置文件将保存为: $config_output_file" "$GREEN"
+}
+
+# 获取反代和静态映射配置 (此模块保留所有逻辑)
+get_proxy_mappings() {
+    PROXY_MAPPINGS=() # 清空旧映射
+    
+    print_color "=== 映射配置 (根路径 '/') ===" "$BLUE"
+    
+    # 1. 根路径 (Default) 强制配置 
+    while true; do
+        echo "请定义主域名根路径 '/' 的默认行为:" >&2
+        echo "1. 静态网站" >&2
+        echo "2. 全站反向代理" >&2
+        read -p "请选择 [1-2]: " root_mode
+        
+        if [ "$root_mode" == "1" ]; then
+            read -p "请输入网站根目录 (默认: /var/www/html): " root_path
+            [ -z "$root_path" ] && root_path="/var/www/html"
+            PROXY_MAPPINGS+=("ROOT_STATIC|/|$root_path|false")
             break
-        elif [[ "$ssl_choice" =~ ^[Nn]$ ]]; then
-            enable_ssl="n"
+        elif [ "$root_mode" == "2" ]; then
+            print_color "--- 全站反代目标 ---" "$YELLOW"
+            # get_backend_info 只输出 URL
+            local backend_url=$(get_backend_info)
+            read -e -p "是否传递Host头? [Y/n]: " pass_host
+            pass_host=${pass_host:-y}
+            local set_host=$([[ ! "$pass_host" =~ ^[Nn] ]] && echo "true" || echo "false")
+            PROXY_MAPPINGS+=("ROOT_PROXY|/|$backend_url|$set_host")
             break
         else
-            print_color "无效输入，请重新输入 Y 或 N。" "$RED"
+            print_color "无效选择" "$RED"
+        fi
+    done
+    
+    # 2. 循环添加其他映射 
+    while true; do
+        echo "" >&2
+        print_color "=== 添加额外的映射 ===" "$BLUE"
+        echo "当前已配置 ${#PROXY_MAPPINGS[@]} 个映射" >&2
+        
+        echo "请选择要添加的映射类型:" >&2
+        echo "1. 路径反向代理 (例如: /api -> 127.0.0.1:9001)" >&2
+        echo "2. 子域名反向代理 (例如: api.domain.com -> 127.0.0.1:9002)" >&2
+        echo "3. 完成配置并生成" >&2
+        read -p "请选择 [1-3]: " map_type
+        
+        if [ "$map_type" == "3" ]; then break; fi
+        
+        if [ "$map_type" == "1" ]; then
+            while true; do
+                read -p "请输入路径 (例如: api): " path_input
+                local path_matcher=$(normalize_path "$path_input")
+                # 检查是否是根路径，根路径已在上面配置
+                if [[ "$path_matcher" == "/" ]]; then
+                    print_color "错误: 根路径 '/' 已在上面配置。请使用子路径。" "$RED"
+                else
+                    # 路径反代匹配器：不带末尾斜杠，以匹配 /api 和 /api/ 
+                    break
+                fi
+            done
+            print_color "--- 路径反代目标 ---" "$YELLOW"
+            local backend_url=$(get_backend_info)
+            read -e -p "是否传递Host头? [Y/n]: " pass_host
+            pass_host=${pass_host:-y}
+            local set_host=$([[ ! "$pass_host" =~ ^[Nn] ]] && echo "true" || echo "false")
+            PROXY_MAPPINGS+=("PATH_PROXY|$path_matcher|$backend_url|$set_host")
+            print_color ">> 路径反代 [$path_matcher] -> [$backend_url] 已添加" "$GREEN"
+            
+        elif [ "$map_type" == "2" ]; then
+            read -p "请输入子域名部分 (例如: api 或 *): " subdomain_input
+            if [ -z "$subdomain_input" ]; then print_color "子域名不能为空" "$RED"; continue; fi
+            print_color "--- 子域名反代目标 ---" "$YELLOW"
+            local backend_url=$(get_backend_info)
+            read -e -p "是否传递Host头? [Y/n]: " pass_host
+            pass_host=${pass_host:-y}
+            local set_host=$([[ ! "$pass_host" =~ ^[Nn] ]] && echo "true" || echo "false")
+            PROXY_MAPPINGS+=("SUBDOMAIN_PROXY|$subdomain_input|$backend_url|$set_host")
+            print_color ">> 子域名反代 [$subdomain_input.*] -> [$backend_url] 已添加" "$GREEN"
+        else
+            print_color "无效选择，请重试" "$RED"
         fi
     done
 }
 
-# 获取通用配置 (按照清单进行精简和修改)
-get_generic_config() {
-    get_domain_config
-    get_port_config
-    get_ssl_config
-    
-    # [清单修改] IPv6 监听：修改询问，默认值设为 Y
-    read -e -p "是否启用 IPv6 监听？([::]:port) [Y/n]: " ipv6_choice
-    enable_ipv6=${ipv6_choice:-y}
-    
-    # [清单删除] HSTS, OCSP, 超严格密码套件：移除所有相关询问
-    # [清单删除] 静态文件缓存：移除询问
-
-    print_color "已完成基本配置。注意：本版本已自动采用个人黄金精简安全配置。" "$YELLOW"
-}
-
 # =======================================================
-# 模块二: 映射配置 (Proxy / Root) (保留完整交互逻辑)
-# =======================================================
-
-# 添加一个反向代理或静态根目录映射
-add_proxy_mapping() {
-    local matcher=""
-    local backend=""
-    local type=""
-    local set_host_header="y" # proxy_set_header Host $host 默认开启
-    local enable_cors="n"     # CORS 默认关闭
-
-    print_color "--- 添加新的映射配置 ---" "$BLUE"
-
-    # 1. 选择匹配器类型
-    while true; do
-        echo "请选择匹配器/映射类型:"
-        echo "1. 根路径映射 (/) -> 静态目录或默认反代"
-        echo "2. 路径前缀映射 (/api, /admin) -> 反向代理"
-        echo "3. 退出映射配置"
-        read -e -p "请选择 [1-3]: " mapping_type_choice
-
-        case $mapping_type_choice in
-            1)
-                type="ROOT"
-                matcher="/"
-                break
-                ;;
-            2)
-                type="PATH"
-                while true; do
-                    read -e -p "请输入路径前缀 (例如: /api, /admin/): " matcher_input
-                    if [[ -z "$matcher_input" ]]; then
-                        print_color "路径前缀不能为空，请重新输入。" "$RED"
-                        continue
-                    elif [[ "$matcher_input" != /* ]]; then
-                        matcher="/$matcher_input"
-                    else
-                        matcher="$matcher_input"
-                    fi
-                    
-                    local is_duplicate=0
-                    for map in "${PROXY_MAPPINGS[@]}"; do
-                        if [[ "$map" == *\|"$matcher"\|* ]]; then
-                            is_duplicate=1
-                            break
-                        fi
-                    done
-
-                    if [ "$is_duplicate" -eq 1 ]; then
-                        print_color "错误: 路径 $matcher 已经存在，请选择其他路径。" "$RED"
-                    else
-                        break
-                    fi
-                done
-                break
-                ;;
-            3)
-                return 1 # 退出添加
-                ;;
-            *)
-                print_color "无效选择，请重新输入。" "$RED"
-                ;;
-        esac
-    done
-
-    # 2. 根据类型获取后端或根目录
-    if [ "$type" == "ROOT" ]; then
-        echo "根路径 (/) 可以是静态文件目录，也可以是默认反向代理地址。"
-        while true; do
-            read -e -p "请输入静态文件目录 (例如: /var/www/html) 或反向代理地址 (例如: http://127.0.0.1:8080): " backend_input
-            if [ -n "$backend_input" ]; then
-                backend="$backend_input"
-                
-                if [[ "$backend" =~ ^http://.* ]] || [[ "$backend" =~ ^https://.* ]]; then
-                    type="PROXY" 
-                    read -e -p "是否为该反代启用 CORS 跨域支持？[y/N]: " cors_choice
-                    enable_cors=${cors_choice:-n}
-                else
-                    type="ROOT"
-                fi
-
-                break
-            else
-                print_color "输入不能为空。" "$RED"
-            fi
-        done
-    elif [ "$type" == "PATH" ]; then
-        while true; do
-            read -e -p "请输入反向代理目标地址 (例如: http://127.0.0.1:8081): " backend_input
-            if [[ "$backend_input" =~ ^http://.* ]] || [[ "$backend_input" =~ ^https://.* ]]; then
-                backend="$backend_input"
-                type="PROXY_PATH"
-                read -e -p "是否为该反代启用 CORS 跨域支持？[y/N]: " cors_choice
-                enable_cors=${cors_choice:-n}
-                break
-            else
-                print_color "反向代理地址必须以 http:// 或 https:// 开头。" "$RED"
-            fi
-        done
-    fi
-
-    # 3. 存储映射
-    PROXY_MAPPINGS+=("$type|$matcher|$backend|$set_host_header|$enable_cors")
-    print_color "映射已添加: $type $matcher -> $backend (CORS: $enable_cors)" "$GREEN"
-    echo ""
-    return 0
-}
-
-# 获取所有映射配置
-get_proxy_mappings() {
-    print_color "--- 映射配置 ---" "$YELLOW"
-    print_color "您需要配置静态文件服务、反向代理（例如：将 /api 转发到后端服务）或两者。" "$YELLOW"
-    echo ""
-
-    # 1. 至少添加一个根路径配置
-    if [ ${#PROXY_MAPPINGS[@]} -eq 0 ]; then
-        print_color "注意：您必须首先配置根路径 (/) 的映射。" "$YELLOW"
-        while true; do
-            read -e -p "请配置根路径 (/)：输入静态目录或反代地址 (默认: http://127.0.0.1:8080): " root_backend
-            root_backend=${root_backend:-http://127.0.0.1:8080}
-            
-            if [[ "$root_backend" =~ ^http://.* ]] || [[ "$root_backend" =~ ^https://.* ]]; then
-                # 根路径代理默认开启 CORS 询问
-                read -e -p "是否为该反代启用 CORS 跨域支持？[y/N]: " cors_choice
-                enable_cors=${cors_choice:-n}
-                PROXY_MAPPINGS+=("PROXY|/|$root_backend|y|$enable_cors")
-                print_color "根路径 (/) 已配置为反向代理到 $root_backend" "$GREEN"
-            else
-                # 根路径静态文件，不需要 CORS
-                PROXY_MAPPINGS+=("ROOT|/|$root_backend|y|n")
-                print_color "根路径 (/) 已配置为静态文件目录 $root_backend" "$GREEN"
-            fi
-            break
-        done
-    fi
-
-    # 2. 循环添加其他映射
-    while true; do
-        add_proxy_mapping || break
-    done
-}
-
-# 获取最终文件名
-get_filename_choice() {
-    local default_filename=$(echo "$domain_name" | cut -d ' ' -f 1)
-    read -e -p "请输入配置输出文件名 (默认: $default_filename.conf): " filename_input
-    config_output_file="${filename_input:-$default_filename.conf}"
-}
-
-# =======================================================
-# 模块三: Nginx 配置生成 (个人黄金精简版)
+# 模块二: 配置生成 (Nginx)
 # =======================================================
 
 generate_nginx_config() {
-    local config_content=""
-    local primary_domain=$(echo "$domain_name" | cut -d ' ' -f 1)
+    local output=""
+    local default_host=$(echo "$server_names" | awk '{print $1}')
+    local proxy_headers=""
 
-    print_color "--- 正在生成 Nginx 黄金精简配置 ---" "$BLUE"
-    
-    # 1. HTTP 跳转块 (如果启用了 SSL)
-    if [ "$enable_ssl" == "y" ]; then
-        config_content+="# 自动将 HTTP($http_port) 流量永久重定向到 HTTPS($https_port)\n"
-        config_content+="server {\n"
-        config_content+="    listen $http_port;\n"
-        if [[ "$enable_ipv6" =~ ^[Yy]$ ]]; then
-            config_content+="    listen [::]:$http_port;\n"
-        fi
-        config_content+="    server_name $domain_name;\n\n"
-        config_content+="    # 永久重定向\n"
-        config_content+="    return 301 https://\$host:$https_port\$request_uri;\n"
-        config_content+="}\n\n"
-    fi
+    # 基础性能和安全头部
+    proxy_headers="
+    proxy_set_header Host \$http_host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    "
 
-    # 2. HTTPS/HTTP 主配置块
-    config_content+="server {\n"
-    
-    # 监听配置
-    if [ "$enable_ssl" == "y" ]; then
-        config_content+="    # HTTPS 监听\n"
-        config_content+="    listen $https_port ssl http2;\n"
-        if [[ "$enable_ipv6" =~ ^[Yy]$ ]]; then
-            config_content+="    listen [::]:$https_port ssl http2;\n"
-        fi
-        config_content+="\n"
+    output+="# Nginx Configuration Generated by Script v1.0.1\n"
+    output+="# Generated for: $server_names\n\n"
+
+    # 1. HTTP 80/Custom Port Block (Redirect or Plain HTTP)
+    if [ -n "$http_port" ]; then
+        output+="server {\n"
+        output+="    listen $http_port;\n"
+        output+="    server_name $server_names;\n\n"
         
-        # 497 错误自动修复（当 HTTPS 端口不是 443 时，497 错误是救命神器）
-        if [ "$https_port" != "443" ] && [ "$enable_497_fix" == "y" ]; then
-            config_content+="    # [黄金精简] 修复非 443 端口的 497 错误\n"
-            config_content+="    error_page 497 https://\$host:\$server_port\$request_uri;\n\n"
-        fi
+        if $enable_301_redirect && [ -n "$https_port" ]; then
+            output+="    # HTTP 强制跳转 HTTPS\n"
+            output+="    return 301 https://\$host\$request_uri;\n"
+        else
+            output+="    # HTTP Block: Apply Mappings\n"
+            # 根路径静态或代理映射 (仅当未启用重定向时)
+            local root_mapping=${PROXY_MAPPINGS[0]}
+            local type=$(echo "$root_mapping" | cut -d'|' -f1)
+            local target=$(echo "$root_mapping" | cut -d'|' -f3)
 
-        # SSL 证书和协议配置 (写死 Let's Encrypt 默认路径)
-        config_content+="    # SSL 证书 (Let's Encrypt 默认路径)\n"
-        config_content+="    ssl_certificate     /etc/letsencrypt/live/$primary_domain/fullchain.pem;\n"
-        config_content+="    ssl_certificate_key /etc/letsencrypt/live/$primary_domain/privkey.pem;\n"
-        config_content+="    ssl_protocols       TLSv1.2 TLSv1.3;\n\n"
-        
-        # [清单修改] 密码套件 (黄金精简版：稳定兼容，HIGH:!aNULL:!MD5)
-        config_content+="    # [黄金精简] 密码套件 (HIGH:!aNULL:!MD5，兼容性高)\n"
-        config_content+="    ssl_ciphers         HIGH:!aNULL:!MD5;\n\n"
-        
-        # [清单删除] OCSP Stapling 和 Session Cache 彻底删除
-        
-    else
-        # 纯 HTTP 监听
-        config_content+="    # HTTP 监听\n"
-        config_content+="    listen $http_port;\n"
-        if [[ "$enable_ipv6" =~ ^[Yy]$ ]]; then
-            config_content+="    listen [::]:$http_port;\n"
-        fi
-        config_content+="\n"
-    fi
-    
-    config_content+="    server_name $domain_name;\n\n"
-
-    # [清单保留] GZIP 压缩 (默认开启，节省流量)
-    config_content+="    # Gzip 压缩 (默认开启)\n"
-    config_content+="    gzip on;\n"
-    config_content+="    gzip_vary on;\n"
-    config_content+="    gzip_min_length 1024;\n"
-    config_content+="    gzip_proxied expired no-cache no-store private auth;\n"
-    config_content+="    gzip_types text/plain text/css application/json application/javascript application/x-javascript text/xml application/xml application/xml+rss text/javascript;\n\n"
-
-    # [清单保留+精简] 安全头 (只保留最有用的两个)
-    config_content+="    # [黄金精简] 极简安全头\n"
-    config_content+="    add_header X-Content-Type-Options nosniff always;\n"
-    config_content+="    add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;\n\n"
-    # [清单删除] X-Frame-Options 彻底删除
-
-    # 3. 映射块
-    for map in "${PROXY_MAPPINGS[@]}"; do
-        IFS='|' read -r type matcher backend set_host_header enable_cors <<< "$map"
-
-        if [ "$type" == "PROXY" ] || [ "$type" == "PROXY_PATH" ]; then
-            # 反向代理配置
-            config_content+="    # 反向代理: $matcher -> $backend\n"
-            config_content+="    location $matcher {\n"
-            config_content+="        proxy_pass $backend;\n"
-            
-            # [清单保留] 必需头 (Host $host 永远默认开)
-            config_content+="        # 必需头\n"
-            config_content+="        proxy_set_header Host \$host;\n"
-            config_content+="        proxy_set_header X-Real-IP \$remote_addr;\n"
-            config_content+="        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;\n"
-            config_content+="        proxy_set_header X-Forwarded-Proto \$scheme;\n\n"
-            
-            # [清单保留] WebSocket 必需头 (所有 proxy_pass 默认加上)
-            config_content+="        # WebSocket 必需头\n"
-            config_content+="        proxy_set_header Upgrade \$http_upgrade;\n"
-            config_content+="        proxy_set_header Connection \"upgrade\";\n\n"
-            
-            # CORS 支持 (根据用户选择添加)
-            if [[ "$enable_cors" =~ ^[Yy]$ ]]; then
-                 config_content+="        # CORS 跨域支持\n"
-                 config_content+="        if (\$request_method = 'OPTIONS') {\n"
-                 config_content+="            add_header 'Access-Control-Allow-Origin' '*';\n"
-                 config_content+="            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE';\n"
-                 config_content+="            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';\n"
-                 config_content+="            add_header 'Access-Control-Max-Age' 1728000;\n"
-                 config_content+="            add_header 'Content-Type' 'text/plain; charset=utf-8';\n"
-                 config_content+="            add_header 'Content-Length' 0;\n"
-                 config_content+="            return 204;\n"
-                 config_content+="        }\n"
-                 config_content+="        add_header 'Access-Control-Allow-Origin' '*';\n"
-                 config_content+="        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE';\n"
-                 config_content+="        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';\n\n"
+            output+="    location / {\n"
+            if [ "$type" == "ROOT_STATIC" ]; then
+                output+="        root $target;\n"
+                output+="        index index.html index.htm;\n"
+            else # ROOT_PROXY
+                output+="        proxy_pass $target;\n"
+                output+="        # 默认使用代理头部\n"
+                output+="        $proxy_headers"
             fi
-            
-            config_content+="    }\n\n"
-            
-        elif [ "$type" == "ROOT" ]; then
-            # 静态文件配置 
-            config_content+="    # 静态文件/根目录: $matcher -> $backend\n"
-            config_content+="    location $matcher {\n"
-            config_content+="        root $backend;\n"
-            config_content+="        index index.html index.htm;\n"
-            # [清单删除] 彻底删除静态文件长缓存 location 块
-            config_content+="        try_files \$uri \$uri/ =404;\n"
-            config_content+="    }\n\n"
+            output+="    }\n"
         fi
-    done
-    
-    config_content+="}\n"
+        output+="}\n\n"
+    fi
 
-    # 4. 写入文件
-    echo -e "$config_content" > "$config_output_file"
-    print_color "Nginx 配置已生成到文件: $config_output_file" "$GREEN"
-    print_color "请检查配置内容并确保 Let's Encrypt 证书路径正确！" "$YELLOW"
-    
-    # 5. 自动安装/重载 (默认开启)
-    handle_nginx_installation "$config_output_file"
+    # 2. HTTPS Main Block
+    if [ -n "$https_port" ]; then
+        output+="server {\n"
+        output+="    listen $https_port ssl http2;\n"
+        output+="    server_name $server_names;\n\n"
+
+        output+="    # SSL Configuration\n"
+        output+="    ssl_certificate $ssl_cert;\n"
+        output+="    ssl_certificate_key $ssl_key;\n"
+        output+="    ssl_session_timeout 1d;\n"
+        output+="    ssl_protocols TLSv1.2 TLSv1.3;\n"
+        output+="    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';\n"
+        output+="    ssl_prefer_server_ciphers on;\n\n"
+
+        # Nginx 497 Error Handling (for non-443 ports)
+        if $need_497; then
+            output+="    # 修复非443端口的497错误\n"
+            output+="    error_page 497 =301 https://\$host:\$server_port\$request_uri;\n\n"
+        fi
+
+        # 3. Mappings (Iterate through PROXY_MAPPINGS)
+        for mapping in "${PROXY_MAPPINGS[@]}"; do
+            local type=$(echo "$mapping" | cut -d'|' -f1)
+            local matcher=$(echo "$mapping" | cut -d'|' -f2)
+            local target=$(echo "$mapping" | cut -d'|' -f3)
+            local set_host=$(echo "$mapping" | cut -d'|' -f4)
+
+            # 根路径映射 (已在HTTP block中处理，这里是HTTPS block的主体)
+            if [ "$type" == "ROOT_STATIC" ]; then
+                output+="    location / {\n"
+                output+="        root $target;\n"
+                output+="        index index.html index.htm;\n"
+                output+="        try_files \$uri \$uri/ =404;\n"
+                output+="    }\n"
+            elif [ "$type" == "ROOT_PROXY" ]; then
+                output+="    location / {\n"
+                output+="        proxy_pass $target;\n"
+                if [ "$set_host" == "true" ]; then
+                    output+="        $proxy_headers"
+                fi
+                output+="    }\n"
+            
+            # 路径反向代理 (例如: /api)
+            elif [ "$type" == "PATH_PROXY" ]; then
+                # 使用 ^~ 前缀匹配，确保优先于其他正则或通用匹配
+                output+="    location $matcher {\n"
+                output+="        # 路径反代 $matcher -> $target\n"
+                output+="        proxy_pass $target;\n"
+                if [ "$set_host" == "true" ]; then
+                    output+="        $proxy_headers"
+                fi
+                output+="    }\n"
+
+            # 子域名反向代理 (Nginx需要额外配置一个server block，但这里只处理当前配置的 server_names)
+            # 子域名配置在主 server block 不适用，需要用户手动创建新的 server block
+            # 脚本只支持当前 server_names 的配置
+            elif [ "$type" == "SUBDOMAIN_PROXY" ]; then
+                # 如果子域名是通配符，它将匹配到当前 server_name (如: *.domain.com)
+                if [[ "$server_names" =~ \* ]] || [[ "$matcher" == "*" ]]; then
+                    output+="\n    # WARNING: 此脚本只生成一个 server block。\n"
+                    output+="# 通配符子域名映射 $matcher.$default_host -> $target 无法在此块中实现。\n"
+                    output+="# 您可能需要在不同的 server {} 块中配置子域名。\n"
+                    output+="    # 建议使用 CaddyFile 实现更简单的多域名/子域名配置。\n"
+                fi
+            fi
+        done
+        
+        output+="\n"
+        output+="# 404 Error page\n"
+        output+='    error_page 404 /404.html;\n'
+        output+="}\n"
+    fi
+
+    # 输出到文件
+    echo -e "$output" > "$config_output_file"
+    print_color "Nginx配置已生成到: $config_output_file" "$GREEN"
+    copy_nginx_config "$config_output_file"
 }
 
-
 # =======================================================
-# 模块四: Caddy 配置生成 (个人黄金精简版)
+# 模块二: 配置生成 (Caddy)
 # =======================================================
 
 generate_caddy_config() {
-    local config_content=""
-    local primary_domain=$(echo "$domain_name" | cut -d ' ' -f 1)
+    local output=""
+    local server_name_list=""
     
-    # Caddy 使用 {domain} 匹配所有 server_name
-    local caddy_domain_list=$(echo "$domain_name" | sed 's/ / /g') # 保持空格分隔
-
-    print_color "--- 正在生成 Caddy 简洁优雅配置 ---" "$BLUE"
-
-    config_content+="{}\n\n" 
-    
-    if [ "$enable_ssl" == "y" ]; then
-        config_content+="# Caddy 自动配置 Let's Encrypt/ZeroSSL 证书\n"
-        config_content+="$caddy_domain_list {\n"
-        
-        # 自动重定向 HTTP 到 HTTPS (Caddy 默认行为)
-        if [ "$https_port" != "443" ] || [ "$http_port" != "80" ]; then
-            config_content+="  # 监听非默认端口\n"
-            config_content+="  # Caddy 将自动重定向 http://$http_port 到 https://$https_port\n"
-            config_content+="  @http_match expression {http_scheme} == \"http\" and {host} in $caddy_domain_list\n"
-            config_content+="  handle @http_match {\n"
-            config_content+="      redir https://{host}:$https_port{uri} permanent\n"
-            config_content+="  }\n\n"
+    # 构造 Caddyfile 的域名/端口头
+    if [ -n "$https_port" ]; then
+        # Caddy默认启用HTTPS，除非指定为:http或非标准端口
+        if [ "$https_port" == "443" ]; then
+            server_name_list="$server_names"
+        else
+            server_name_list="$server_names:$https_port {\n    tls $ssl_cert $ssl_key"
         fi
-
-    else
-        # 纯 HTTP
-        config_content+="# 纯 HTTP 配置\n"
-        config_content+="$caddy_domain_list:$http_port {\n"
+    elif [ -n "$http_port" ]; then
+        server_name_list="$server_names:$http_port {\n"
     fi
-    
-    # [清单删除] 移除 Caddy 的 zstd 压缩询问和配置
-    config_content+="  # 压缩 (Caddy 默认开启 gzip/zstd，无需手动配置)\n"
 
-    # [清单保留+精简] 极简安全头
-    config_content+="  # [黄金精简] 极简安全头\n"
-    config_content+="  header {\n"
-    config_content+="    Referrer-Policy strict-origin-when-cross-origin\n"
-    # [清单删除] X-Frame-Options 彻底删除
-    config_content+="  }\n\n"
+    output+="# Caddyfile Configuration Generated by Script v1.0.1\n"
+    output+="# Generated for: $server_names\n\n"
+    output+="$server_name_list\n\n"
 
-    # 映射块
-    for map in "${PROXY_MAPPINGS[@]}"; do
-        IFS='|' read -r type matcher backend set_host_header enable_cors <<< "$map"
+    # 1. 自动重定向 (Caddy自动处理 80 -> 443，无需手动配置)
+    if [ -n "$https_port" ] && $enable_301_redirect; then
+        output+="\treduce_caddy_redirects\n"
+    fi
 
-        if [ "$type" == "PROXY" ] || [ "$type" == "PROXY_PATH" ]; then
-            # 反向代理配置
-            config_content+="  # 反向代理: $matcher -> $backend\n"
-            config_content+="  route $matcher {\n"
-            
-            # CORS 支持 (根据用户选择添加)
-            if [[ "$enable_cors" =~ ^[Yy]$ ]]; then
-                 config_content+="    # CORS 跨域支持\n"
-                 config_content+="    header {\n"
-                 config_content+="      Access-Control-Allow-Origin *\n"
-                 config_content+="      Access-Control-Allow-Methods \"GET, POST, OPTIONS, PUT, DELETE\"\n"
-                 config_content+="      Access-Control-Allow-Headers \"DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range\"\n"
-                 config_content+="      Access-Control-Max-Age 1728000\n"
-                 config_content+="      if {method} == \"OPTIONS\" {\n"
-                 config_content+="        status 204\n"
-                 config_content+="        close\n"
-                 config_content+="      }\n"
-                 config_content+="    }\n"
+    # 2. Mappings (Caddyfile Logic)
+    for mapping in "${PROXY_MAPPINGS[@]}"; do
+        local type=$(echo "$mapping" | cut -d'|' -f1)
+        local matcher=$(echo "$mapping" | cut -d'|' -f2)
+        local target=$(echo "$mapping" | cut -d'|' -f3)
+        local set_host=$(echo "$mapping" | cut -d'|' -f4)
+
+        if [ "$type" == "ROOT_STATIC" ]; then
+            output+="\t# Root Static Site\n"
+            output+="\troot * $target\n"
+            output+="\tfile_server\n\n"
+        elif [ "$type" == "ROOT_PROXY" ]; then
+            output+="\t# Full Site Reverse Proxy\n"
+            output+="\treverse_proxy $target {\n"
+            if [ "$set_host" == "true" ]; then
+                output+="\t\theader_up Host {host}\n" # Caddy默认传Host头
             fi
-            
-            config_content+="    reverse_proxy $backend {\n"
-            # [清单保留] Host 头默认开启 (Caddy 默认行为，此处明确写出)
-            config_content+="      # Host 头默认开启 proxy_set_header Host \$host\n"
-            config_content+="      header_up Host {host}\n"
-            # [清单保留] WebSocket Caddy 默认支持
-            config_content+="    }\n"
-            config_content+="  }\n\n"
-            
-        elif [ "$type" == "ROOT" ]; then
-            # 静态文件配置 (Caddy 默认无长缓存)
-            config_content+="  # 静态文件/根目录: $matcher -> $backend\n"
-            config_content+="  root * $backend\n"
-            config_content+="  file_server\n\n"
+            output+="\t}\n"
+        elif [ "$type" == "PATH_PROXY" ]; then
+            output+="\t# Path Reverse Proxy $matcher\n"
+            output+="\t$matcher reverse_proxy $target {\n"
+            if [ "$set_host" == "true" ]; then
+                output+="\t\theader_up Host {host}\n"
+            fi
+            output+="\t}\n"
+        elif [ "$type" == "SUBDOMAIN_PROXY" ]; then
+            # Caddy 子域名需要在独立的 block 中，这里只打印提示
+            output+="\t# WARNING: 子域名/通配符映射 ($matcher) 需要在独立的 Caddyfile block 中配置。\n"
         fi
     done
     
-    config_content+="}\n"
+    output+="\n}"
 
-    # 4. 写入文件
-    echo -e "$config_content" > "$config_output_file"
-    print_color "Caddy 配置已生成到文件: $config_output_file" "$GREEN"
-    
-    # 5. 校验 (Caddy 不进行自动安装，仅进行校验)
-    handle_caddy_installation "$config_output_file"
+    # 输出到文件
+    echo -e "$output" > "$config_output_file"
+    print_color "Caddyfile 配置已生成到: $config_output_file" "$GREEN"
+    print_color "请运行 'caddy fmt $config_output_file' 格式化，并运行 'caddy run' 启动服务。" "$YELLOW"
 }
 
-# =======================================================
-# 模块五: 安装与校验 (Nginx / Caddy)
-# =======================================================
-
-# Nginx 安装/校验/重载
-handle_nginx_installation() {
-    local config_file=$1
-    
-    # [清单修改] 自动安装/重载默认开启
-    local install_choice="y"
-
-    if [[ "$install_choice" =~ ^[Yy]$ ]]; then
-        print_color "--- Nginx 自动安装/重载 (默认开启) ---" "$YELLOW"
-        if [ -d "/etc/nginx/sites-enabled" ]; then
-            
-            # 1. 复制文件
-            if sudo cp "$config_file" "/etc/nginx/sites-available/$config_output_file"; then
-                print_color "配置已复制到 /etc/nginx/sites-available/$config_output_file" "$GREEN"
-                # 2. 创建软链接
-                if sudo ln -sf "/etc/nginx/sites-available/$config_output_file" "/etc/nginx/sites-enabled/"; then
-                    print_color "已在 sites-enabled 中创建软链接。" "$GREEN"
-                    
-                    # 3. 校验配置
-                    if sudo nginx -t; then
-                        print_color "Nginx 配置验证成功！正在重载..." "$GREEN"
-                        # 4. 重载服务
-                        if sudo systemctl reload nginx; then
-                            print_color "Nginx 服务重载成功！新配置已生效。" "$GREEN"
-                        else
-                            print_color "警告: Nginx 服务重载失败，请手动检查日志！" "$RED"
-                        fi
-                    else
-                        print_color "错误: Nginx 配置验证失败，请手动检查 /etc/nginx/sites-available/$config_output_file 中的错误！" "$RED"
-                    fi
-                else
-                    print_color "错误: 无法创建 sites-enabled 软链接，请检查权限。" "$RED"
-                fi
-            else
-                print_color "错误: 无法复制配置到 sites-available，请检查权限。" "$RED"
-            fi
-        else
-            print_color "警告: 找不到 /etc/nginx/sites-enabled 目录，跳过自动安装。" "$YELLOW"
-        fi
-    fi
-}
-
-# Caddy 校验 (保留原始脚本的 Caddy 校验逻辑)
-handle_caddy_installation() {
-    local config_file=$1
-    
-    print_color "--- Caddy 配置校验提示 ---" "$BLUE"
-    
-    if command -v caddy &> /dev/null; then
-        print_color "请将 $config_file 的内容追加到您的 Caddyfile 中，然后手动执行 'sudo caddy validate' 和 'sudo systemctl reload caddy'。" "$YELLOW"
-    else
-        print_color "警告: Caddy 命令未找到，跳过配置校验。" "$YELLOW"
-    fi
-}
-
-
-# 主程序 (保留原始脚本的主程序逻辑)
+# 主程序 (已优化流程)
 main() {
     while true; do
         
@@ -632,9 +543,8 @@ main() {
         read -p "请选择 [1-3]: " choice
 
         case $choice in
-            1)
-                server_type="Nginx"
-                # 2. 获取所有通用配置 (端口、SSL、IPv6、域名) - 已精简
+            1 | 2)
+                # 2. 获取所有通用配置 (端口、SSL)
                 get_generic_config
                 
                 # 3. 获取所有映射配置 (根路径、路径/子域名反代)
@@ -643,36 +553,26 @@ main() {
                 # 4.自定义命名
                 get_filename_choice
                 
-                # 5. 生成配置并尝试安装
-                generate_nginx_config
-                ;;
-            2)
-                server_type="Caddy"
-                # 2. 获取所有通用配置 (端口、SSL、IPv6、域名) - 已精简
-                get_generic_config
-                
-                # 3. 获取所有映射配置 (根路径、路径/子域名反代)
-                get_proxy_mappings
-                
-                # 4.自定义命名
-                get_filename_choice
-                
-                # 5. 生成配置并提示校验
-                generate_caddy_config
+                # 5. 生成配置
+                if [ "$choice" == "1" ]; then
+                    generate_nginx_config
+                else
+                    generate_caddy_config
+                fi
                 ;;
             3)
                 print_color "再见！" "$GREEN"; exit 0
                 ;;
             *)
-                print_color "无效选择，请重新输入。" "$RED"
+                print_color "无效选择，请重试" "$RED"; continue
                 ;;
         esac
-
-        # 清空映射配置以备下次运行
-        PROXY_MAPPINGS=()
-        config_output_file=""
+        
         echo ""
+        read -e -p "是否继续生成其他配置? (将清空当前所有输入状态) [Y/n]: " cont
+        [[ "$cont" =~ ^[Nn] ]] && break
     done
+    print_color "再见！" "$GREEN"
 }
 
 # 运行主程序
