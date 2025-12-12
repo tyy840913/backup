@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =======================================================
-# Web服务器配置生成器 (v3.1 高级映射完整修复版)
+# Web服务器配置生成器 (v3.3 Nginx/Caddy 官方实践优化版)
 # =======================================================
 
 # 颜色定义
@@ -14,7 +14,6 @@ NC='\033[0m' # No Color
 # 全局变量
 declare -a PROXY_MAPPINGS 
 # 存储映射，格式: TYPE|MATCHER|BACKEND_URL/ROOT_PATH|SET_HOST_BOOL
-# TYPE: ROOT_STATIC, ROOT_PROXY, PATH_PROXY, SUBDOMAIN_PROXY
 
 # 打印带颜色的消息
 print_color() {
@@ -24,7 +23,7 @@ print_color() {
 # 显示标题
 print_title() {
     echo "=========================================="
-    echo "    Web服务器配置生成器 (v3.1 高级映射)"
+    echo "    Web服务器配置生成器 (v3.3 官方实践)"
     echo "=========================================="
     echo ""
 }
@@ -118,19 +117,16 @@ get_backend_info() {
             backend_host=$(echo "$backend_input" | cut -d: -f1)
             backend_port=$(echo "$backend_input" | cut -d: -f2)
         else
-            # 如果没有端口，默认80，但通常IP或域名反代会带端口
             backend_host="$backend_input"
             backend_port="80"
         fi
         
         # 4. 验证与协议选择
         if validate_ip "$backend_host" || [ "$backend_host" == "localhost" ]; then
-            # 如果是 IP 地址，默认使用 HTTP (通常是内网或本地服务)
             backend_url="http://${backend_host}:${backend_port}"
             print_color "检测到IP地址，使用HTTP协议: $backend_url" "$YELLOW"
             break
         elif validate_domain "$backend_host"; then
-            # 如果是域名，询问协议
             echo "检测到域名，请选择后端协议:"
             echo "1. HTTP (默认)"
             echo "2. HTTPS"
@@ -289,7 +285,7 @@ get_proxy_mappings() {
         fi
     done
     
-    # 2. 循环添加其他映射 (修复后的菜单循环)
+    # 2. 循环添加其他映射
     while true; do
         echo ""
         print_color "=== 添加额外的映射 ===" "$BLUE"
@@ -354,14 +350,15 @@ generate_nginx_config() {
     echo "# Nginx配置文件 - 生成于 $(date)" > "$config_file"
     echo "# 主域名: $server_names" >> "$config_file"
     echo "" >> "$config_file"
-    
-    # --- 1. 定义所有要生成的 server_name 列表 ---
+
+    # --- 1. 定义所有要生成的 server_name 列表并收集所有域名 ---
     declare -a all_nginx_server_blocks
+    local all_server_names="$server_names"
     
     # a. 添加主域名块 (包括所有主域名)
     all_nginx_server_blocks+=("MAIN|$server_names")
     
-    # b. 添加子域名块
+    # b. 添加子域名块并收集所有域名
     for mapping in "${PROXY_MAPPINGS[@]}"; do
         IFS='|' read -r type matcher backend_url set_host <<< "$mapping"
         if [ "$type" == "SUBDOMAIN_PROXY" ]; then
@@ -369,35 +366,63 @@ generate_nginx_config() {
             for domain in $server_names; do
                 local full_sub_domain="${matcher}.${domain}"
                 sub_server_names+=" ${full_sub_domain}"
+                all_server_names+=" ${full_sub_domain}"
             done
             all_nginx_server_blocks+=("SUB|$sub_server_names")
         fi
     done
+
+    # --- 2. 定义通用 SSL/安全配置块 (Shell Variable) ---
+    COMMON_SSL_CONFIG=""
+    if [ -n "$https_port" ]; then
+        COMMON_SSL_CONFIG+="\n    # SSL/TLS配置 (通用安全和性能优化 - 遵循官方最佳实践)\n"
+        COMMON_SSL_CONFIG+="    ssl_certificate $ssl_cert;\n"
+        COMMON_SSL_CONFIG+="    ssl_certificate_key $ssl_key;\n"
+        
+        # 性能优化: SSL会话缓存
+        COMMON_SSL_CONFIG+="    ssl_session_timeout 1d;\n"
+        COMMON_SSL_CONFIG+="    ssl_session_cache shared:SSL:10m; # 10MB 大约可存储 40,000 个会话\n"
+        
+        COMMON_SSL_CONFIG+="    ssl_protocols TLSv1.2 TLSv1.3;\n"
+        
+        if [ "$strong_security" = true ]; then
+            # 官方推荐的现代高安全性密码套件
+            COMMON_SSL_CONFIG+="    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';\n"
+            COMMON_SSL_CONFIG+="    ssl_prefer_server_ciphers off; # 推荐使用客户端的现代密码顺序\n"
+        else
+            COMMON_SSL_CONFIG+="    ssl_ciphers HIGH:!aNULL:!MD5;\n"
+        fi
+        
+        [ "$enable_hsts" = true ] && COMMON_SSL_CONFIG+="    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always; # HSTS\n"
+        [ "$enable_ocsp" = true ] && COMMON_SSL_CONFIG+="    ssl_stapling on; ssl_stapling_verify on; resolver 8.8.8.8 8.8.4.4 valid=300s; resolver_timeout 5s; # OCSP Stapling\n"
+    fi
     
-    # --- 2. 循环生成 server block ---
+    # --- 3. 生成 CONSOLIDATED HTTP 重定向块 (合并 80 端口监听) ---
+    if [ -n "$http_port" ] && [ "$enable_301_redirect" = true ] && [ -n "$https_port" ]; then
+        echo "server {" >> "$config_file"
+        echo "    # 统一将所有域名 (主域名和子域名) 从 HTTP 重定向到 HTTPS" >> "$config_file"
+        echo "    listen $http_port;" >> "$config_file"
+        echo "    listen [::]:$http_port;" >> "$config_file"
+        echo "    server_name $all_server_names;" >> "$config_file"
+        echo "    return 301 https://\$host\$request_uri;" >> "$config_file"
+        echo "}" >> "$config_file"
+        echo "" >> "$config_file"
+    fi
+    
+    # --- 4. 循环生成 HTTPS/HTTP 主配置块 (按 server_name 划分) ---
     
     for block_info in "${all_nginx_server_blocks[@]}"; do
         IFS='|' read -r block_type block_server_names <<< "$block_info"
         
-        # --- HTTP 重定向块 ---
-        if [ -n "$http_port" ] && [ "$enable_301_redirect" = true ] && [ -n "$https_port" ]; then
-            echo "server {" >> "$config_file"
-            echo "    listen $http_port;" >> "$config_file"
-            echo "    listen [::]:$http_port;" >> "$config_file"
-            echo "    server_name $block_server_names;" >> "$config_file"
-            echo "    return 301 https://\$host\$request_uri;" >> "$config_file"
-            echo "}" >> "$config_file"
-            echo "" >> "$config_file"
-        fi
-        
-        # --- 主配置块 (HTTPS/HTTP) ---
         echo "server {" >> "$config_file"
         
         if [ -n "$https_port" ]; then
+            echo "    # HTTPS/HTTP2 监听" >> "$config_file"
             echo "    listen ${https_port} ssl http2;" >> "$config_file"
             echo "    listen [::]:${https_port} ssl http2;" >> "$config_file"
             [ "$need_497" = true ] && echo "    error_page 497 https://\$host:${https_port}\$request_uri;" >> "$config_file"
         elif [ -n "$http_port" ]; then
+            echo "    # HTTP 监听 (非标准模式)" >> "$config_file"
             echo "    listen $http_port;" >> "$config_file"
             echo "    listen [::]:$http_port;" >> "$config_file"
         fi
@@ -405,31 +430,21 @@ generate_nginx_config() {
         echo "    server_name $block_server_names;" >> "$config_file"
         echo "" >> "$config_file"
         
-        # SSL配置 (仅HTTPS)
+        # 插入通用 SSL 配置
         if [ -n "$https_port" ]; then
-            echo "    # SSL/TLS配置" >> "$config_file"
-            echo "    ssl_certificate $ssl_cert;" >> "$config_file"
-            echo "    ssl_certificate_key $ssl_key;" >> "$config_file"
-            echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
-            if [ "$strong_security" = true ]; then
-                 echo "    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;" >> "$config_file"
-                 echo "    ssl_prefer_server_ciphers off;" >> "$config_file"
-            else
-                 echo "    ssl_ciphers HIGH:!aNULL:!MD5;" >> "$config_file"
-            fi
-            
-            [ "$enable_hsts" = true ] && echo "    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" >> "$config_file"
-            [ "$enable_ocsp" = true ] && echo "    ssl_stapling on; ssl_stapling_verify on; resolver 8.8.8.8 8.8.4.4 valid=300s; resolver_timeout 5s;" >> "$config_file"
-            echo "" >> "$config_file"
+            echo -e "$COMMON_SSL_CONFIG" >> "$config_file"
         fi
         
-        # 通用头
+        # 通用头/性能
+        echo "    # 通用安全/性能配置" >> "$config_file"
         echo "    add_header X-Frame-Options \"SAMEORIGIN\" always;" >> "$config_file"
-        
-        # 性能优化 
         if [ "$enable_gzip" = true ]; then
-            echo "    gzip on; gzip_types text/plain text/css application/json application/javascript text/xml;" >> "$config_file"
+            echo "    gzip on;" >> "$config_file"
+            echo "    gzip_comp_level 5;" >> "$config_file"
+            echo "    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;" >> "$config_file"
+            echo "    gzip_min_length 256;" >> "$config_file"
         fi
+        echo "" >> "$config_file"
         
         # --- Location 映射 ---
         for mapping in "${PROXY_MAPPINGS[@]}"; do
@@ -439,40 +454,46 @@ generate_nginx_config() {
             if [ "$block_type" == "MAIN" ]; then
                 if [ "$type" == "PATH_PROXY" ]; then
                     local set_host=$root_or_set_host
+                    
+                    # Nginx最佳实践：location以斜杠结尾，proxy_pass也以斜杠结尾，实现路径替换
                     echo "    location ${matcher}/ {" >> "$config_file"
-                    echo "        proxy_pass $backend_url${matcher}/;" >> "$config_file"
+                    echo "        # 路径反向代理: ${matcher}/ -> ${backend_url}/ (注意：Nginx会自动剥离 /api/ 转发给后端)" >> "$config_file"
+                    echo "        proxy_pass $backend_url/;" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
                     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
-                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
+                    echo "        # 适用于WebSocket连接\n        proxy_set_header Upgrade \$http_upgrade;\n        proxy_set_header Connection \"upgrade\";" >> "$config_file"
                     echo "    }" >> "$config_file"
 
                 elif [ "$type" == "ROOT_PROXY" ]; then
                     local set_host=$root_or_set_host
                     echo "    location / {" >> "$config_file"
+                    echo "        # 根路径全站反向代理" >> "$config_file"
                     echo "        proxy_pass $backend_url;" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
                     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
-                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
+                    echo "        # 适用于WebSocket连接\n        proxy_set_header Upgrade \$http_upgrade;\n        proxy_set_header Connection \"upgrade\";" >> "$config_file"
                     echo "    }" >> "$config_file"
 
                 elif [ "$type" == "ROOT_STATIC" ]; then
                     local root_path=$root_or_set_host
+                    echo "    # 静态网站根目录配置" >> "$config_file"
                     echo "    root $root_path;" >> "$config_file"
                     echo "    index index.html index.htm;" >> "$config_file"
                     echo "" >> "$config_file"
+                    
+                    # 根路径静态文件服务
                     echo "    location / {" >> "$config_file"
                     echo "        try_files \$uri \$uri/ =404;" >> "$config_file"
                     echo "    }" >> "$config_file"
                     
                     if [ "$enable_static_cache" = true ]; then
-                        echo "    # 静态文件长期缓存" >> "$config_file"
-                        echo "    location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|eot|ttf|otf|svg)$ {" >> "$config_file"
+                        echo "    # 静态文件长期缓存 (根据官方推荐增加更多类型，并使用 try_files 确保文件存在)" >> "$config_file"
+                        echo "    location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|eot|ttf|otf|svg|mp4|webm|pdf)$ {" >> "$config_file"
                         echo "        expires 1y;" >> "$config_file"
                         echo "        add_header Cache-Control \"public, immutable\";" >> "$config_file"
+                        echo "        try_files \$uri =404;" >> "$config_file"
                         echo "    }" >> "$config_file"
                     fi
                 fi
@@ -483,13 +504,13 @@ generate_nginx_config() {
                  local sub_prefix=$(echo "$block_server_names" | awk '{print $1}' | cut -d. -f1) 
                  if [ "$sub_prefix" == "$matcher" ] || [ "$matcher" == "*" ]; then
                     local set_host=$root_or_set_host
-                    echo "    location / {" >> "$config_file" # 子域名块默认代理整个 /
+                    echo "    location / {" >> "$config_file" 
+                    echo "        # 子域名全站反向代理" >> "$config_file"
                     echo "        proxy_pass $backend_url;" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
                     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
-                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
+                    echo "        # 适用于WebSocket连接\n        proxy_set_header Upgrade \$http_upgrade;\n        proxy_set_header Connection \"upgrade\";" >> "$config_file"
                     echo "    }" >> "$config_file"
                     break 
                  fi
@@ -509,6 +530,7 @@ generate_caddy_config() {
     config_file="caddy_${server_names%% *}_$(date +%Y%m%d_%H%M%S).caddyfile"
     
     echo "# Caddy配置文件 - 生成于 $(date)" > "$config_file"
+    echo "# Caddy配置遵循其官方最佳实践，自动处理HTTPS和HTTP重定向。" >> "$config_file"
     echo "" >> "$config_file"
     
     # --- 1. 定义所有要生成的 Caddy Block ---
@@ -538,18 +560,22 @@ generate_caddy_config() {
         
         # 强制HTTPS重定向 (Caddy自动处理，只需配置TLS)
         if [ -n "$https_port" ]; then
-            echo "    # Caddy会自动处理 80 -> 443 的重定向和证书签发" >> "$config_file"
+            echo "    # Caddy会自动处理 80 -> 443 的重定向和证书签发 (ACME/Let's Encrypt)" >> "$config_file"
             
+            # 如果使用自定义证书路径，则配置tls
             if [ -n "$ssl_cert" ] && [ "$ssl_cert" != "/etc/ssl/certs/fullchain.pem" ]; then
                 echo "    tls $ssl_cert $ssl_key" >> "$config_file"
             fi
         fi
         
-        # 通用头
-        echo "    header X-Frame-Options SAMEORIGIN" >> "$config_file"
-        [ "$enable_hsts" = true ] && echo "    header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\"" >> "$config_file"
+        # 通用头 (Caddy最佳实践)
+        echo "    header {" >> "$config_file"
+        echo "        X-Frame-Options SAMEORIGIN" >> "$config_file"
+        [ "$enable_hsts" = true ] && echo "        Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\"" >> "$config_file"
+        echo "        # Caddy默认启用X-Content-Type-Options: nosniff和Referrer-Policy: same-origin" >> "$config_file"
+        echo "    }" >> "$config_file"
         
-        # 性能
+        # 性能 (Caddy默认支持 Gzip 和 Zstd)
         [ "$enable_gzip" = true ] && echo "    encode gzip zstd" >> "$config_file"
 
         # --- 映射列表 ---
@@ -562,17 +588,23 @@ generate_caddy_config() {
                     local root_path=$root_or_set_host
                     echo "    root * $root_path" >> "$config_file"
                     echo "    file_server" >> "$config_file"
-                    [ "$enable_static_cache" = true ] && echo "    header * Cache-Control \"public, max-age=31536000, immutable\"" >> "$config_file"
+                    
+                    # Caddy的静态文件缓存
+                    if [ "$enable_static_cache" = true ]; then
+                        echo "    # 静态文件长期缓存" >> "$config_file"
+                        echo "    header /\.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|eot|ttf|otf|svg|mp4|webm|pdf)$ Cache-Control \"public, max-age=31536000, immutable\"" >> "$config_file"
+                    fi
                     
                 # 全站代理或路径代理
                 elif [ "$type" == "ROOT_PROXY" ] || [ "$type" == "PATH_PROXY" ]; then
                     local set_host=$root_or_set_host
                     local path_match=$matcher
                     
-                    # Caddy的路径匹配默认是前缀匹配，PATH_PROXY使用 * 确保代理路径的所有子路径
+                    # Caddy reverse_proxy 默认会传递所有必要的代理头
+                    echo "    # 反向代理: $path_match* 到 $backend_url" >> "$config_file"
                     echo "    reverse_proxy $path_match* $backend_url {" >> "$config_file"
-                    [ "$set_host" = "true" ] && echo "        header_up Host {host}" >> "$config_file"
-                    echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
+                    [ "$set_host" = "true" ] && echo "        header_up Host {host} # 覆盖默认的后端Host" >> "$config_file"
+                    echo "        # Caddy默认自动处理 X-Forwarded-* 和 WebSocket 等头部" >> "$config_file"
                     echo "    }" >> "$config_file"
                 fi
             
@@ -580,9 +612,9 @@ generate_caddy_config() {
                  local sub_domain=$(echo "$block_server_names" | awk '{print $1}')
                  if [[ "$sub_domain" == *"$matcher".* ]]; then
                     local set_host=$root_or_set_host
+                    echo "    # 子域名全站反向代理到 $backend_url" >> "$config_file"
                     echo "    reverse_proxy $backend_url {" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        header_up Host {host}" >> "$config_file"
-                    echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
                     echo "    }" >> "$config_file"
                     break
                  fi
@@ -643,4 +675,3 @@ main() {
 }
 
 main
-
