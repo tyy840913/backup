@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =======================================================
-# Web服务器配置生成器 (v4.0 修复IPv6和反代地址填充)
+# Web服务器配置生成器 (v5.0 修复IPv6/反代地址/优化流程)
 # =======================================================
 
 # 颜色定义
@@ -23,12 +23,12 @@ print_color() {
 # 显示标题
 print_title() {
     echo "=========================================="
-    echo " Web服务器配置生成器 (v4.0 模块化优化版)"
+    echo " Web服务器配置生成器 (v5.0 流程优化版)"
     echo "=========================================="
     echo ""
 }
 
-# 显示菜单
+# 显示菜单 (用于选择 Nginx 或 Caddy)
 show_menu() {
     print_title
     echo "请选择要生成的服务器配置:"
@@ -427,7 +427,7 @@ generate_nginx_config() {
         echo "server {" >> "$config_file"
         echo "    # HTTP 重定向到 HTTPS (同时监听 IPv4 和 IPv6)" >> "$config_file"
         echo "    listen $http_port;" >> "$config_file"
-        echo "    listen [::]:$http_port;" >> "$config_file" # 修复: 增加 IPv6 监听
+        echo "    listen [::]:$http_port;" >> "$config_file" 
         echo "    server_name $all_server_names;" >> "$config_file"
         echo "    return 301 https://\$host\$request_uri;" >> "$config_file"
         echo "}" >> "$config_file"
@@ -446,11 +446,11 @@ generate_nginx_config() {
         
         if [ -n "$https_port" ]; then
             echo "    listen ${https_port} ssl http2;" >> "$config_file"
-            echo "    listen [::]:${https_port} ssl http2;" >> "$config_file" # 修复: 增加 IPv6 监听
+            echo "    listen [::]:${https_port} ssl http2;" >> "$config_file" 
             [ "$need_497" = true ] && echo "    error_page 497 https://\$host:${https_port}\$request_uri;" >> "$config_file"
         elif [ -n "$http_port" ]; then
             echo "    listen $http_port;" >> "$config_file"
-            echo "    listen [::]:$http_port;" >> "$config_file" # 修复: 增加 IPv6 监听
+            echo "    listen [::]:$http_port;" >> "$config_file" 
         fi
         
         echo "    server_name $block_server_names;" >> "$config_file"
@@ -474,24 +474,24 @@ generate_nginx_config() {
                     
                     echo "    location ${matcher}/ {" >> "$config_file"
                     echo "        # 路径反向代理: Nginx会自动剥离路径尾部的 '/' 并转发" >> "$config_file"
-                    echo "        proxy_pass $backend_url/;" >> "$config_file" # 修复: 确保后端地址被正确填充
+                    echo "        proxy_pass $backend_url/;" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
                     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file" # 修复: 清除 \n 换行符
-                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file" # 修复: 清除 \n 换行符
+                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file" 
+                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file" 
                     echo "    }" >> "$config_file"
 
                 elif [ "$type" == "ROOT_PROXY" ]; then
                     local set_host=$root_or_set_host
                     echo "    location / {" >> "$config_file"
                     echo "        # 根路径全站反向代理" >> "$config_file"
-                    echo "        proxy_pass $backend_url;" >> "$config_file" # 修复: 确保后端地址被正确填充
+                    echo "        proxy_pass $backend_url;" >> "$config_file" 
                     [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
                     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file" # 修复: 清除 \n 换行符
-                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file" # 修复: 清除 \n 换行符
+                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file" 
+                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file" 
                     echo "    }" >> "$config_file"
 
                 elif [ "$type" == "ROOT_STATIC" ]; then
@@ -522,12 +522,12 @@ generate_nginx_config() {
                     local set_host=$root_or_set_host
                     echo "    location / {" >> "$config_file" 
                     echo "        # 子域名全站反向代理" >> "$config_file"
-                    echo "        proxy_pass $backend_url;" >> "$config_file" # 修复: 确保后端地址被正确填充
+                    echo "        proxy_pass $backend_url;" >> "$config_file" 
                     [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
                     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file" # 修复: 清除 \n 换行符
-                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file" # 修复: 清除 \n 换行符
+                    echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file" 
+                    echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file" 
                     echo "    }" >> "$config_file"
                     break 
                  fi
@@ -642,25 +642,35 @@ generate_caddy_config() {
     fi
 }
 
-# 主程序 (保持不变)
+# 主程序 (已优化流程)
 main() {
     while true; do
         
-        # 1. 获取所有通用配置 (端口、SSL、安全、性能)
-        get_generic_config
-        
-        # 2. 获取所有映射配置 (根路径、路径/子域名反代)
-        get_proxy_mappings
-        
-        # 3. 服务器类型选择与生成
+        # 1. 服务器类型选择 (Nginx/Caddy) - 放在最前面
         show_menu
         read -p "请选择 [1-3]: " choice
-        
+
         case $choice in
-            1) generate_nginx_config ;;
-            2) generate_caddy_config ;;
-            3) print_color "再见！" "$GREEN"; exit 0 ;;
-            *) print_color "无效选择，请重试" "$RED"; continue ;;
+            1 | 2)
+                # 2. 获取所有通用配置 (端口、SSL、安全、性能)
+                get_generic_config
+                
+                # 3. 获取所有映射配置 (根路径、路径/子域名反代)
+                get_proxy_mappings
+                
+                # 4. 生成配置
+                if [ "$choice" == "1" ]; then
+                    generate_nginx_config
+                else
+                    generate_caddy_config
+                fi
+                ;;
+            3)
+                print_color "再见！" "$GREEN"; exit 0
+                ;;
+            *)
+                print_color "无效选择，请重试" "$RED"; continue
+                ;;
         esac
         
         echo ""
