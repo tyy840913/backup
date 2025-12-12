@@ -42,7 +42,7 @@ print_color() {
 # 显示标题
 print_title() {
     echo "========================================="
-    echo "    Web服务器配置生成器（V2.5 最终版）"
+    echo "    Web服务器配置生成器（V2.6 最终版）"
     echo "========================================="
     echo ""
 }
@@ -82,6 +82,24 @@ normalize_backend_url() {
     else
         echo "$url"
     fi
+}
+
+# 路径标准化：确保路径有前导斜杠，除非是通配符路径，否则确保有尾部斜杠
+normalize_proxy_path() {
+    local path=$1
+    
+    # 1. 确保有前导斜杠
+    if [[ ! "$path" =~ ^/ ]]; then
+        path="/$path"
+    fi
+
+    # 2. 确保有尾部斜杠，除非路径末尾是通配符 '*'
+    # 匹配末尾是否为 '/' 且末尾不是 '*'
+    if [[ ! "$path" =~ /$ && ! "$path" =~ \*$ ]]; then
+        path="${path}/"
+    fi
+
+    echo "$path"
 }
 
 # --- 获取工作模式和根路径 ---
@@ -174,17 +192,19 @@ get_work_mode() {
 get_path_based_proxies() {
     print_color "--- 添加路径反向代理规则 ---" "$CYAN"
 
-    local proxy_path
+    local raw_proxy_path
+    local proxy_path # This will be the normalized path
     local raw_backend_url
     local backend_url
     local proxy_set_host="true"
     local set_host_choice
 
     while true; do
-        read -e -p "请输入要代理的路径 (例如: /api/ 或 /): " proxy_path
-        if [[ -z "$proxy_path" ]]; then
+        read -e -p "请输入要代理的路径 (例如: api, /admin, 或带通配符 /data/*): " raw_proxy_path
+        if [[ -z "$raw_proxy_path" ]]; then
             print_color "路径不能为空" "$RED"
         else
+            proxy_path=$(normalize_proxy_path "$raw_proxy_path") # Call the new normalization function
             break
         fi
     done
@@ -446,14 +466,10 @@ generate_nginx_config() {
         echo "    listen $listen_port ssl http2;" >> "$config_file"
         echo "    server_name $server_names;" >> "$config_file"
 
-        # NEW: 497 错误重定向 (仅在非标准 HTTPS 端口下需要, 标准443端口不使用)
+        # NEW: 497 错误重定向 (仅在非标准 HTTPS 端口下需要, 使用 =301 进行一步跳转)
         if [ "$listen_port" -ne 443 ]; then
-            echo "    # Nginx 497 错误强制重定向 (非标准 SSL 端口的 HTTP 请求强制跳转到 HTTPS)" >> "$config_file"
-            echo "    error_page 497 /497_to_https;" >> "$config_file"
-            echo "    location /497_to_https {" >> "$config_file"
-            echo "        # 使用 301 永久重定向到 HTTPS" >> "$config_file"
-            echo "        return 301 https://\$host:$listen_port\$request_uri;" >> "$config_file"
-            echo "    }" >> "$config_file"
+            echo "    # Nginx 497 错误强制重定向 (非标准 SSL 端口的 HTTP 请求强制 301 跳转到 HTTPS)" >> "$config_file"
+            echo "    error_page 497 =301 https://\$host:$listen_port\$request_uri;" >> "$config_file"
         fi
         
         # 证书配置 (支持自签证书，路径允许为空，供用户手动填写)
@@ -654,7 +670,7 @@ generate_caddy_config() {
         echo "    # --- SSL 证书配置结束 ---" >> "$config_file"
 
         # 如果是标准端口 443，Caddy 会自动设置 80 -> 443 重定向。
-        # 如果是非标准端口，Caddy 会自动处理 HTTP 到 HTTPS 的跳转（类似 Nginx 497）。
+        # 如果是非标准端口，Caddy 会自动处理 HTTP 到 HTTPS 的跳转。
     fi
 
     # Gzip 配置 (Caddy 默认使用 encode gzip zstd)
@@ -681,6 +697,7 @@ generate_caddy_config() {
         for rule in "${PROXY_RULES[@]}"; do
             IFS='|' read -r proxy_path backend_url proxy_set_host <<< "$rule"
             echo "    # 反向代理: $proxy_path -> $backend_url" >> "$config_file"
+            # Caddy 的 route 匹配规则更灵活，但路径末尾的斜杠处理与 Nginx 略有不同，这里使用最常用的匹配方式
             echo "    route \"$proxy_path\"* {" >> "$config_file"
             echo "        reverse_proxy \"$backend_url\"" >> "$config_file"
             
