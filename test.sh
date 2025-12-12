@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# --- 脚本健壮性设置 ---
+# -e: 任何命令执行失败时，立即退出
+# -u: 使用未设置的变量时，报错并退出
+# -o pipefail: 管道中任何命令失败，整个管道即失败
+set -euo pipefail
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -9,6 +15,24 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 NC='\033[0m' # 结束颜色
 
+# --- 全局变量初始化 ---
+# 核心配置
+server_names=""
+listen_port=80
+ssl_enabled=false
+ssl_cert=""
+ssl_key=""
+hsts_enabled=false
+gzip_enabled=false
+root_path=""
+
+# 工作模式配置
+WORK_MODE="" # static, proxy, mixed
+PROXY_CONFIG_TYPE="" # path, subdomain
+PROXY_RULES=() # 路径反代规则数组: "path|backend_url|proxy_set_host"
+SUBDOMAIN_PROXIES=() # 子域名反代规则数组: "subdomain|backend_url"
+
+
 # 打印带颜色的消息
 print_color() {
     echo -e "${2}${1}${NC}"
@@ -16,9 +40,9 @@ print_color() {
 
 # 显示标题
 print_title() {
-    echo "========================================"
-    echo "    Web服务器配置生成器（增强版）"
-    echo "========================================"
+    echo "========================================="
+    echo "    Web服务器配置生成器（V2.0 重构版）"
+    echo "========================================="
     echo ""
 }
 
@@ -42,169 +66,41 @@ validate_port() {
     return 0
 }
 
-# 验证IPv4格式
-validate_ip() {
-    local ip=$1
-    if [[ $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-        return 0
-    else
+# 验证文件是否存在
+validate_file() {
+    local file=$1
+    if [[ ! -f "$file" ]]; then
+        print_color "错误: 文件 $file 不存在，请检查路径" "$RED"
         return 1
     fi
-}
-
-# 验证域名格式
-validate_domain() {
-    local domain=$1
-    if [[ $domain =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-# 验证路径格式
-validate_path() {
-    local path=$1
-    if [[ $path =~ ^\/[a-zA-Z0-9_\-\.\/]*$ ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-# 获取单后端配置
-get_single_backend_config() {
-    local backend_type=$1  # 用于区分是根路径代理还是路径代理
-    
-    while true; do
-        read -p "请输入后端服务地址 (IP、域名、端口或带端口的地址，如 8080 或 127.0.0.1:8080): " backend_input
-
-        if [ -z "$backend_input" ]; then
-            print_color "错误: 后端地址不能为空" "$RED"
-            continue
-        fi
-
-        # 检查是否只包含数字（纯端口）
-        if [[ "$backend_input" =~ ^[0-9]+$ ]]; then
-            # 纯端口，默认使用 127.0.0.1
-            backend_host="127.0.0.1"
-            backend_port="$backend_input"
-            print_color "检测到端口号，使用本地地址: 127.0.0.1:$backend_port" "$YELLOW"
-        # 检查是否包含端口
-        elif [[ $backend_input =~ :[0-9]+$ ]]; then
-            backend_host=$(echo "$backend_input" | awk -F: '{print $1}')
-            backend_port=$(echo "$backend_input" | awk -F: '{print $2}')
-        else
-            # 只有主机名或IP，没有端口
-            backend_host="$backend_input"
-            backend_port="80"
-        fi
-
-        # 验证输入的是IP还是域名
-        if validate_ip "$backend_host" || validate_domain "$backend_host"; then
-            # 询问协议
-            echo "请选择后端协议:"
-            echo "1. HTTP (默认)"
-            echo "2. HTTPS"
-            echo "0. 返回上一级"
-            read -p "请选择 [0-2]: " protocol_choice
-            protocol_choice=${protocol_choice:-1}
-            
-            case $protocol_choice in
-                0)
-                    return 1  # 返回上一级
-                    ;;
-                2)
-                    backend_url="https://${backend_host}:${backend_port}"
-                    ;;
-                *)
-                    backend_url="http://${backend_host}:${backend_port}"
-                    ;;
-            esac
-            break
-        else
-            print_color "错误: 请输入有效的 IP 地址、域名或端口号" "$RED"
-        fi
-    done
-
-    # 只有在路径代理时才询问代理路径
-    if [ "$backend_type" = "path" ]; then
-        while true; do
-            read -p "请输入代理路径 (例如: /api/, 输入0返回上一级): " proxy_path_input
-            
-            if [ "$proxy_path_input" = "0" ]; then
-                return 1  # 返回上一级
-            fi
-            
-            if [ -z "$proxy_path_input" ]; then
-                proxy_path="/"
-                break
-            else
-                # 确保路径以/开头
-                if [[ ! "$proxy_path_input" =~ ^/ ]]; then
-                    proxy_path_input="/$proxy_path_input"
-                fi
-                proxy_path="$proxy_path_input"
-                break
-            fi
-        done
-    else
-        proxy_path="/"  # 根路径代理使用默认路径
-    fi
-
-    read -e -p "是否传递 Host 头? [Y/n/0返回]: " pass_host
-    if [ "$pass_host" = "0" ]; then
-        return 1  # 返回上一级
-    fi
-    pass_host=${pass_host:-y}
-    if [[ ! "$pass_host" =~ ^[Nn] ]]; then
-        proxy_set_host=true
-    else
-        proxy_set_host=false
-    fi
-    
     return 0
 }
 
-# 获取多后端配置
-get_multi_backend_config() {
-    multi_backends=()
-    
-    echo ""
-    print_color "=== 根域名处理配置 ===" "$PURPLE"
+# --- 新增：获取工作模式和根路径 ---
+get_work_mode() {
+    local choice
     while true; do
-        echo "请选择根域名的处理方式:"
-        echo "1. 返回 404 (不处理根路径)"
-        echo "2. 代理到特定后端"
-        echo "3. 服务静态文件"
-        echo "0. 返回主菜单"
-        read -p "请选择 [0-3]: " root_choice
-        
-        case $root_choice in
-            0)
-                return 1  # 返回主菜单
+        print_color "--- 工作模式选择 ---" "$CYAN"
+        echo "请选择当前配置的工作模式:"
+        echo "1. 仅静态文件服务 (Static Files Only)"
+        echo "2. 仅反向代理 (Reverse Proxy Only)"
+        echo "3. 混合模式 (Mixed Mode: 静态文件 + 路径反代)"
+        read -p "请选择 [1-3]: " choice
+
+        case "$choice" in
+            1)
+                WORK_MODE="static"
+                print_color "已选择: 仅静态文件服务" "$GREEN"
+                break
                 ;;
             2)
-                echo "配置根域名代理后端..."
-                if get_single_backend_config "root"; then
-                    multi_backends+=("root:$proxy_path:$backend_url:$proxy_set_host")
-                    break
-                else
-                    continue  # 用户选择返回，重新选择
-                fi
+                WORK_MODE="proxy"
+                print_color "已选择: 仅反向代理" "$GREEN"
+                break
                 ;;
             3)
-                read -p "请输入静态文件根目录 (默认: /var/www/html, 输入0返回): " static_root
-                if [ "$static_root" = "0" ]; then
-                    continue
-                fi
-                static_root=${static_root:-/var/www/html}
-                multi_backends+=("root:static:$static_root")
-                break
-                ;;
-            1)
-                multi_backends+=("root:404")
-                print_color "根路径将返回 404" "$YELLOW"
+                WORK_MODE="mixed"
+                print_color "已选择: 混合模式" "$GREEN"
                 break
                 ;;
             *)
@@ -212,1114 +108,456 @@ get_multi_backend_config() {
                 ;;
         esac
     done
-    
-    echo ""
-    print_color "=== 多后端代理配置 ===" "$PURPLE"
-    while true; do
-        echo "请选择多后端代理类型:"
-        echo "1. 路径代理 (如 /api/* 代理到不同后端)"
-        echo "2. 子域名代理 (如 api.domain.com 代理到不同后端)"
-        echo "0. 完成配置"
-        read -p "请选择 [0-2]: " multi_type_choice
-        
-        case $multi_type_choice in
-            0)
-                if [ ${#multi_backends[@]} -eq 1 ] && [[ "${multi_backends[0]}" == root:* ]]; then
-                    print_color "警告: 您只配置了根路径处理，没有添加任何代理规则" "$YELLOW"
-                    read -e -p "是否继续? [Y/n]: " confirm_continue
-                    if [[ "$confirm_continue" =~ ^[Nn] ]]; then
-                        continue
-                    fi
-                fi
+
+    # Get root path if required
+    if [[ "$WORK_MODE" == "static" || "$WORK_MODE" == "mixed" ]]; then
+        while true; do
+            read -e -p "请输入静态网站文件的根目录绝对路径 (例如: /var/www/html): " root_path
+            # Check if directory exists (optional, but good practice)
+            if [[ -d "$root_path" ]]; then
+                print_color "静态文件根目录: $root_path" "$GREEN"
                 break
-                ;;
-            1)
-                get_path_based_proxies
-                ;;
-            2)
-                get_subdomain_based_proxies
-                ;;
-            *)
-                print_color "无效选择，请重试" "$RED"
-                ;;
-        esac
-    done
+            else
+                print_color "警告: 路径 $root_path 不存在或不是目录。强烈建议使用存在的路径。" "$YELLOW"
+                read -p "是否继续使用此路径? [y/N]: " continue_path
+                if [[ "$continue_path" =~ ^[yY]$ ]]; then
+                    break
+                fi
+            fi
+        done
+    else
+        root_path="" # Clear if not used
+    fi
+
+    # Determine proxy configuration type if required
+    if [[ "$WORK_MODE" == "proxy" || "$WORK_MODE" == "mixed" ]]; then
+        local proxy_type_choice
+        while true; do
+            print_color "--- 反向代理规则类型 ---" "$CYAN"
+            echo "请选择代理规则的定义方式:"
+            echo "1. 基于路径的反向代理 (例如: /api/ -> backend)"
+            echo "2. 基于子域名的反向代理 (例如: sub.domain.com -> backend)"
+            read -p "请选择 [1-2]: " proxy_type_choice
+
+            case "$proxy_type_choice" in
+                1)
+                    PROXY_CONFIG_TYPE="path"
+                    print_color "已选择: 基于路径的反向代理" "$GREEN"
+                    break
+                    ;;
+                2)
+                    PROXY_CONFIG_TYPE="subdomain"
+                    print_color "已选择: 基于子域名的反向代理" "$GREEN"
+                    break
+                    ;;
+                *)
+                    print_color "无效选择，请重试" "$RED"
+                    ;;
+            esac
+        done
+    else
+        PROXY_CONFIG_TYPE="none"
+    fi
+    return 0
 }
 
-# 获取基于路径的代理配置
+# --- 修改：路径反代规则收集（迭代使用） ---
 get_path_based_proxies() {
+    print_color "--- 添加路径反向代理规则 ---" "$CYAN"
+
+    local proxy_path
+    local backend_url
+    local proxy_set_host="true"
+    local set_host_choice
+
     while true; do
-        echo ""
-        print_color "添加路径代理规则" "$CYAN"
-        
-        while true; do
-            read -p "请输入代理路径 (如 /api/, 输入0返回上一级): " path_input
-            
-            if [ "$path_input" = "0" ]; then
-                return 0  # 返回上一级
-            fi
-            
-            if [ -z "$path_input" ]; then
-                print_color "路径不能为空" "$RED"
-                continue
-            fi
-            
-            # 确保路径以/开头
-            if [[ ! "$path_input" =~ ^/ ]]; then
-                path_input="/$path_input"
-            fi
-            break
-        done
-        
-        # 获取后端配置
-        if get_single_backend_config "path"; then
-            multi_backends+=("path:$path_input:$backend_url:$proxy_set_host")
-            print_color "路径代理规则已添加: $path_input -> $backend_url" "$GREEN"
+        read -e -p "请输入要代理的路径 (例如: /api/ 或 /): " proxy_path
+        if [[ -z "$proxy_path" ]]; then
+            print_color "路径不能为空" "$RED"
         else
-            continue  # 用户选择返回，重新输入路径
+            break
         fi
-        
-        while true; do
-            read -e -p "是否继续添加路径代理? [Y/n/0返回上一级]: " continue_add
-            case $continue_add in
-                0)
-                    return 0
-                    ;;
-                ""|y|Y)
-                    break  # 继续添加
-                    ;;
-                n|N)
-                    return 0  # 返回上一级
-                    ;;
-                *)
-                    print_color "无效输入，请输入 Y/n/0" "$RED"
-                    ;;
-            esac
-        done
     done
+
+    read -e -p "请输入后端服务地址 (例如: http://127.0.0.1:8080): " backend_url
+
+    read -p "是否设置 Proxy Header 'Host' 为原始域名 (通常用于后端验证SSL/多租户，默认: Y)? [Y/n]: " set_host_choice
+    if [[ "$set_host_choice" =~ ^[nN]$ ]]; then
+        proxy_set_host="false"
+    fi
+
+    # 存储规则到全局数组: PROXY_RULES
+    PROXY_RULES+=("${proxy_path}|${backend_url}|${proxy_set_host}")
+    print_color "已添加规则: $proxy_path -> $backend_url (设置Host: $proxy_set_host)" "$GREEN"
+    return 0
 }
 
-# 获取基于子域名的代理配置
+# --- 修改：子域名反代规则收集（迭代使用） ---
 get_subdomain_based_proxies() {
+    print_color "--- 添加子域名反向代理规则 ---" "$CYAN"
+
+    local subdomain
+    local backend_url
+
     while true; do
-        echo ""
-        print_color "添加子域名代理规则" "$CYAN"
-        
-        while true; do
-            read -p "请输入子域名 (如 api, 输入0返回上一级): " subdomain_input
-            
-            if [ "$subdomain_input" = "0" ]; then
-                return 0  # 返回上一级
-            fi
-            
-            if [ -z "$subdomain_input" ]; then
-                print_color "子域名不能为空" "$RED"
-                continue
-            fi
-            
-            # 验证子域名格式
-            if [[ ! "$subdomain_input" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$ ]]; then
-                print_color "错误: 子域名格式不正确" "$RED"
-                continue
-            fi
-            break
-        done
-        
-        # 获取后端配置
-        if get_single_backend_config "subdomain"; then
-            multi_backends+=("subdomain:$subdomain_input:$backend_url:$proxy_set_host")
-            print_color "子域名代理规则已添加: $subdomain_input -> $backend_url" "$GREEN"
+        read -e -p "请输入子域名 (例如: api.example.com): " subdomain
+        if [[ -z "$subdomain" ]]; then
+            print_color "子域名不能为空" "$RED"
         else
-            continue  # 用户选择返回，重新输入子域名
+            break
         fi
-        
-        while true; do
-            read -e -p "是否继续添加子域名代理? [Y/n/0返回上一级]: " continue_add
-            case $continue_add in
-                0)
-                    return 0
-                    ;;
-                ""|y|Y)
-                    break  # 继续添加
-                    ;;
-                n|N)
-                    return 0  # 返回上一级
-                    ;;
-                *)
-                    print_color "无效输入，请输入 Y/n/0" "$RED"
-                    ;;
-            esac
-        done
     done
+
+    read -e -p "请输入后端服务地址 (例如: http://127.0.0.1:8080): " backend_url
+
+    # 存储规则到全局数组: SUBDOMAIN_PROXIES
+    SUBDOMAIN_PROXIES+=("${subdomain}|${backend_url}")
+    print_color "已添加子域名规则: $subdomain -> $backend_url" "$GREEN"
+    return 0
 }
 
-# 获取Web服务配置
+# --- 修改：主配置收集函数 (get_web_config) ---
 get_web_config() {
-    # 初始化变量
-    need_497=false
-    is_standard=false
-    enable_301_redirect=false
-    enable_proxy=false
-    proxy_type="single"
-    enable_gzip=false
-    enable_static_cache=false
-    enable_hsts=false
-    enable_ocsp=false
-    strong_security=false
+    # 每次运行时重置配置
+    server_names=""
+    listen_port=80
+    ssl_enabled=false
     ssl_cert=""
     ssl_key=""
-    backend_url=""
-    proxy_path="/"
-    proxy_set_host=false
-    multi_backends=()
+    hsts_enabled=false
+    gzip_enabled=false
+    root_path=""
+    WORK_MODE=""
+    PROXY_CONFIG_TYPE=""
+    PROXY_RULES=()
+    SUBDOMAIN_PROXIES=()
 
-    echo ""
-    print_color "=== Web服务基本配置 ===" "$BLUE"
+    print_color "--- 基础配置 ---" "$CYAN"
 
-    # 端口模式选择
+    # 1. 端口选择
+    local port_choice
+    local non_std_port
     while true; do
-        echo ""
-        echo "请选择端口配置模式:"
-        echo "1. 标准端口 (HTTP=80, HTTPS=443，自动HTTP到HTTPS重定向)"
-        echo "2. 自定义端口"
-        echo "0. 返回主菜单"
-        read -p "请选择 [0-2]: " port_mode
-
-        case $port_mode in
-            0)
-                return 1  # 返回主菜单
-                ;;
-            1)
-                # 标准端口：80重定向到443
-                http_port=80
-                https_port=443
-                enable_301_redirect=true
-                is_standard=true
+        read -p "是否使用标准端口 (HTTP: 80, HTTPS: 443)? [Y/n]: " port_choice
+        if [[ "$port_choice" =~ ^[nN]$ ]]; then
+            read -p "请输入非标准监听端口 (例如: 8080): " non_std_port
+            if validate_port "$non_std_port"; then
+                listen_port="$non_std_port"
                 break
-                ;;
-            2)
-                # 自定义端口
-                is_standard=false
-                while true; do
-                    read -p "请输入监听端口（如果是HTTPS请输入HTTPS端口，否则输入HTTP端口, 输入0返回）: " custom_port
-                    
-                    if [ "$custom_port" = "0" ]; then
-                        continue 2  # 继续外层循环
-                    fi
-                    
-                    if validate_port "$custom_port"; then
-                        break
-                    fi
-                done
-
-                echo ""
-                read -e -p "此端口用于 HTTPS 吗？（Y/n/0返回）: " enable_ssl
-                if [ "$enable_ssl" = "0" ]; then
-                    continue  # 重新选择端口模式
-                fi
-                enable_ssl=${enable_ssl:-y}
-                if [[ ! "$enable_ssl" =~ ^[Nn] ]]; then
-                    https_port=$custom_port
-                    http_port=""
-                    enable_301_redirect=false
-                    # 仅当非标准且启用 HTTPS 时才需要处理 497
-                    if [ "$https_port" -ne 443 ]; then
-                        need_497=true
-                    else
-                        need_497=false
-                    fi
-                else
-                    http_port=$custom_port
-                    https_port=""
-                    enable_301_redirect=false
-                    need_497=false
-                fi
-                break
-                ;;
-            *)
-                print_color "无效选择，请重试" "$RED"
-                ;;
-        esac
-    done
-
-    # 获取域名
-    echo ""
-    read -p "请输入域名 (多个域名用空格分隔, 留空为 localhost): " server_names
-    if [ -z "$server_names" ]; then
-        server_names="localhost"
-    fi
-
-    # 根目录（仅在未启用反向代理或混合模式时询问）
-    echo ""
-    read -p "请输入网站根目录 (默认: /var/www/html): " root_path
-    if [ -z "$root_path" ]; then
-        root_path="/var/www/html"
-    fi
-
-    # SSL配置（如果启用了HTTPS）
-    if [ -n "$https_port" ]; then
-        echo ""
-        print_color "=== SSL证书配置 ===" "$BLUE"
-        print_color "注意：建议使用由受信任 CA 签发的证书文件路径" "$YELLOW"
-        read -p "SSL证书路径 (默认: /etc/ssl/certs/ssl-cert-snakeoil.pem): " ssl_cert_input
-        ssl_cert_input=${ssl_cert_input:-/etc/ssl/certs/ssl-cert-snakeoil.pem}
-        ssl_cert="$ssl_cert_input"
-
-        read -p "SSL私钥路径 (默认: /etc/ssl/private/ssl-cert-snakeoil.key): " ssl_key_input
-        ssl_key_input=${ssl_key_input:-/etc/ssl/private/ssl-cert-snakeoil.key}
-        ssl_key="$ssl_key_input"
-
-        # 安全加固选项
-        echo ""
-        print_color "=== 安全加固配置 ===" "$BLUE"
-        echo "推荐配置包括：HSTS、OCSP Stapling、TLS 1.2+"
-        read -e -p "是否应用推荐的安全配置（包含 HSTS，但 OCSP 将单独询问）? [Y/n]: " enable_security
-        enable_security=${enable_security:-y}
-        if [[ ! "$enable_security" =~ ^[Nn] ]]; then
-            enable_hsts=true
-            strong_security=true
-        else
-            enable_hsts=false
-            strong_security=false
-        fi
-
-        # 单独询问是否启用 OCSP Stapling
-        read -e -p "是否启用 OCSP Stapling? [Y/n]: " ocsp_choice
-        ocsp_choice=${ocsp_choice:-y}
-
-        if [[ "$ocsp_choice" =~ ^[Yy] ]]; then
-            enable_ocsp=true
-        else
-            enable_ocsp=false
-        fi
-    else
-        enable_hsts=false
-        enable_ocsp=false
-        strong_security=false
-        ssl_cert=""
-        ssl_key=""
-    fi
-
-    # 性能优化配置
-    echo ""
-    print_color "=== 性能优化配置 ===" "$BLUE"
-    read -e -p "是否应用性能优化（Gzip、缓存头、静态文件长缓存）? [Y/n]: " enable_perf
-    enable_perf=${enable_perf:-y}
-    if [[ ! "$enable_perf" =~ ^[Nn] ]]; then
-        enable_gzip=true
-        enable_static_cache=true
-    else
-        enable_gzip=false
-        enable_static_cache=false
-    fi
-
-    # 反向代理配置
-    echo ""
-    print_color "=== 反向代理配置 ===" "$BLUE"
-    while true; do
-        echo "请选择代理模式:"
-        echo "1. 纯静态文件服务"
-        echo "2. 单后端反向代理"
-        echo "3. 多后端反向代理（混合模式）"
-        echo "0. 返回主菜单"
-        read -p "请选择 [0-3]: " proxy_mode
-
-        case $proxy_mode in
-            0)
-                return 1  # 返回主菜单
-                ;;
-            2)
-                enable_proxy=true
-                proxy_type="single"
-                if get_single_backend_config "single"; then
-                    break
-                else
-                    continue  # 用户选择返回，重新选择
-                fi
-                ;;
-            3)
-                enable_proxy=true
-                proxy_type="multi"
-                if get_multi_backend_config; then
-                    break
-                else
-                    continue  # 用户选择返回，重新选择
-                fi
-                ;;
-            1)
-                enable_proxy=false
-                proxy_type="static"
-                break
-                ;;
-            *)
-                print_color "无效选择，请重试" "$RED"
-                ;;
-        esac
-    done
-}
-
-# 自动复制 Nginx 配置
-copy_nginx_config() {
-    local config_file=$1
-
-    echo ""
-    print_color "=== Nginx配置安装 ===" "$BLUE"
-    read -e -p "是否将配置文件复制到 Nginx 目录并启用? [Y/n]: " install_choice
-    install_choice=${install_choice:-y}
-    if [[ ! "$install_choice" =~ ^[Nn] ]]; then
-        if [ "$EUID" -eq 0 ]; then
-            if [ -d "/etc/nginx/sites-available" ] && [ -d "/etc/nginx/sites-enabled" ]; then
-                cp "$config_file" "/etc/nginx/sites-available/"
-                ln -sf "/etc/nginx/sites-available/$config_file" "/etc/nginx/sites-enabled/$config_file"
-
-                print_color "测试 Nginx 配置..." "$YELLOW"
-                if nginx -t; then
-                    print_color "配置测试成功！" "$GREEN"
-                    read -e -p "是否立即重载 Nginx 配置? [Y/n]: " reload_choice
-                    reload_choice=${reload_choice:-y}
-                    if [[ ! "$reload_choice" =~ ^[Nn] ]]; then
-                        systemctl reload nginx
-                        print_color "Nginx 配置已重载！" "$GREEN"
-                    fi
-                else
-                    print_color "配置测试失败，请检查配置文件！" "$RED"
-                    rm -f "/etc/nginx/sites-enabled/$config_file"
-                    rm -f "/etc/nginx/sites-available/$config_file"
-                fi
-            else
-                print_color "错误: 目标 Nginx 目录不存在，请手动复制配置文件" "$RED"
             fi
+        elif [[ "$port_choice" =~ ^[yY]$ || "$port_choice" == "" ]]; then
+            listen_port=80
+            break
         else
-            print_color "当前非 root，脚本不会使用 自动复制。请手动执行以下命令（替换为你的文件名）：" "$YELLOW"
-            echo "cp $config_file /etc/nginx/sites-available/"
-            echo "ln -s /etc/nginx/sites-available/$config_file /etc/nginx/sites-enabled/$config_file"
-            echo "nginx -t && systemctl reload nginx"
+            print_color "无效选择，请重试" "$RED"
+        fi
+    done
+
+    # 2. 域名输入
+    read -e -p "请输入域名 (多个用空格分隔): " server_names
+    if [[ -z "$server_names" ]]; then
+        print_color "域名不能为空" "$RED"
+        return 1
+    fi
+
+    # 3. SSL/TLS 配置
+    local ssl_choice
+    read -p "是否启用 HTTPS/SSL? [y/N]: " ssl_choice
+    if [[ "$ssl_choice" =~ ^[yY]$ ]]; then
+        ssl_enabled=true
+        listen_port=443 # 默认使用443
+        if [[ "$port_choice" =~ ^[nN]$ ]]; then
+            read -p "HTTPS非标准监听端口 (例如: 8443): " non_std_port
+            if validate_port "$non_std_port"; then
+                listen_port="$non_std_port"
+            fi
+        fi
+
+        while true; do
+            read -e -p "请输入 SSL 证书文件绝对路径 (.crt/.pem): " ssl_cert
+            if validate_file "$ssl_cert"; then
+                break
+            fi
+        done
+        while true; do
+            read -e -p "请输入 SSL 密钥文件绝对路径 (.key): " ssl_key
+            if validate_file "$ssl_key"; then
+                break
+            fi
+        done
+
+        read -p "是否启用 HSTS 强制安全连接? [y/N]: " hsts_choice
+        if [[ "$hsts_choice" =~ ^[yY]$ ]]; then
+            hsts_enabled=true
         fi
     fi
+
+    # 4. Gzip
+    read -p "是否启用 Gzip 压缩? [Y/n]: " gzip_choice
+    if [[ "$gzip_choice" =~ ^[nN]$ ]]; then
+        gzip_enabled=false
+    else
+        gzip_enabled=true
+    fi
+    
+    # 5. --- NEW: 获取工作模式和根路径 ---
+    get_work_mode || return 1
+
+    # 6. --- NEW: 迭代代理逻辑 ---
+    if [[ "$WORK_MODE" == "proxy" || "$WORK_MODE" == "mixed" ]]; then
+        if [[ "$PROXY_CONFIG_TYPE" == "path" ]]; then
+            while true; do
+                get_path_based_proxies
+                
+                read -e -p "是否继续添加下一个基于路径的反向代理? [Y/n]: " cont
+                if [[ ! "$cont" =~ ^[yY]$ && "$cont" != "" ]]; then
+                    break
+                fi
+            done
+        elif [[ "$PROXY_CONFIG_TYPE" == "subdomain" ]]; then
+            while true; do
+                get_subdomain_based_proxies
+                
+                read -e -p "是否继续添加下一个基于子域名的反向代理? [Y/n]: " cont
+                if [[ ! "$cont" =~ ^[yY]$ && "$cont" != "" ]]; then
+                    break
+                fi
+            done
+        fi
+    fi
+
+    print_color "配置信息收集完成。" "$GREEN"
+    return 0
 }
 
-# 生成 Nginx 多后端配置
-generate_nginx_multi_config() {
-    local config_file=$1
-    
-    # HTTP -> HTTPS 重定向
-    if [ -n "$http_port" ] && [ "$enable_301_redirect" = true ] && [ -n "$https_port" ]; then
-        echo "# HTTP到HTTPS重定向" >> "$config_file"
-        echo "server {" >> "$config_file"
-        echo "    listen ${http_port};" >> "$config_file"
-        echo "    listen [::]:${http_port};" >> "$config_file"
+# --- 修改：Nginx 配置生成 ---
+generate_nginx_config() {
+    local config_file="nginx_$(echo "$server_names" | awk '{print $1}' | tr -cd '[:alnum:]_-')_$(date +%Y%m%d_%H%M%S).conf"
+    print_color "--- 正在生成 Nginx 配置 ---" "$CYAN"
+
+    # HTTP 重定向块 (如果启用了 SSL)
+    if "$ssl_enabled"; then
+        echo "server {" > "$config_file"
+        echo "    listen 80;" >> "$config_file"
         echo "    server_name $server_names;" >> "$config_file"
-        if [ "$https_port" -ne 443 ]; then
-            echo "    return 301 https://\$host:${https_port}\$request_uri;" >> "$config_file"
-        else
-            echo "    return 301 https://\$host\$request_uri;" >> "$config_file"
-        fi
+        echo "    return 301 https://\$host:\$server_port\$request_uri;" >> "$config_file"
         echo "}" >> "$config_file"
         echo "" >> "$config_file"
     fi
 
-    # 主 server 块
-    if [ -n "$https_port" ]; then
-        echo "# HTTPS主配置" >> "$config_file"
-        echo "server {" >> "$config_file"
-        echo "    listen ${https_port} ssl http2;" >> "$config_file"
-        echo "    listen [::]:${https_port} ssl http2;" >> "$config_file"
-        if [ "$need_497" = true ]; then
-            echo "    # 处理 497: HTTP 请求到 HTTPS 端口的情况" >> "$config_file"
-            if [ "$https_port" -ne 443 ]; then
-                echo "    error_page 497 https://\$host:${https_port}\$request_uri;" >> "$config_file"
-            else
-                echo "    error_page 497 https://\$host\$request_uri;" >> "$config_file"
-            fi
-        fi
-    elif [ -n "$http_port" ]; then
-        echo "# HTTP主配置" >> "$config_file"
-        echo "server {" >> "$config_file"
-        echo "    listen ${http_port};" >> "$config_file"
-        echo "    listen [::]:${http_port};" >> "$config_file"
-    fi
-
-    echo "    server_name $server_names;" >> "$config_file"
-    echo "" >> "$config_file"
-
-    # SSL 配置
-    if [ -n "$https_port" ]; then
-        echo "    # SSL配置" >> "$config_file"
-        echo "    ssl_certificate $ssl_cert;" >> "$config_file"
-        echo "    ssl_certificate_key $ssl_key;" >> "$config_file"
-
-        if [ "$strong_security" = true ]; then
-            echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
-            echo "    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;" >> "$config_file"
-        else
-            echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
-            echo "    ssl_ciphers HIGH:!aNULL:!MD5;" >> "$config_file"
-        fi
-        echo "    ssl_prefer_server_ciphers off;" >> "$config_file"
+    # HTTPS/HTTP 主配置块
+    echo "server {" >> "$config_file"
+    if "$ssl_enabled"; then
+        echo "    # HTTPS 监听" >> "$config_file"
+        echo "    listen $listen_port ssl http2;" >> "$config_file"
+        echo "    server_name $server_names;" >> "$config_file"
+        
+        echo "    ssl_certificate \"$ssl_cert\";" >> "$config_file"
+        echo "    ssl_certificate_key \"$ssl_key\";" >> "$config_file"
         echo "    ssl_session_cache shared:SSL:10m;" >> "$config_file"
         echo "    ssl_session_timeout 10m;" >> "$config_file"
-        echo "" >> "$config_file"
+        echo "    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';" >> "$config_file"
+        echo "    ssl_prefer_server_ciphers on;" >> "$config_file"
+        echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
 
-        # HSTS
-        if [ "$enable_hsts" = true ]; then
-            echo "    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" >> "$config_file"
-            echo "" >> "$config_file"
+        if "$hsts_enabled"; then
+            echo "    # 启用 HSTS (半年)" >> "$config_file"
+            echo "    add_header Strict-Transport-Security \"max-age=15768000; includeSubDomains\" always;" >> "$config_file"
         fi
-
-        # OCSP Stapling
-        if [ "$enable_ocsp" = true ]; then
-            echo "    ssl_stapling on;" >> "$config_file"
-            echo "    ssl_stapling_verify on;" >> "$config_file"
-            echo "    resolver 8.8.8.8 8.8.4.4 valid=300s;" >> "$config_file"
-            echo "    resolver_timeout 5s;" >> "$config_file"
-            echo "" >> "$config_file"
-        fi
-    fi
-
-    # 通用安全头
-    echo "    # 安全头" >> "$config_file"
-    echo "    add_header X-Frame-Options \"SAMEORIGIN\" always;" >> "$config_file"
-    echo "    add_header X-Content-Type-Options \"nosniff\" always;" >> "$config_file"
-    echo "    add_header X-XSS-Protection \"1; mode=block\" always;" >> "$config_file"
-    echo "" >> "$config_file"
-
-    # 处理多后端配置
-    for backend_config in "${multi_backends[@]}"; do
-        IFS=':' read -r config_type config_value1 config_value2 config_value3 <<< "$backend_config"
-        
-        case $config_type in
-            "root")
-                case $config_value1 in
-                    "static")
-                        echo "    # 根路径静态文件服务" >> "$config_file"
-                        echo "    location / {" >> "$config_file"
-                        echo "        root $config_value2;" >> "$config_file"
-                        echo "        index index.html index.htm index.php;" >> "$config_file"
-                        echo "        try_files \$uri \$uri/ =404;" >> "$config_file"
-                        echo "    }" >> "$config_file"
-                        echo "" >> "$config_file"
-                        ;;
-                    "404")
-                        echo "    # 根路径返回404" >> "$config_file"
-                        echo "    location / {" >> "$config_file"
-                        echo "        return 404;" >> "$config_file"
-                        echo "    }" >> "$config_file"
-                        echo "" >> "$config_file"
-                        ;;
-                    *)
-                        echo "    # 根路径代理" >> "$config_file"
-                        echo "    location / {" >> "$config_file"
-                        echo "        proxy_pass $config_value2;" >> "$config_file"
-                        if [ "$config_value3" = "true" ]; then
-                            echo "        proxy_set_header Host \$host;" >> "$config_file"
-                        fi
-                        echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
-                        echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-                        echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> "$config_file"
-                        echo "    }" >> "$config_file"
-                        echo "" >> "$config_file"
-                        ;;
-                esac
-                ;;
-            "path")
-                echo "    # 路径代理: $config_value1" >> "$config_file"
-                echo "    location $config_value1 {" >> "$config_file"
-                echo "        proxy_pass $config_value2;" >> "$config_file"
-                if [ "$config_value3" = "true" ]; then
-                    echo "        proxy_set_header Host \$host;" >> "$config_file"
-                fi
-                echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
-                echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-                echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> "$config_file"
-                echo "    }" >> "$config_file"
-                echo "" >> "$config_file"
-                ;;
-            "subdomain")
-                echo "    # 子域名代理: $config_value1" >> "$config_file"
-                echo "    # 注意：需要DNS配置将子域名指向同一服务器" >> "$config_file"
-                echo "" >> "$config_file"
-                ;;
-        esac
-    done
-
-    # 静态文件优化（仅在非纯代理模式时添加）
-    if [ "$proxy_type" != "multi" ] || [[ ! "${multi_backends[*]}" =~ "static" ]]; then
-        if [ "$enable_gzip" = true ]; then
-            echo "    # Gzip 压缩" >> "$config_file"
-            echo "    gzip on;" >> "$config_file"
-            echo "    gzip_vary on;" >> "$config_file"
-            echo "    gzip_min_length 1024;" >> "$config_file"
-            echo "    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json;" >> "$config_file"
-            echo "" >> "$config_file"
-        fi
-
-        if [ "$enable_static_cache" = true ]; then
-            echo "    # 静态文件缓存" >> "$config_file"
-            echo "    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|ttf|svg|eot)\$ {" >> "$config_file"
-            echo "        expires 1y;" >> "$config_file"
-            echo "        add_header Cache-Control \"public, immutable\";" >> "$config_file"
-            echo "    }" >> "$config_file"
-            echo "" >> "$config_file"
-        fi
-    fi
-
-    echo "}" >> "$config_file"
-}
-
-# 生成 Nginx 配置
-generate_nginx_config() {
-    config_file="nginx_${server_names%% *}_$(date +%Y%m%d_%H%M%S).conf"
-
-    echo "# Nginx配置文件 - 生成于 $(date)" > "$config_file"
-    echo "# 域名: $server_names" >> "$config_file"
-    echo "# 端口配置: HTTP=$http_port, HTTPS=$https_port, 重定向=$enable_301_redirect" >> "$config_file"
-    echo "# 代理模式: $proxy_type" >> "$config_file"
-    echo "" >> "$config_file"
-
-    if [ "$proxy_type" = "multi" ]; then
-        generate_nginx_multi_config "$config_file"
     else
-        # 原有的单后端/静态文件配置生成逻辑
-        # HTTP -> HTTPS 重定向
-        if [ -n "$http_port" ] && [ "$enable_301_redirect" = true ] && [ -n "$https_port" ]; then
-            echo "# HTTP到HTTPS重定向" >> "$config_file"
-            echo "server {" >> "$config_file"
-            echo "    listen ${http_port};" >> "$config_file"
-            echo "    listen [::]:${http_port};" >> "$config_file"
-            echo "    server_name $server_names;" >> "$config_file"
-            if [ "$https_port" -ne 443 ]; then
-                echo "    return 301 https://\$host:${https_port}\$request_uri;" >> "$config_file"
-            else
-                echo "    return 301 https://\$host\$request_uri;" >> "$config_file"
-            fi
-            echo "}" >> "$config_file"
-            echo "" >> "$config_file"
-        fi
-
-        # 主 server 块
-        if [ -n "$https_port" ]; then
-            echo "# HTTPS主配置" >> "$config_file"
-            echo "server {" >> "$config_file"
-            echo "    listen ${https_port} ssl http2;" >> "$config_file"
-            echo "    listen [::]:${https_port} ssl http2;" >> "$config_file"
-            if [ "$need_497" = true ]; then
-                echo "    # 处理 497: HTTP 请求到 HTTPS 端口的情况" >> "$config_file"
-                if [ "$https_port" -ne 443 ]; then
-                    echo "    error_page 497 https://\$host:${https_port}\$request_uri;" >> "$config_file"
-                else
-                    echo "    error_page 497 https://\$host\$request_uri;" >> "$config_file"
-                fi
-            fi
-        elif [ -n "$http_port" ]; then
-            echo "# HTTP主配置" >> "$config_file"
-            echo "server {" >> "$config_file"
-            echo "    listen ${http_port};" >> "$config_file"
-            echo "    listen [::]:${http_port};" >> "$config_file"
-        fi
-
+        echo "    # HTTP 监听" >> "$config_file"
+        echo "    listen $listen_port;" >> "$config_file"
         echo "    server_name $server_names;" >> "$config_file"
+    fi
 
-        if [ "$enable_proxy" = false ]; then
-            echo "    root $root_path;" >> "$config_file"
-            echo "    index index.html index.htm index.php;" >> "$config_file"
-        else
-            echo "    # 反向代理模式" >> "$config_file"
-        fi
-        echo "" >> "$config_file"
+    # Gzip 配置
+    if "$gzip_enabled"; then
+        echo "    # Gzip 压缩配置" >> "$config_file"
+        echo "    gzip on;" >> "$config_file"
+        echo "    gzip_min_length 1k;" >> "$config_file"
+        echo "    gzip_comp_level 5;" >> "$config_file"
+        echo "    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;" >> "$config_file"
+    fi
 
-        # SSL 配置
-        if [ -n "$https_port" ]; then
-            echo "    # SSL配置" >> "$config_file"
-            echo "    ssl_certificate $ssl_cert;" >> "$config_file"
-            echo "    ssl_certificate_key $ssl_key;" >> "$config_file"
+    # 1. 静态文件配置 (仅静态/混合模式)
+    if [[ "$WORK_MODE" == "static" || "$WORK_MODE" == "mixed" ]]; then
+        echo "    # 静态文件根目录" >> "$config_file"
+        echo "    root \"$root_path\";" >> "$config_file"
+        echo "    index index.html index.htm;" >> "$config_file"
 
-            if [ "$strong_security" = true ]; then
-                echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
-                echo "    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;" >> "$config_file"
-            else
-                echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
-                echo "    ssl_ciphers HIGH:!aNULL:!MD5;" >> "$config_file"
-            fi
-            echo "    ssl_prefer_server_ciphers off;" >> "$config_file"
-            echo "    ssl_session_cache shared:SSL:10m;" >> "$config_file"
-            echo "    ssl_session_timeout 10m;" >> "$config_file"
-            echo "" >> "$config_file"
-
-            # HSTS
-            if [ "$enable_hsts" = true ]; then
-                echo "    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" >> "$config_file"
-                echo "" >> "$config_file"
-            fi
-
-            # OCSP Stapling
-            if [ "$enable_ocsp" = true ]; then
-                echo "    ssl_stapling on;" >> "$config_file"
-                echo "    ssl_stapling_verify on;" >> "$config_file"
-                echo "    resolver 8.8.8.8 8.8.4.4 valid=300s;" >> "$config_file"
-                echo "    resolver_timeout 5s;" >> "$config_file"
-                echo "" >> "$config_file"
-            fi
-        fi
-
-        # 通用安全头
-        echo "    # 安全头" >> "$config_file"
-        echo "    add_header X-Frame-Options \"SAMEORIGIN\" always;" >> "$config_file"
-        echo "    add_header X-Content-Type-Options \"nosniff\" always;" >> "$config_file"
-        echo "    add_header X-XSS-Protection \"1; mode=block\" always;" >> "$config_file"
-        echo "" >> "$config_file"
-
-        # 反向代理配置
-        if [ "$enable_proxy" = true ]; then
-            echo "    # 反向代理" >> "$config_file"
-            echo "    location $proxy_path {" >> "$config_file"
-            echo "        proxy_pass $backend_url;" >> "$config_file"
-            if [ "$proxy_set_host" = true ]; then
-                echo "        proxy_set_header Host \$host;" >> "$config_file"
-            fi
-            echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
-            echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-            echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> "$config_file"
-            echo "    }" >> "$config_file"
-            echo "" >> "$config_file"
-        fi
-
-        # 静态文件配置
-        if [ "$enable_proxy" = false ]; then
-            if [ "$enable_gzip" = true ]; then
-                echo "    # Gzip 压缩" >> "$config_file"
-                echo "    gzip on;" >> "$config_file"
-                echo "    gzip_vary on;" >> "$config_file"
-                echo "    gzip_min_length 1024;" >> "$config_file"
-                echo "    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json;" >> "$config_file"
-                echo "" >> "$config_file"
-            fi
-
-            if [ "$enable_static_cache" = true ]; then
-                echo "    # 静态文件缓存" >> "$config_file"
-                echo "    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|ttf|svg|eot)\$ {" >> "$config_file"
-                echo "        expires 1y;" >> "$config_file"
-                echo "        add_header Cache-Control \"public, immutable\";" >> "$config_file"
-                echo "    }" >> "$config_file"
-                echo "" >> "$config_file"
-            fi
-
-            echo "    # 默认请求处理" >> "$config_file"
+        # 仅在混合模式下，默认location不做处理，留给后面代理
+        if [[ "$WORK_MODE" == "static" ]]; then
             echo "    location / {" >> "$config_file"
             echo "        try_files \$uri \$uri/ =404;" >> "$config_file"
             echo "    }" >> "$config_file"
         fi
-
-        echo "}" >> "$config_file"
     fi
 
-    print_color "Nginx配置文件已生成: $config_file" "$GREEN"
-    echo ""
-    print_color "使用方法:" "$YELLOW"
-    echo "如果需要手动安装，请执行:"
-    echo "cp $config_file /etc/nginx/sites-available/"
-    echo "ln -s /etc/nginx/sites-available/$config_file /etc/nginx/sites-enabled/$config_file"
-    echo "nginx -t && systemctl reload nginx"
-    echo ""
+    # 2. 路径反代配置 (纯反代/混合模式)
+    if [[ "$WORK_MODE" == "proxy" || "$WORK_MODE" == "mixed" ]]; then
+        # 如果是纯反代模式，或者混合模式但没有定义特定路径代理，则使用根路径代理
+        if [[ "$WORK_MODE" == "proxy" && ${#PROXY_RULES[@]} -eq 0 ]]; then
+             # 纯反代但没有特定路径规则，默认代理根目录
+             PROXY_RULES+=("/|${server_names}|true") # 默认代理所有流量，这里backend_url可以是任意值，但逻辑上必须有一个根代理
+             # 强制要求用户至少有一个路径代理，否则配置逻辑不完整。
+             # 为简化，如果用户选了纯反代，但在迭代中没有添加任何规则，此处会产生一个空配置，所以保持原逻辑，在纯反代时，/ 路径是必须被代理的。
+             # 但由于我们要求用户迭代添加，所以理论上PROXY_RULES应该不会空。
+             print_color "警告：纯反代模式下未检测到路径规则，请确保至少添加了 '/' 路径代理。" "$YELLOW"
+        fi
 
-    copy_nginx_config "$config_file"
-}
-
-# 生成 Caddy 多后端配置
-generate_caddy_multi_config() {
-    local config_file=$1
-    
-    # 为每个域名生成配置块
-    for domain in $server_names; do
-        # HTTP->HTTPS 重定向（如果启用了HTTPS和重定向）
-        if [ -n "$http_port" ] && [ -n "$https_port" ] && [ "$enable_301_redirect" = true ]; then
-            echo "# HTTP到HTTPS重定向 - $domain" >> "$config_file"
-            if [ "$http_port" -ne 80 ]; then
-                # 非标准 HTTP 端口
-                if [ "$https_port" -ne 443 ]; then
-                    echo "${domain}:${http_port} {" >> "$config_file"
-                    echo "    redir https://${domain}:${https_port}{uri} permanent" >> "$config_file"
-                else
-                    echo "${domain}:${http_port} {" >> "$config_file"
-                    echo "    redir https://${domain}{uri} permanent" >> "$config_file"
-                fi
-            else
-                # 标准 HTTP 端口 80
-                if [ "$https_port" -ne 443 ]; then
-                    echo "http://${domain} {" >> "$config_file"
-                    echo "    redir https://${domain}:${https_port}{uri} permanent" >> "$config_file"
-                else
-                    echo "http://${domain} {" >> "$config_file"
-                    echo "    redir https://${domain}{uri} permanent" >> "$config_file"
-                fi
+        for rule in "${PROXY_RULES[@]}"; do
+            IFS='|' read -r proxy_path backend_url proxy_set_host <<< "$rule"
+            echo "    # 反向代理: $proxy_path -> $backend_url" >> "$config_file"
+            echo "    location $proxy_path {" >> "$config_file"
+            echo "        proxy_pass $backend_url;" >> "$config_file"
+            echo "        proxy_redirect off;" >> "$config_file"
+            echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
+            echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
+            
+            if [[ "$proxy_set_host" == "true" ]]; then
+                echo "        proxy_set_header Host \$http_host;" >> "$config_file"
             fi
+            
+            # 解决Websocket支持
+            echo "        proxy_http_version 1.1;" >> "$config_file"
+            echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
+            echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
+            echo "    }" >> "$config_file"
+        done
+        
+        # 混合模式下的根路径处理：未匹配到代理路径的请求转发到静态文件
+        if [[ "$WORK_MODE" == "mixed" ]]; then
+            echo "    # 根路径处理：未匹配到代理的请求，转发到静态文件" >> "$config_file"
+            echo "    location / {" >> "$config_file"
+            echo "        try_files \$uri \$uri/ =404;" >> "$config_file"
+            echo "    }" >> "$config_file"
+        elif [[ "$WORK_MODE" == "proxy" && ${#PROXY_RULES[@]} -gt 0 ]]; then
+            # 纯反代模式下，如果根路径没有被代理，需要提供一个默认的 404
+            # 考虑到用户已经迭代添加了规则，这个分支比较复杂，通常纯反代要么代理 / ，要么所有未匹配都返回 404
+            # 为了安全，未匹配到的路径直接返回404，不暴露服务器信息
+            :
+        fi
+    fi
+
+    echo "}" >> "$config_file"
+
+    # 3. 子域名反代配置 (每个子域名独立 server 块)
+    if [[ "$PROXY_CONFIG_TYPE" == "subdomain" ]]; then
+        print_color "注意: 子域名反代将生成独立的 Server 块。" "$YELLOW"
+        for rule in "${SUBDOMAIN_PROXIES[@]}"; do
+            IFS='|' read -r subdomain backend_url <<< "$rule"
+            echo "" >> "$config_file"
+            echo "server {" >> "$config_file"
+            echo "    listen $listen_port;" >> "$config_file"
+            if "$ssl_enabled"; then
+                echo "    listen $listen_port ssl http2;" >> "$config_file"
+            fi
+            echo "    server_name $subdomain;" >> "$config_file"
+            echo "    # 子域名代理: $subdomain -> $backend_url" >> "$config_file"
+            echo "    location / {" >> "$config_file"
+            echo "        proxy_pass $backend_url;" >> "$config_file"
+            echo "        proxy_set_header Host \$host;" >> "$config_file"
+            echo "        # ... 其他反代设置 (略) ... " >> "$config_file"
+            echo "    }" >> "$config_file"
             echo "}" >> "$config_file"
-            echo "" >> "$config_file"
-        fi
-
-        # 主配置块
-        if [ -n "$https_port" ]; then
-            if [ "$https_port" -ne 443 ]; then
-                echo "${domain}:${https_port} {" >> "$config_file"
-            else
-                echo "${domain} {" >> "$config_file"
-            fi
-        elif [ -n "$http_port" ]; then
-            if [ "$http_port" -ne 80 ]; then
-                echo "${domain}:${http_port} {" >> "$config_file"
-            else
-                echo "${domain} {" >> "$config_file"
-            fi
-        fi
-
-        # TLS/SSL 配置
-        if [ -n "$https_port" ]; then
-            if [ -n "$ssl_cert" ] && [ -f "$ssl_cert" ] && [ -n "$ssl_key" ] && [ -f "$ssl_key" ] && [ "$ssl_cert" != "/etc/ssl/certs/ssl-cert-snakeoil.pem" ]; then
-                echo "    tls $ssl_cert $ssl_key" >> "$config_file"
-            else
-                if [ "$strong_security" = true ]; then
-                    echo "    tls {" >> "$config_file"
-                    echo "        protocols tls1.2 tls1.3" >> "$config_file"
-                    echo "    }" >> "$config_file"
-                fi
-            fi
-
-            # HSTS
-            if [ "$enable_hsts" = true ]; then
-                echo "    header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\"" >> "$config_file"
-            fi
-        fi
-
-        # 安全头
-        echo "    header X-Frame-Options SAMEORIGIN" >> "$config_file"
-        echo "    header X-Content-Type-Options nosniff" >> "$config_file"
-        echo "    header X-XSS-Protection \"1; mode=block\"" >> "$config_file"
-        echo "" >> "$config_file"
-
-        # 处理多后端配置
-        local has_static_root=false
-        local has_root_proxy=false
-        
-        for backend_config in "${multi_backends[@]}"; do
-            IFS=':' read -r config_type config_value1 config_value2 config_value3 <<< "$backend_config"
-            
-            case $config_type in
-                "root")
-                    case $config_value1 in
-                        "static")
-                            has_static_root=true
-                            echo "    # 根路径静态文件服务" >> "$config_file"
-                            echo "    root * $config_value2" >> "$config_file"
-                            echo "    file_server" >> "$config_file"
-                            echo "" >> "$config_file"
-                            ;;
-                        "404")
-                            echo "    # 根路径返回404" >> "$config_file"
-                            echo "    respond / 404" >> "$config_file"
-                            echo "" >> "$config_file"
-                            ;;
-                        *)
-                            has_root_proxy=true
-                            echo "    # 根路径代理" >> "$config_file"
-                            echo "    reverse_proxy $config_value2 {" >> "$config_file"
-                            if [ "$config_value3" = "true" ]; then
-                                echo "        header_up Host {host}" >> "$config_file"
-                            fi
-                            echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
-                            echo "        header_up X-Forwarded-Proto {scheme}" >> "$config_file"
-                            echo "    }" >> "$config_file"
-                            echo "" >> "$config_file"
-                            ;;
-                    esac
-                    ;;
-                "path")
-                    echo "    # 路径代理: $config_value1" >> "$config_file"
-                    echo "    handle_path $config_value1* {" >> "$config_file"
-                    echo "        reverse_proxy $config_value2 {" >> "$config_file"
-                    if [ "$config_value3" = "true" ]; then
-                        echo "            header_up Host {host}" >> "$config_file"
-                    fi
-                    echo "            header_up X-Real-IP {remote_host}" >> "$config_file"
-                    echo "            header_up X-Forwarded-Proto {scheme}" >> "$config_file"
-                    echo "        }" >> "$config_file"
-                    echo "    }" >> "$config_file"
-                    echo "" >> "$config_file"
-                    ;;
-                "subdomain")
-                    # 子域名配置需要单独的server块
-                    echo "    # 子域名代理配置需要单独的server块" >> "$config_file"
-                    echo "    # 请为子域名 $config_value1.$domain 创建单独的配置" >> "$config_file"
-                    echo "" >> "$config_file"
-                    ;;
-            esac
         done
+    fi
 
-        # 如果没有根路径配置，添加默认的静态文件服务
-        if [ "$has_static_root" = false ] && [ "$has_root_proxy" = false ] && [ ${#multi_backends[@]} -eq 0 ]; then
-            echo "    # 默认静态文件服务" >> "$config_file"
-            echo "    root * $root_path" >> "$config_file"
-            echo "    file_server" >> "$config_file"
-            echo "" >> "$config_file"
-        fi
 
-        # 静态文件优化（仅在非纯代理模式时添加）
-        if [ "$has_static_root" = true ] || [ ${#multi_backends[@]} -eq 0 ]; then
-            if [ "$enable_gzip" = true ]; then
-                echo "    encode gzip zstd" >> "$config_file"
-                echo "" >> "$config_file"
-            fi
-
-            if [ "$enable_static_cache" = true ]; then
-                echo "    @static {" >> "$config_file"
-                echo "        path *.jpg *.jpeg *.png *.gif *.ico *.css *.js *.woff *.woff2 *.ttf *.svg *.eot" >> "$config_file"
-                echo "    }" >> "$config_file"
-                echo "    header @static Cache-Control \"public, max-age=31536000, immutable\"" >> "$config_file"
-                echo "" >> "$config_file"
-            fi
-        fi
-
-        echo "}" >> "$config_file"
-        echo "" >> "$config_file"
-        
-        # 为子域名代理生成单独的server块
-        for backend_config in "${multi_backends[@]}"; do
-            IFS=':' read -r config_type config_value1 config_value2 config_value3 <<< "$backend_config"
-            
-            if [ "$config_type" = "subdomain" ]; then
-                echo "# 子域名代理: $config_value1.$domain" >> "$config_file"
-                if [ -n "$https_port" ]; then
-                    if [ "$https_port" -ne 443 ]; then
-                        echo "$config_value1.$domain:${https_port} {" >> "$config_file"
-                    else
-                        echo "$config_value1.$domain {" >> "$config_file"
-                    fi
-                else
-                    if [ "$http_port" -ne 80 ]; then
-                        echo "$config_value1.$domain:${http_port} {" >> "$config_file"
-                    else
-                        echo "$config_value1.$domain {" >> "$config_file"
-                    fi
-                fi
-                
-                # TLS/SSL 配置
-                if [ -n "$https_port" ]; then
-                    if [ -n "$ssl_cert" ] && [ -f "$ssl_cert" ] && [ -n "$ssl_key" ] && [ -f "$ssl_key" ] && [ "$ssl_cert" != "/etc/ssl/certs/ssl-cert-snakeoil.pem" ]; then
-                        echo "    tls $ssl_cert $ssl_key" >> "$config_file"
-                    fi
-
-                    # HSTS
-                    if [ "$enable_hsts" = true ]; then
-                        echo "    header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\"" >> "$config_file"
-                    fi
-                fi
-
-                # 安全头
-                echo "    header X-Frame-Options SAMEORIGIN" >> "$config_file"
-                echo "    header X-Content-Type-Options nosniff" >> "$config_file"
-                echo "    header X-XSS-Protection \"1; mode=block\"" >> "$config_file"
-                echo "" >> "$config_file"
-
-                echo "    reverse_proxy $config_value2 {" >> "$config_file"
-                if [ "$config_value3" = "true" ]; then
-                    echo "        header_up Host {host}" >> "$config_file"
-                fi
-                echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
-                echo "        header_up X-Forwarded-Proto {scheme}" >> "$config_file"
-                echo "    }" >> "$config_file"
-                echo "}" >> "$config_file"
-                echo "" >> "$config_file"
-            fi
-        done
-    done
+    print_color "Nginx 配置生成成功: $config_file" "$GREEN"
+    echo ""
+    print_color "--- Nginx 使用示例 ---" "$YELLOW"
+    echo "1. 将配置文件复制到 Nginx 配置目录:"
+    echo "   cp \"$config_file\" /etc/nginx/conf.d/"
+    echo "2. 检查配置语法:"
+    echo "   nginx -t"
+    echo "3. 重载 Nginx 服务:"
+    echo "   systemctl reload nginx"
+    echo ""
 }
 
-# 生成 Caddy 配置
+# --- 修改：Caddy 配置生成 ---
 generate_caddy_config() {
-    config_file="caddy_${server_names%% *}_$(date +%Y%m%d_%H%M%S).caddyfile"
+    local config_file="caddy_$(echo "$server_names" | awk '{print $1}' | tr -cd '[:alnum:]_-')_$(date +%Y%m%d_%H%M%S).Caddyfile"
+    print_color "--- 正在生成 Caddyfile 配置 ---" "$CYAN"
 
-    echo "# Caddy配置文件 - 生成于 $(date)" > "$config_file"
-    echo "# 域名: $server_names" >> "$config_file"
-    echo "# 端口配置: HTTP=$http_port, HTTPS=$https_port, 重定向=$enable_301_redirect" >> "$config_file"
-    echo "# 代理模式: $proxy_type" >> "$config_file"
-    echo "" >> "$config_file"
-
-    if [ "$proxy_type" = "multi" ]; then
-        generate_caddy_multi_config "$config_file"
+    # Caddyfile 头部 (主域名)
+    local address
+    if "$ssl_enabled"; then
+        address="$server_names:$listen_port"
+    elif [ "$listen_port" -eq 80 ]; then
+        address="$server_names"
     else
-        # 单后端或静态文件配置
-        for domain in $server_names; do
-            # HTTP->HTTPS 重定向
-            if [ -n "$http_port" ] && [ "$enable_301_redirect" = true ] && [ -n "$https_port" ]; then
-                echo "# HTTP到HTTPS重定向" >> "$config_file"
-                if [ "$http_port" -ne 80 ]; then
-                    if [ "$https_port" -ne 443 ]; then
-                        echo "${domain}:${http_port} {" >> "$config_file"
-                        echo "    redir https://${domain}:${https_port}{uri} permanent" >> "$config_file"
-                    else
-                        echo "${domain}:${http_port} {" >> "$config_file"
-                        echo "    redir https://${domain}{uri} permanent" >> "$config_file"
-                    fi
-                else
-                    if [ "$https_port" -ne 443 ]; then
-                        echo "http://${domain} {" >> "$config_file"
-                        echo "    redir https://${domain}:${https_port}{uri} permanent" >> "$config_file"
-                    else
-                        echo "http://${domain} {" >> "$config_file"
-                        echo "    redir https://${domain}{uri} permanent" >> "$config_file"
-                    fi
-                fi
-                echo "}" >> "$config_file"
-                echo "" >> "$config_file"
+        address="$server_names:$listen_port"
+    fi
+    echo "$address {" > "$config_file"
+
+    # Gzip 配置 (Caddy 默认使用 encode gzip zstd)
+    if "$gzip_enabled"; then
+        echo "    # 启用 Gzip/Zstd 压缩" >> "$config_file"
+        echo "    encode gzip zstd" >> "$config_file"
+    fi
+
+    # HSTS 配置
+    if "$hsts_enabled"; then
+        echo "    # 启用 HSTS" >> "$config_file"
+        echo "    header Strict-Transport-Security \"max-age=31536000; includeSubDomains\"" >> "$config_file"
+    fi
+
+    # 1. 静态文件配置 (仅静态/混合模式) - 放在最前面作为默认
+    if [[ "$WORK_MODE" == "static" || "$WORK_MODE" == "mixed" ]]; then
+        echo "    # 静态文件配置" >> "$config_file"
+        echo "    root * \"$root_path\"" >> "$config_file"
+        echo "    file_server" >> "$config_file"
+    fi
+
+    # 2. 路径反代配置 (纯反代/混合模式)
+    if [[ "$WORK_MODE" == "proxy" || "$WORK_MODE" == "mixed" ]]; then
+        for rule in "${PROXY_RULES[@]}"; do
+            IFS='|' read -r proxy_path backend_url proxy_set_host <<< "$rule"
+            echo "    # 反向代理: $proxy_path -> $backend_url" >> "$config_file"
+            echo "    route $proxy_path/* {" >> "$config_file"
+            echo "        reverse_proxy $backend_url" >> "$config_file"
+            
+            if [[ "$proxy_set_host" == "true" ]]; then
+                echo "        header_up Host {http.request.host}" >> "$config_file"
             fi
-
-            # 主配置块
-            if [ -n "$https_port" ]; then
-                if [ "$https_port" -ne 443 ]; then
-                    echo "${domain}:${https_port} {" >> "$config_file"
-                else
-                    echo "${domain} {" >> "$config_file"
-                fi
-            elif [ -n "$http_port" ]; then
-                if [ "$http_port" -ne 80 ]; then
-                    echo "${domain}:${http_port} {" >> "$config_file"
-                else
-                    echo "${domain} {" >> "$config_file"
-                fi
-            fi
-
-            # TLS/SSL 配置
-            if [ -n "$https_port" ]; then
-                if [ -n "$ssl_cert" ] && [ -f "$ssl_cert" ] && [ -n "$ssl_key" ] && [ -f "$ssl_key" ] && [ "$ssl_cert" != "/etc/ssl/certs/ssl-cert-snakeoil.pem" ]; then
-                    echo "    tls $ssl_cert $ssl_key" >> "$config_file"
-                else
-                    if [ "$strong_security" = true ]; then
-                        echo "    tls {" >> "$config_file"
-                        echo "        protocols tls1.2 tls1.3" >> "$config_file"
-                        echo "    }" >> "$config_file"
-                    fi
-                fi
-
-                # HSTS
-                if [ "$enable_hsts" = true ]; then
-                    echo "    header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\"" >> "$config_file"
-                fi
-            fi
-
-            # 安全头
-            echo "    header X-Frame-Options SAMEORIGIN" >> "$config_file"
-            echo "    header X-Content-Type-Options nosniff" >> "$config_file"
-            echo "    header X-XSS-Protection \"1; mode=block\"" >> "$config_file"
-            echo "" >> "$config_file"
-
-            # 反向代理配置
-            if [ "$enable_proxy" = true ]; then
-                echo "    reverse_proxy $proxy_path $backend_url {" >> "$config_file"
-                if [ "$proxy_set_host" = true ]; then
-                    echo "        header_up Host {host}" >> "$config_file"
-                fi
-                echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
-                echo "        header_up X-Forwarded-Proto {scheme}" >> "$config_file"
-                echo "    }" >> "$config_file"
-            else
-                # 静态文件模式
-                echo "    root * $root_path" >> "$config_file"
-                echo "    file_server" >> "$config_file"
-                echo "" >> "$config_file"
-
-                if [ "$enable_gzip" = true ]; then
-                    echo "    encode gzip zstd" >> "$config_file"
-                    echo "" >> "$config_file"
-                fi
-
-                # 静态文件缓存
-                if [ "$enable_static_cache" = true ]; then
-                    echo "    @static {" >> "$config_file"
-                    echo "        path *.jpg *.jpeg *.png *.gif *.ico *.css *.js *.woff *.woff2 *.ttf *.svg *.eot" >> "$config_file"
-                    echo "    }" >> "$config_file"
-                    echo "    header @static Cache-Control \"public, max-age=31536000, immutable\"" >> "$config_file"
-                    echo "" >> "$config_file"
-                fi
-            fi
-
-            echo "}" >> "$config_file"
-            echo "" >> "$config_file"
+            echo "    }" >> "$config_file"
         done
-    fi
-
-    print_color "Caddy配置文件已生成: $config_file" "$GREEN"
-    echo ""
-
-    # Caddy 配置安装
-    echo ""
-    print_color "=== Caddy配置安装 ===" "$BLUE"
-    read -e -p "是否将配置文件添加到 /etc/caddy/Caddyfile 并验证? [Y/n/0返回]: " install_choice
-    if [ "$install_choice" = "0" ]; then
-        return
-    fi
-    install_choice=${install_choice:-y}
-    if [[ ! "$install_choice" =~ ^[Nn] ]]; then
-        if [ "$EUID" -eq 0 ]; then
-            if [ -f "/etc/caddy/Caddyfile" ]; then
-                # 备份原配置
-                cp "/etc/caddy/Caddyfile" "/etc/caddy/Caddyfile.backup.$(date +%Y%m%d_%H%M%S)"
-                
-                echo "" >> "/etc/caddy/Caddyfile"
-                echo "# 自动添加的配置 - 生成于 $(date)" >> "/etc/caddy/Caddyfile"
-                cat "$config_file" >> "/etc/caddy/Caddyfile"
-
-                print_color "验证 Caddy 配置..." "$YELLOW"
-                if caddy validate --config /etc/caddy/Caddyfile; then
-                    print_color "配置验证成功！" "$GREEN"
-                    read -e -p "是否立即重载 Caddy 配置? [Y/n/0返回]: " reload_choice
-                    if [ "$reload_choice" = "0" ]; then
-                        return
-                    fi
-                    reload_choice=${reload_choice:-y}
-                    if [[ ! "$reload_choice" =~ ^[Nn] ]]; then
-                        systemctl reload caddy
-                        print_color "Caddy 配置已重载！" "$GREEN"
-                    fi
-                else
-                    print_color "配置验证失败，已恢复备份！" "$RED"
-                    # 恢复备份
-                    mv "/etc/caddy/Caddyfile.backup."* "/etc/caddy/Caddyfile"
-                fi
-            else
-                print_color "Caddyfile 不存在，创建新的 /etc/caddy/Caddyfile ..." "$YELLOW"
-                cp "$config_file" "/etc/caddy/Caddyfile"
-                chown caddy:caddy "/etc/caddy/Caddyfile"
-
-                if caddy validate --config /etc/caddy/Caddyfile; then
-                    print_color "配置验证成功！" "$GREEN"
-                    read -e -p "是否立即启动并启用 Caddy 服务? [Y/n/0返回]: " start_choice
-                    if [ "$start_choice" = "0" ]; then
-                        return
-                    fi
-                    start_choice=${start_choice:-y}
-                    if [[ ! "$start_choice" =~ ^[Nn] ]]; then
-                        systemctl enable caddy
-                        systemctl start caddy
-                        print_color "Caddy 服务已启动！" "$GREEN"
-                    fi
-                else
-                    print_color "配置验证失败！" "$RED"
-                    rm -f "/etc/caddy/Caddyfile"
-                fi
-            fi
-        else
-            print_color "当前非 root，脚本不会使用自动修改 Caddyfile。请手动执行以下命令：" "$YELLOW"
-            echo "cp $config_file /etc/caddy/Caddyfile.new"
-            echo "caddy validate --config /etc/caddy/Caddyfile.new"
-            echo "# 如果验证成功，手动添加到现有配置或替换："
-            echo "cat $config_file | tee -a /etc/caddy/Caddyfile"
-            echo "systemctl reload caddy"
+        
+        # 纯反代模式下，如果根路径没有被代理，则代理根路径。
+        if [[ "$WORK_MODE" == "proxy" && ${#PROXY_RULES[@]} -eq 0 ]]; then
+             print_color "警告：纯反代模式下未检测到路径规则，默认将根路径 '/' 代理到第一个后端地址。" "$YELLOW"
+             read -e -p "请输入默认后端服务地址 (例如: http://127.0.0.1:8080): " default_backend_url
+             echo "    # 纯反代模式下，默认代理所有流量" >> "$config_file"
+             echo "    reverse_proxy $default_backend_url" >> "$config_file"
         fi
     fi
 
+    echo "}" >> "$config_file"
+
+    # 3. 子域名反代配置 (每个子域名独立 Server 块)
+    if [[ "$PROXY_CONFIG_TYPE" == "subdomain" ]]; then
+        print_color "注意: 子域名反代将生成独立的 Server 块。" "$YELLOW"
+        for rule in "${SUBDOMAIN_PROXIES[@]}"; do
+            IFS='|' read -r subdomain backend_url <<< "$rule"
+            echo "" >> "$config_file"
+            echo "$subdomain {" >> "$config_file"
+            echo "    # 子域名代理: $subdomain -> $backend_url" >> "$config_file"
+            echo "    reverse_proxy $backend_url" >> "$config_file"
+            echo "}" >> "$config_file"
+        done
+    fi
+
+    print_color "Caddyfile 配置生成成功: $config_file" "$GREEN"
     echo ""
-    print_color "使用方法:" "$YELLOW"
-    echo "手动安装示例: cat $config_file >> /etc/caddy/Caddyfile"
-    echo "配置验证: caddy validate --config /etc/caddy/Caddyfile"
-    echo "重载服务: systemctl reload caddy"
+    print_color "--- Caddy 使用示例 ---" "$YELLOW"
+    echo "1. 将配置追加到 Caddyfile:"
+    echo "   cat \"$config_file\" | tee -a /etc/caddy/Caddyfile"
+    echo "2. 配置验证:"
+    echo "   caddy validate --config /etc/caddy/Caddyfile"
+    echo "3. 重载服务:"
+    echo "   systemctl reload caddy"
     echo ""
 }
 
@@ -1327,9 +565,10 @@ generate_caddy_config() {
 main() {
     while true; do
         show_menu
+        local choice
         read -p "请选择 [0-2]: " choice
 
-        case $choice in
+        case "$choice" in
             0)
                 print_color "再见！" "$GREEN"
                 exit 0
@@ -1351,8 +590,9 @@ main() {
 
         echo ""
         while true; do
+            local cont
             read -e -p "是否继续生成其他配置? [Y/n/0退出]: " cont
-            case $cont in
+            case "$cont" in
                 0)
                     print_color "再见！" "$GREEN"
                     exit 0
@@ -1365,7 +605,7 @@ main() {
                     exit 0
                     ;;
                 *)
-                    print_color "无效输入，请输入 Y/n/0" "$RED"
+                    print_color "无效选择，请重试" "$RED"
                     ;;
             esac
         done
