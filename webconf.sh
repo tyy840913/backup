@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =======================================================
-# Web服务器配置生成器 (v5.0 修复IPv6/反代地址/优化流程)
+# Web服务器配置生成器 (v6.0 修复配置填充错误/优化流程)
 # =======================================================
 
 # 颜色定义
@@ -15,17 +15,17 @@ NC='\033[0m' # No Color
 declare -a PROXY_MAPPINGS 
 # 存储映射，格式: TYPE|MATCHER|BACKEND_URL/ROOT_PATH|SET_HOST_BOOL
 
-# 打印带颜色的消息
+# 打印带颜色的消息 (重定向到 stderr 以防被变量捕获)
 print_color() {
-    echo -e "${2}${1}${NC}"
+    echo -e "${2}${1}${NC}" >&2
 }
 
 # 显示标题
 print_title() {
-    echo "=========================================="
-    echo " Web服务器配置生成器 (v5.0 流程优化版)"
-    echo "=========================================="
-    echo ""
+    echo "==========================================" >&2
+    echo " Web服务器配置生成器 (v6.0 修复填充版)" >&2
+    echo "==========================================" >&2
+    echo "" >&2
 }
 
 # 显示菜单 (用于选择 Nginx 或 Caddy)
@@ -83,12 +83,14 @@ normalize_path() {
 }
 
 # 获取后端服务信息 (IP/端口/协议 自动补全)
+# *** 核心修复: 将所有提示信息重定向到标准错误 (>&2) 或使用 print_color，
+# *** 确保只有最终的 URL 被函数调用者捕获。
 get_backend_info() {
     local backend_url=""
     
     while true; do
-        echo "请输入后端服务地址"
-        echo "支持格式: 8080 (自动补全为 http://127.0.0.1:8080) 或 192.168.1.1:8000"
+        echo "请输入后端服务地址" >&2
+        echo "支持格式: 8080 (自动补全为 http://127.0.0.1:8080) 或 192.168.1.1:8000" >&2
         read -p "地址: " backend_input
         
         if [ -z "$backend_input" ]; then print_color "错误: 地址不能为空" "$RED"; continue; fi
@@ -122,7 +124,7 @@ get_backend_info() {
         if validate_ip "$backend_host" || [ "$backend_host" == "localhost" ]; then
             backend_url="http://${backend_host}:${backend_port}"
         elif validate_domain "$backend_host"; then
-            echo "检测到域名，请选择后端协议 (1. HTTP / 2. HTTPS):"
+            echo "检测到域名，请选择后端协议 (1. HTTP / 2. HTTPS):" >&2
             read -p "请选择 [1-2]: " protocol_choice
             protocol_choice=${protocol_choice:-1}
             [ "$protocol_choice" == "2" ] && backend_url="https://${backend_host}:${backend_port}" || backend_url="http://${backend_host}:${backend_port}"
@@ -132,6 +134,8 @@ get_backend_info() {
         fi
         break
     done
+    
+    # 确保只有最终结果进入标准输出，被 $(...) 捕获
     echo "$backend_url"
 }
 
@@ -180,12 +184,12 @@ get_generic_config() {
     enable_gzip=false
     enable_static_cache=false
 
-    echo ""
+    echo "" >&2
     print_color "=== Web服务通用配置 ===" "$BLUE"
 
     # 1. 端口模式选择
     while true; do
-        echo "请选择端口配置模式: 1. 标准(80/443) 2. 自定义"
+        echo "请选择端口配置模式: 1. 标准(80/443) 2. 自定义" >&2
         read -p "请选择 [1-2]: " port_mode
         case $port_mode in
             1) http_port=80; https_port=443; enable_301_redirect=true; break ;;
@@ -208,13 +212,13 @@ get_generic_config() {
     done
 
     # 2. 域名输入
-    echo ""
+    echo "" >&2
     read -p "请输入主域名 (多个用空格分隔，留空为localhost): " server_names
     if [ -z "$server_names" ]; then server_names="localhost"; fi
 
     # 3. SSL配置 (如果启用HTTPS)
     if [ -n "$https_port" ]; then
-        echo ""
+        echo "" >&2
         print_color "=== SSL/安全配置 ===" "$BLUE"
         read -p "SSL证书路径 (默认: /etc/ssl/certs/fullchain.pem): " ssl_cert
         [ -z "$ssl_cert" ] && ssl_cert="/etc/ssl/certs/fullchain.pem"
@@ -231,7 +235,7 @@ get_generic_config() {
     fi
 
     # 4. 性能优化
-    echo ""
+    echo "" >&2
     print_color "=== 性能优化配置 ===" "$BLUE"
     read -e -p "是否应用性能优化（Gzip、静态文件长缓存）? [Y/n]: " enable_perf
     enable_perf=${enable_perf:-y}
@@ -250,7 +254,7 @@ get_proxy_mappings() {
     
     # 1. 根路径 (Default) 强制配置
     while true; do
-        echo "请定义主域名根路径 '/' 的默认行为: 1. 静态网站 2. 全站反向代理"
+        echo "请定义主域名根路径 '/' 的默认行为: 1. 静态网站 2. 全站反向代理" >&2
         read -p "请选择 [1-2]: " root_mode
         
         if [ "$root_mode" == "1" ]; then
@@ -260,6 +264,7 @@ get_proxy_mappings() {
             break
         elif [ "$root_mode" == "2" ]; then
             print_color "--- 全站反代目标 ---" "$YELLOW"
+            # get_backend_info 现在只会输出 URL，不会污染 stdout
             local backend_url=$(get_backend_info)
             read -e -p "是否传递Host头? [Y/n]: " pass_host
             pass_host=${pass_host:-y}
@@ -273,11 +278,11 @@ get_proxy_mappings() {
     
     # 2. 循环添加其他映射
     while true; do
-        echo ""
+        echo "" >&2
         print_color "=== 添加额外的映射 ===" "$BLUE"
-        echo "当前已配置 ${#PROXY_MAPPINGS[@]} 个映射"
+        echo "当前已配置 ${#PROXY_MAPPINGS[@]} 个映射" >&2
         
-        echo "请选择要添加的映射类型: 1. 路径反向代理 2. 子域名反向代理 3. 完成"
+        echo "请选择要添加的映射类型: 1. 路径反向代理 2. 子域名反向代理 3. 完成" >&2
         read -p "请选择 [1-3]: " map_type
         
         if [ "$map_type" == "3" ]; then break; fi
@@ -292,6 +297,7 @@ get_proxy_mappings() {
                     break
                 fi
             done
+            print_color "--- 路径反代目标 ---" "$YELLOW"
             local backend_url=$(get_backend_info)
             read -e -p "是否传递Host头? [Y/n]: " pass_host
             pass_host=${pass_host:-y}
@@ -302,6 +308,7 @@ get_proxy_mappings() {
         elif [ "$map_type" == "2" ]; then
             read -p "请输入子域名部分 (例如: api 或 *): " subdomain_input
             if [ -z "$subdomain_input" ]; then print_color "子域名不能为空" "$RED"; continue; fi
+            print_color "--- 子域名反代目标 ---" "$YELLOW"
             local backend_url=$(get_backend_info)
             read -e -p "是否传递Host头? [Y/n]: " pass_host
             pass_host=${pass_host:-y}
