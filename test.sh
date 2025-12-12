@@ -28,7 +28,7 @@ show_menu() {
     echo "请选择要生成的服务器配置:"
     echo "1. Nginx"
     echo "2. Caddy"
-    echo "3. 退出"
+    echo "0. 退出"
     echo ""
 }
 
@@ -72,35 +72,30 @@ validate_path() {
     fi
 }
 
-# 获取后端配置
-get_backend_config() {
-    local backend_type=$1
-    
-    case $backend_type in
-        "single")
-            get_single_backend_config
-            ;;
-        "multi")
-            get_multi_backend_config
-            ;;
-    esac
-}
-
 # 获取单后端配置
 get_single_backend_config() {
+    local backend_type=$1  # 用于区分是根路径代理还是路径代理
+    
     while true; do
-        read -p "请输入后端服务地址 (IP、域名或带端口的地址，如 127.0.0.1:8080): " backend_input
+        read -p "请输入后端服务地址 (IP、域名、端口或带端口的地址，如 8080 或 127.0.0.1:8080): " backend_input
 
         if [ -z "$backend_input" ]; then
             print_color "错误: 后端地址不能为空" "$RED"
             continue
         fi
 
+        # 检查是否只包含数字（纯端口）
+        if [[ "$backend_input" =~ ^[0-9]+$ ]]; then
+            # 纯端口，默认使用 127.0.0.1
+            backend_host="127.0.0.1"
+            backend_port="$backend_input"
+            print_color "检测到端口号，使用本地地址: 127.0.0.1:$backend_port" "$YELLOW"
         # 检查是否包含端口
-        if [[ $backend_input =~ :[0-9]+$ ]]; then
+        elif [[ $backend_input =~ :[0-9]+$ ]]; then
             backend_host=$(echo "$backend_input" | awk -F: '{print $1}')
             backend_port=$(echo "$backend_input" | awk -F: '{print $2}')
         else
+            # 只有主机名或IP，没有端口
             backend_host="$backend_input"
             backend_port="80"
         fi
@@ -111,9 +106,14 @@ get_single_backend_config() {
             echo "请选择后端协议:"
             echo "1. HTTP (默认)"
             echo "2. HTTPS"
-            read -p "请选择 [1-2]: " protocol_choice
+            echo "0. 返回上一级"
+            read -p "请选择 [0-2]: " protocol_choice
             protocol_choice=${protocol_choice:-1}
+            
             case $protocol_choice in
+                0)
+                    return 1  # 返回上一级
+                    ;;
                 2)
                     backend_url="https://${backend_host}:${backend_port}"
                     ;;
@@ -123,28 +123,47 @@ get_single_backend_config() {
             esac
             break
         else
-            print_color "错误: 请输入有效的 IP 地址或域名" "$RED"
+            print_color "错误: 请输入有效的 IP 地址、域名或端口号" "$RED"
         fi
     done
 
-    read -p "请输入代理路径 (例如: /api/, 留空为 /): " proxy_path_input
-    if [ -z "$proxy_path_input" ]; then
-        proxy_path="/"
+    # 只有在路径代理时才询问代理路径
+    if [ "$backend_type" = "path" ]; then
+        while true; do
+            read -p "请输入代理路径 (例如: /api/, 输入0返回上一级): " proxy_path_input
+            
+            if [ "$proxy_path_input" = "0" ]; then
+                return 1  # 返回上一级
+            fi
+            
+            if [ -z "$proxy_path_input" ]; then
+                proxy_path="/"
+                break
+            else
+                # 确保路径以/开头
+                if [[ ! "$proxy_path_input" =~ ^/ ]]; then
+                    proxy_path_input="/$proxy_path_input"
+                fi
+                proxy_path="$proxy_path_input"
+                break
+            fi
+        done
     else
-        # 确保路径以/开头
-        if [[ ! "$proxy_path_input" =~ ^/ ]]; then
-            proxy_path_input="/$proxy_path_input"
-        fi
-        proxy_path="$proxy_path_input"
+        proxy_path="/"  # 根路径代理使用默认路径
     fi
 
-    read -e -p "是否传递 Host 头? [Y/n]: " pass_host
+    read -e -p "是否传递 Host 头? [Y/n/0返回]: " pass_host
+    if [ "$pass_host" = "0" ]; then
+        return 1  # 返回上一级
+    fi
     pass_host=${pass_host:-y}
     if [[ ! "$pass_host" =~ ^[Nn] ]]; then
         proxy_set_host=true
     else
         proxy_set_host=false
     fi
+    
+    return 0
 }
 
 # 获取多后端配置
@@ -153,41 +172,78 @@ get_multi_backend_config() {
     
     echo ""
     print_color "=== 根域名处理配置 ===" "$PURPLE"
-    echo "请选择根域名的处理方式:"
-    echo "1. 返回 404 (不处理根路径)"
-    echo "2. 代理到特定后端"
-    echo "3. 服务静态文件"
-    read -p "请选择 [1-3]: " root_choice
-    
-    case $root_choice in
-        2)
-            echo "配置根域名代理后端..."
-            get_single_backend_config
-            multi_backends+=("root:$proxy_path:$backend_url:$proxy_set_host")
-            ;;
-        3)
-            read -p "请输入静态文件根目录 (默认: /var/www/html): " static_root
-            static_root=${static_root:-/var/www/html}
-            multi_backends+=("root:static:$static_root")
-            ;;
-        *)
-            multi_backends+=("root:404")
-            print_color "根路径将返回 404" "$YELLOW"
-            ;;
-    esac
+    while true; do
+        echo "请选择根域名的处理方式:"
+        echo "1. 返回 404 (不处理根路径)"
+        echo "2. 代理到特定后端"
+        echo "3. 服务静态文件"
+        echo "0. 返回主菜单"
+        read -p "请选择 [0-3]: " root_choice
+        
+        case $root_choice in
+            0)
+                return 1  # 返回主菜单
+                ;;
+            2)
+                echo "配置根域名代理后端..."
+                if get_single_backend_config "root"; then
+                    multi_backends+=("root:$proxy_path:$backend_url:$proxy_set_host")
+                    break
+                else
+                    continue  # 用户选择返回，重新选择
+                fi
+                ;;
+            3)
+                read -p "请输入静态文件根目录 (默认: /var/www/html, 输入0返回): " static_root
+                if [ "$static_root" = "0" ]; then
+                    continue
+                fi
+                static_root=${static_root:-/var/www/html}
+                multi_backends+=("root:static:$static_root")
+                break
+                ;;
+            1)
+                multi_backends+=("root:404")
+                print_color "根路径将返回 404" "$YELLOW"
+                break
+                ;;
+            *)
+                print_color "无效选择，请重试" "$RED"
+                ;;
+        esac
+    done
     
     echo ""
     print_color "=== 多后端代理配置 ===" "$PURPLE"
-    echo "请选择多后端代理类型:"
-    echo "1. 路径代理 (如 /api/* 代理到不同后端)"
-    echo "2. 子域名代理 (如 api.domain.com 代理到不同后端)"
-    read -p "请选择 [1-2]: " multi_type_choice
-    
-    if [ $multi_type_choice -eq 1 ]; then
-        get_path_based_proxies
-    else
-        get_subdomain_based_proxies
-    fi
+    while true; do
+        echo "请选择多后端代理类型:"
+        echo "1. 路径代理 (如 /api/* 代理到不同后端)"
+        echo "2. 子域名代理 (如 api.domain.com 代理到不同后端)"
+        echo "0. 完成配置"
+        read -p "请选择 [0-2]: " multi_type_choice
+        
+        case $multi_type_choice in
+            0)
+                if [ ${#multi_backends[@]} -eq 1 ] && [[ "${multi_backends[0]}" == root:* ]]; then
+                    print_color "警告: 您只配置了根路径处理，没有添加任何代理规则" "$YELLOW"
+                    read -e -p "是否继续? [Y/n]: " confirm_continue
+                    if [[ "$confirm_continue" =~ ^[Nn] ]]; then
+                        continue
+                    fi
+                fi
+                break
+                ;;
+            1)
+                get_path_based_proxies
+                ;;
+            2)
+                get_subdomain_based_proxies
+                ;;
+            *)
+                print_color "无效选择，请重试" "$RED"
+                ;;
+        esac
+    done
 }
 
 # 获取基于路径的代理配置
@@ -195,31 +251,51 @@ get_path_based_proxies() {
     while true; do
         echo ""
         print_color "添加路径代理规则" "$CYAN"
-        read -p "请输入代理路径 (如 /api/, 输入 'done' 结束): " path_input
         
-        if [ "$path_input" = "done" ]; then
+        while true; do
+            read -p "请输入代理路径 (如 /api/, 输入0返回上一级): " path_input
+            
+            if [ "$path_input" = "0" ]; then
+                return 0  # 返回上一级
+            fi
+            
+            if [ -z "$path_input" ]; then
+                print_color "路径不能为空" "$RED"
+                continue
+            fi
+            
+            # 确保路径以/开头
+            if [[ ! "$path_input" =~ ^/ ]]; then
+                path_input="/$path_input"
+            fi
             break
-        fi
-        
-        if [ -z "$path_input" ]; then
-            print_color "路径不能为空" "$RED"
-            continue
-        fi
-        
-        # 确保路径以/开头
-        if [[ ! "$path_input" =~ ^/ ]]; then
-            path_input="/$path_input"
-        fi
+        done
         
         # 获取后端配置
-        get_single_backend_config
-        multi_backends+=("path:$path_input:$backend_url:$proxy_set_host")
-        
-        read -e -p "是否继续添加路径代理? [Y/n]: " continue_add
-        continue_add=${continue_add:-y}
-        if [[ "$continue_add" =~ ^[Nn] ]]; then
-            break
+        if get_single_backend_config "path"; then
+            multi_backends+=("path:$path_input:$backend_url:$proxy_set_host")
+            print_color "路径代理规则已添加: $path_input -> $backend_url" "$GREEN"
+        else
+            continue  # 用户选择返回，重新输入路径
         fi
+        
+        while true; do
+            read -e -p "是否继续添加路径代理? [Y/n/0返回上一级]: " continue_add
+            case $continue_add in
+                0)
+                    return 0
+                    ;;
+                ""|y|Y)
+                    break  # 继续添加
+                    ;;
+                n|N)
+                    return 0  # 返回上一级
+                    ;;
+                *)
+                    print_color "无效输入，请输入 Y/n/0" "$RED"
+                    ;;
+            esac
+        done
     done
 }
 
@@ -228,26 +304,52 @@ get_subdomain_based_proxies() {
     while true; do
         echo ""
         print_color "添加子域名代理规则" "$CYAN"
-        read -p "请输入子域名 (如 api, 输入 'done' 结束): " subdomain_input
         
-        if [ "$subdomain_input" = "done" ]; then
+        while true; do
+            read -p "请输入子域名 (如 api, 输入0返回上一级): " subdomain_input
+            
+            if [ "$subdomain_input" = "0" ]; then
+                return 0  # 返回上一级
+            fi
+            
+            if [ -z "$subdomain_input" ]; then
+                print_color "子域名不能为空" "$RED"
+                continue
+            fi
+            
+            # 验证子域名格式
+            if [[ ! "$subdomain_input" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$ ]]; then
+                print_color "错误: 子域名格式不正确" "$RED"
+                continue
+            fi
             break
-        fi
-        
-        if [ -z "$subdomain_input" ]; then
-            print_color "子域名不能为空" "$RED"
-            continue
-        fi
+        done
         
         # 获取后端配置
-        get_single_backend_config
-        multi_backends+=("subdomain:$subdomain_input:$backend_url:$proxy_set_host")
-        
-        read -e -p "是否继续添加子域名代理? [Y/n]: " continue_add
-        continue_add=${continue_add:-y}
-        if [[ "$continue_add" =~ ^[Nn] ]]; then
-            break
+        if get_single_backend_config "subdomain"; then
+            multi_backends+=("subdomain:$subdomain_input:$backend_url:$proxy_set_host")
+            print_color "子域名代理规则已添加: $subdomain_input -> $backend_url" "$GREEN"
+        else
+            continue  # 用户选择返回，重新输入子域名
         fi
+        
+        while true; do
+            read -e -p "是否继续添加子域名代理? [Y/n/0返回上一级]: " continue_add
+            case $continue_add in
+                0)
+                    return 0
+                    ;;
+                ""|y|Y)
+                    break  # 继续添加
+                    ;;
+                n|N)
+                    return 0  # 返回上一级
+                    ;;
+                *)
+                    print_color "无效输入，请输入 Y/n/0" "$RED"
+                    ;;
+            esac
+        done
     done
 }
 
@@ -280,9 +382,13 @@ get_web_config() {
         echo "请选择端口配置模式:"
         echo "1. 标准端口 (HTTP=80, HTTPS=443，自动HTTP到HTTPS重定向)"
         echo "2. 自定义端口"
-        read -p "请选择 [1-2]: " port_mode
+        echo "0. 返回主菜单"
+        read -p "请选择 [0-2]: " port_mode
 
         case $port_mode in
+            0)
+                return 1  # 返回主菜单
+                ;;
             1)
                 # 标准端口：80重定向到443
                 http_port=80
@@ -295,14 +401,22 @@ get_web_config() {
                 # 自定义端口
                 is_standard=false
                 while true; do
-                    read -p "请输入监听端口（如果是HTTPS请输入HTTPS端口，否则输入HTTP端口）: " custom_port
+                    read -p "请输入监听端口（如果是HTTPS请输入HTTPS端口，否则输入HTTP端口, 输入0返回）: " custom_port
+                    
+                    if [ "$custom_port" = "0" ]; then
+                        continue 2  # 继续外层循环
+                    fi
+                    
                     if validate_port "$custom_port"; then
                         break
                     fi
                 done
 
                 echo ""
-                read -e -p "此端口用于 HTTPS 吗？（Y/n）: " enable_ssl
+                read -e -p "此端口用于 HTTPS 吗？（Y/n/0返回）: " enable_ssl
+                if [ "$enable_ssl" = "0" ]; then
+                    continue  # 重新选择端口模式
+                fi
                 enable_ssl=${enable_ssl:-y}
                 if [[ ! "$enable_ssl" =~ ^[Nn] ]]; then
                     https_port=$custom_port
@@ -402,28 +516,46 @@ get_web_config() {
     # 反向代理配置
     echo ""
     print_color "=== 反向代理配置 ===" "$BLUE"
-    echo "请选择代理模式:"
-    echo "1. 纯静态文件服务"
-    echo "2. 单后端反向代理"
-    echo "3. 多后端反向代理（混合模式）"
-    read -p "请选择 [1-3]: " proxy_mode
+    while true; do
+        echo "请选择代理模式:"
+        echo "1. 纯静态文件服务"
+        echo "2. 单后端反向代理"
+        echo "3. 多后端反向代理（混合模式）"
+        echo "0. 返回主菜单"
+        read -p "请选择 [0-3]: " proxy_mode
 
-    case $proxy_mode in
-        2)
-            enable_proxy=true
-            proxy_type="single"
-            get_backend_config "single"
-            ;;
-        3)
-            enable_proxy=true
-            proxy_type="multi"
-            get_backend_config "multi"
-            ;;
-        *)
-            enable_proxy=false
-            proxy_type="static"
-            ;;
-    esac
+        case $proxy_mode in
+            0)
+                return 1  # 返回主菜单
+                ;;
+            2)
+                enable_proxy=true
+                proxy_type="single"
+                if get_single_backend_config "single"; then
+                    break
+                else
+                    continue  # 用户选择返回，重新选择
+                fi
+                ;;
+            3)
+                enable_proxy=true
+                proxy_type="multi"
+                if get_multi_backend_config; then
+                    break
+                else
+                    continue  # 用户选择返回，重新选择
+                fi
+                ;;
+            1)
+                enable_proxy=false
+                proxy_type="static"
+                break
+                ;;
+            *)
+                print_color "无效选择，请重试" "$RED"
+                ;;
+        esac
+    done
 }
 
 # 自动复制 Nginx 配置
@@ -783,7 +915,7 @@ generate_nginx_config() {
     print_color "Nginx配置文件已生成: $config_file" "$GREEN"
     echo ""
     print_color "使用方法:" "$YELLOW"
-    echo "如果需要手动安装，请执行（非 root 时需加 sudo）："
+    echo "如果需要手动安装，请执行:"
     echo "cp $config_file /etc/nginx/sites-available/"
     echo "ln -s /etc/nginx/sites-available/$config_file /etc/nginx/sites-enabled/$config_file"
     echo "nginx -t && systemctl reload nginx"
@@ -1119,7 +1251,10 @@ generate_caddy_config() {
     # Caddy 配置安装
     echo ""
     print_color "=== Caddy配置安装 ===" "$BLUE"
-    read -e -p "是否将配置文件添加到 /etc/caddy/Caddyfile 并验证? [Y/n]: " install_choice
+    read -e -p "是否将配置文件添加到 /etc/caddy/Caddyfile 并验证? [Y/n/0返回]: " install_choice
+    if [ "$install_choice" = "0" ]; then
+        return
+    fi
     install_choice=${install_choice:-y}
     if [[ ! "$install_choice" =~ ^[Nn] ]]; then
         if [ "$EUID" -eq 0 ]; then
@@ -1134,7 +1269,10 @@ generate_caddy_config() {
                 print_color "验证 Caddy 配置..." "$YELLOW"
                 if caddy validate --config /etc/caddy/Caddyfile; then
                     print_color "配置验证成功！" "$GREEN"
-                    read -e -p "是否立即重载 Caddy 配置? [Y/n]: " reload_choice
+                    read -e -p "是否立即重载 Caddy 配置? [Y/n/0返回]: " reload_choice
+                    if [ "$reload_choice" = "0" ]; then
+                        return
+                    fi
                     reload_choice=${reload_choice:-y}
                     if [[ ! "$reload_choice" =~ ^[Nn] ]]; then
                         systemctl reload caddy
@@ -1152,7 +1290,10 @@ generate_caddy_config() {
 
                 if caddy validate --config /etc/caddy/Caddyfile; then
                     print_color "配置验证成功！" "$GREEN"
-                    read -e -p "是否立即启动并启用 Caddy 服务? [Y/n]: " start_choice
+                    read -e -p "是否立即启动并启用 Caddy 服务? [Y/n/0返回]: " start_choice
+                    if [ "$start_choice" = "0" ]; then
+                        return
+                    fi
                     start_choice=${start_choice:-y}
                     if [[ ! "$start_choice" =~ ^[Nn] ]]; then
                         systemctl enable caddy
@@ -1165,7 +1306,7 @@ generate_caddy_config() {
                 fi
             fi
         else
-            print_color "当前非 root，脚本不会使用 自动修改 Caddyfile。请手动执行以下命令：" "$YELLOW"
+            print_color "当前非 root，脚本不会使用自动修改 Caddyfile。请手动执行以下命令：" "$YELLOW"
             echo "cp $config_file /etc/caddy/Caddyfile.new"
             echo "caddy validate --config /etc/caddy/Caddyfile.new"
             echo "# 如果验证成功，手动添加到现有配置或替换："
@@ -1186,20 +1327,22 @@ generate_caddy_config() {
 main() {
     while true; do
         show_menu
-        read -p "请选择 [1-3]: " choice
+        read -p "请选择 [0-2]: " choice
 
         case $choice in
-            1)
-                get_web_config
-                generate_nginx_config
-                ;;
-            2)
-                get_web_config
-                generate_caddy_config
-                ;;
-            3)
+            0)
                 print_color "再见！" "$GREEN"
                 exit 0
+                ;;
+            1)
+                if get_web_config; then
+                    generate_nginx_config
+                fi
+                ;;
+            2)
+                if get_web_config; then
+                    generate_caddy_config
+                fi
                 ;;
             *)
                 print_color "无效选择，请重试" "$RED"
@@ -1207,12 +1350,25 @@ main() {
         esac
 
         echo ""
-        read -e -p "是否继续生成其他配置? [Y/n]: " cont
-        cont=${cont:-y}
-        if [[ "$cont" =~ ^[Nn] ]]; then
-            print_color "再见！" "$GREEN"
-            exit 0
-        fi
+        while true; do
+            read -e -p "是否继续生成其他配置? [Y/n/0退出]: " cont
+            case $cont in
+                0)
+                    print_color "再见！" "$GREEN"
+                    exit 0
+                    ;;
+                ""|y|Y)
+                    break  # 继续
+                    ;;
+                n|N)
+                    print_color "再见！" "$GREEN"
+                    exit 0
+                    ;;
+                *)
+                    print_color "无效输入，请输入 Y/n/0" "$RED"
+                    ;;
+            esac
+        done
     done
 }
 
