@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# ==========================================
+# Web服务器配置生成器 (v2.1 IPv6 & 智能补全版)
+# ==========================================
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -15,7 +19,7 @@ print_color() {
 # 显示标题
 print_title() {
     echo "========================================"
-    echo "    Web服务器配置生成器（优化版）"
+    echo "    Web服务器配置生成器 (v2.1)"
     echo "========================================"
     echo ""
 }
@@ -34,7 +38,6 @@ show_menu() {
 validate_port() {
     local port=$1
     if [[ ! "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
-        print_color "错误: 端口号必须是1-65535之间的数字" "$RED"
         return 1
     fi
     return 0
@@ -53,6 +56,7 @@ validate_ip() {
 # 验证域名格式
 validate_domain() {
     local domain=$1
+    # 简单的域名验证正则
     if [[ $domain =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
         return 0
     else
@@ -62,13 +66,31 @@ validate_domain() {
 
 # 获取Web服务配置
 get_web_config() {
-    # 初始化变量
+    # === 初始化变量 ===
+    http_port=""
+    https_port=""
+    server_names=""
+    root_path=""
+    ssl_cert=""
+    ssl_key=""
+    enable_301_redirect=false
+    is_standard=false
     need_497=false
+    enable_hsts=false
+    enable_ocsp=false
+    strong_security=false
+    enable_gzip=false
+    enable_static_cache=false
+    enable_proxy=false
+    proxy_set_host=false
+    backend_url=""
+    proxy_path="/"
+    # =================
     
     echo ""
     print_color "=== Web服务基本配置 ===" "$BLUE"
     
-    # 简化的端口模式选择
+    # 端口模式选择
     while true; do
         echo ""
         echo "请选择端口配置模式:"
@@ -78,7 +100,6 @@ get_web_config() {
         
         case $port_mode in
             1)
-                # 标准端口：80重定向到443
                 http_port=80
                 https_port=443
                 enable_301_redirect=true
@@ -86,24 +107,24 @@ get_web_config() {
                 break
                 ;;
             2)
-                # 自定义端口
                 is_standard=false
                 while true; do
                     read -p "请输入监听端口: " custom_port
                     if validate_port "$custom_port"; then
                         break
+                    else
+                        print_color "错误: 端口号必须是1-65535之间的数字" "$RED"
                     fi
                 done
                 
                 echo ""
                 read -p "是否启用HTTPS (SSL)? [Y/n]: " enable_ssl
-                enable_ssl=${enable_ssl:-y}  # 添加默认值处理
+                enable_ssl=${enable_ssl:-y}
                 if [[ ! "$enable_ssl" =~ ^[Nn] ]]; then
                     http_port=""
                     https_port=$custom_port
                     enable_301_redirect=false
                     
-                    # 非标准HTTPS端口强制处理497
                     if [ "$https_port" -ne 443 ]; then
                         need_497=true
                     else
@@ -129,18 +150,17 @@ get_web_config() {
         server_names="localhost"
     fi
     
-    # 获取根目录（仅在未启用反向代理时询问）
+    # 获取根目录
     echo ""
     read -p "请输入网站根目录 (默认: /var/www/html): " root_path
     if [ -z "$root_path" ]; then
         root_path="/var/www/html"
     fi
     
-    # SSL配置（如果启用了HTTPS）
+    # SSL配置
     if [ -n "$https_port" ]; then
         echo ""
         print_color "=== SSL证书配置 ===" "$BLUE"
-        print_color "注意：请优先使用证书链" "$YELLOW"
         read -p "SSL证书路径 (默认: /etc/ssl/certs/ssl-cert-snakeoil.pem): " ssl_cert
         if [ -z "$ssl_cert" ]; then
             ssl_cert="/etc/ssl/certs/ssl-cert-snakeoil.pem"
@@ -151,12 +171,10 @@ get_web_config() {
             ssl_key="/etc/ssl/private/ssl-cert-snakeoil.key"
         fi
         
-        # 安全加固
         echo ""
         print_color "=== 安全加固配置 ===" "$BLUE"
-        echo "推荐配置包括：HSTS、OCSP Stapling、TLS 1.2+"
-        read -e -p "是否应用推荐的安全配置? [Y/n]: " enable_security
-        enable_security=${enable_security:-y}  # 修复：处理空输入，默认值为 y
+        read -e -p "是否应用推荐的安全配置(HSTS/OCSP/TLS1.2+)? [Y/n]: " enable_security
+        enable_security=${enable_security:-y}
         if [[ ! "$enable_security" =~ ^[Nn] ]]; then
             enable_hsts=true
             enable_ocsp=true
@@ -166,19 +184,13 @@ get_web_config() {
             enable_ocsp=false
             strong_security=false
         fi
-    else
-        enable_hsts=false
-        enable_ocsp=false
-        strong_security=false
-        ssl_cert=""
-        ssl_key=""
     fi
     
-    # 性能优化配置（仅在未启用反向代理时询问）
+    # 性能优化配置
     echo ""
     print_color "=== 性能优化配置 ===" "$BLUE"
-    read -e -p "是否应用性能优化（Gzip、缓存头、静态文件长缓存）? [Y/n]: " enable_perf
-    enable_perf=${enable_perf:-y}  # 修复：处理空输入，默认值为 y
+    read -e -p "是否应用性能优化（Gzip、缓存头）? [Y/n]: " enable_perf
+    enable_perf=${enable_perf:-y}
     if [[ ! "$enable_perf" =~ ^[Nn] ]]; then
         enable_gzip=true
         enable_static_cache=true
@@ -196,49 +208,65 @@ get_web_config() {
         enable_proxy=true
     
         while true; do
-            read -p "请输入后端服务地址 (IP、域名或带端口的地址，如 127.0.0.1:8080): " backend_input
+            echo "请输入后端服务地址"
+            echo "支持格式:"
+            echo "  - 仅端口: 8080 (自动补全为 http://127.0.0.1:8080)"
+            echo "  - IP+端口: 10.0.0.5:3000"
+            echo "  - 域名+端口: backend.local:8080"
+            read -p "地址: " backend_input
             
             if [ -z "$backend_input" ]; then
-                print_color "错误: 后端地址不能为空" "$RED"
+                print_color "错误: 地址不能为空" "$RED"
                 continue
             fi
+
+            # 1. 剥离协议头
+            backend_input=${backend_input#http://}
+            backend_input=${backend_input#https://}
             
-            # 检查是否包含端口
-            if [[ $backend_input =~ :[0-9]+$ ]]; then
-                # 已经包含端口
+            # === [新增] 仅端口自动补全逻辑 ===
+            if [[ "$backend_input" =~ ^[0-9]+$ ]]; then
+                # 如果输入全是数字，且在有效端口范围内
+                if validate_port "$backend_input"; then
+                    backend_host="127.0.0.1"
+                    backend_port="$backend_input"
+                    backend_url="http://${backend_host}:${backend_port}"
+                    print_color "检测到纯端口输入，自动补全为: $backend_url" "$YELLOW"
+                    break
+                else
+                    print_color "错误: 端口无效 (必须在 1-65535 之间)" "$RED"
+                    continue
+                fi
+            # ===============================
+
+            # 2. 常规 Host:Port 解析
+            elif [[ $backend_input =~ :[0-9]+$ ]]; then
                 backend_host=$(echo "$backend_input" | cut -d: -f1)
                 backend_port=$(echo "$backend_input" | cut -d: -f2)
             else
-                # 不含端口，使用默认端口
                 backend_host="$backend_input"
                 backend_port="80"
             fi
             
-            # 验证输入的是IP还是域名
+            # 3. 验证与协议选择
             if validate_ip "$backend_host"; then
-                # 如果是IP地址，强制使用HTTP
                 backend_url="http://${backend_host}:${backend_port}"
-                print_color "检测到IP地址，自动使用HTTP协议: $backend_url" "$YELLOW"
+                print_color "检测到IP地址，使用HTTP协议: $backend_url" "$YELLOW"
                 break
-            elif validate_domain "$backend_host"; then
-                # 如果是域名，让用户选择协议
-                echo "检测到域名，请选择协议:"
-                echo "1. HTTPS (默认)"
-                echo "2. HTTP"
+            elif validate_domain "$backend_host" || [ "$backend_host" == "localhost" ]; then
+                echo "检测到域名，请选择后端协议:"
+                echo "1. HTTP (默认)"
+                echo "2. HTTPS"
                 read -p "请选择 [1-2]: " protocol_choice
                 protocol_choice=${protocol_choice:-1}
 
                 case $protocol_choice in
-                    2)
-                        backend_url="http://${backend_host}:${backend_port}"
-                        ;;
-                    *)
-                        backend_url="https://${backend_host}:${backend_port}"
-                        ;;
+                    2) backend_url="https://${backend_host}:${backend_port}" ;;
+                    *) backend_url="http://${backend_host}:${backend_port}" ;;
                 esac
                 break
             else
-                print_color "错误: 请输入有效的IP地址或域名" "$RED"
+                print_color "错误: 格式无效，请输入有效的 IP、域名或纯端口号" "$RED"
             fi
         done
         
@@ -247,17 +275,13 @@ get_web_config() {
             proxy_path="/"
         fi
         
-        read -e -p "是否传递Host头? [Y/n]: " pass_host
-        pass_host=${pass_host:-y}  # 修复：处理空输入，默认值为 y
+        read -e -p "是否传递Host头? (推荐开启) [Y/n]: " pass_host
+        pass_host=${pass_host:-y}
         if [[ ! "$pass_host" =~ ^[Nn] ]]; then
             proxy_set_host=true
         else
             proxy_set_host=false
         fi
-        
-        # 反向代理模式下，禁用静态文件相关配置
-        enable_gzip=false
-        enable_static_cache=false
     else
         enable_proxy=false
         backend_url=""
@@ -269,35 +293,30 @@ get_web_config() {
 # 自动复制Nginx配置文件
 copy_nginx_config() {
     local config_file=$1
-    
     echo ""
     print_color "=== Nginx配置安装 ===" "$BLUE"
     read -e -p "是否将配置文件复制到Nginx目录并启用? [Y/n]: " install_choice
-    install_choice=${install_choice:-y}  # 修复：处理空输入，默认值为 y
+    install_choice=${install_choice:-y}
     if [[ ! "$install_choice" =~ ^[Nn] ]]; then
-        # 检查Nginx目录是否存在
         if [ -d "/etc/nginx/sites-available" ] && [ -d "/etc/nginx/sites-enabled" ]; then
             sudo cp "$config_file" "/etc/nginx/sites-available/"
             sudo ln -sf "/etc/nginx/sites-available/$config_file" "/etc/nginx/sites-enabled/"
-            
-            # 测试配置
             print_color "测试Nginx配置..." "$YELLOW"
             if sudo nginx -t; then
                 print_color "配置测试成功！" "$GREEN"
                 read -e -p "是否立即重载Nginx配置? [Y/n]: " reload_choice  
-                reload_choice=${reload_choice:-y}  # 修复：处理空输入，默认值为 y
+                reload_choice=${reload_choice:-y}
                 if [[ ! "$reload_choice" =~ ^[Nn] ]]; then
                     sudo systemctl reload nginx
                     print_color "Nginx配置已重载！" "$GREEN"
                 fi
             else
-                print_color "配置测试失败，请检查配置文件！" "$RED"
-                # 移除有问题的配置
+                print_color "配置测试失败，已自动清理！" "$RED"
                 sudo rm -f "/etc/nginx/sites-enabled/$config_file"
                 sudo rm -f "/etc/nginx/sites-available/$config_file"
             fi
         else
-            print_color "错误: Nginx目录不存在，请手动复制配置文件" "$RED"
+            print_color "错误: Nginx目录不存在" "$RED"
         fi
     fi
 }
@@ -308,90 +327,68 @@ generate_nginx_config() {
     
     echo "# Nginx配置文件 - 生成于 $(date)" > "$config_file"
     echo "# 域名: $server_names" >> "$config_file"
-    echo "# 端口配置: HTTP=$http_port, HTTPS=$https_port, 重定向=$enable_301_redirect" >> "$config_file"
-    echo "# 反向代理: $enable_proxy" >> "$config_file"
     echo "" >> "$config_file"
     
-    # 如果有HTTP端口且需要重定向，先生成HTTP server块进行重定向
+    # HTTP重定向块
     if [ -n "$http_port" ] && [ "$enable_301_redirect" = true ] && [ -n "$https_port" ]; then
-        echo "# HTTP到HTTPS重定向" >> "$config_file"
         echo "server {" >> "$config_file"
         echo "    listen $http_port;" >> "$config_file"
+        echo "    listen [::]:$http_port;" >> "$config_file" # === [新增] IPv6 监听 ===
         echo "    server_name $server_names;" >> "$config_file"
-        echo "    return 301 https://\$server_name\$request_uri;" >> "$config_file"
+        echo "    return 301 https://\$host\$request_uri;" >> "$config_file"
         echo "}" >> "$config_file"
         echo "" >> "$config_file"
     fi
     
-    # 主server块（HTTPS或HTTP）
+    # 主server块
     if [ -n "$https_port" ]; then
-        echo "# HTTPS主配置" >> "$config_file"
         echo "server {" >> "$config_file"
+        # 兼容性写法，同时支持 IPv4 和 IPv6
         echo "    listen ${https_port} ssl http2;" >> "$config_file"
+        echo "    listen [::]:${https_port} ssl http2;" >> "$config_file" # === [新增] IPv6 监听 ===
+        
         if [ "$need_497" = true ]; then
             echo "    error_page 497 https://\$host:${https_port}\$request_uri;" >> "$config_file"
         fi
     elif [ -n "$http_port" ]; then
-        echo "# HTTP主配置" >> "$config_file"
         echo "server {" >> "$config_file"
         echo "    listen $http_port;" >> "$config_file"
+        echo "    listen [::]:$http_port;" >> "$config_file" # === [新增] IPv6 监听 ===
     fi
     
     echo "    server_name $server_names;" >> "$config_file"
     
-    # 仅在未启用反向代理时添加root和index配置
-    if [ "$enable_proxy" = false ]; then
+    # 根目录配置
+    if [ "$enable_proxy" = false ] || [ "$proxy_path" != "/" ]; then
         echo "    root $root_path;" >> "$config_file"
         echo "    index index.html index.htm index.php;" >> "$config_file"
-    else
-        echo "    # 反向代理模式，无需root目录配置" >> "$config_file"
     fi
     echo "" >> "$config_file"
     
-    # SSL配置（仅HTTPS）
+    # SSL配置
     if [ -n "$https_port" ]; then
         echo "    # SSL配置" >> "$config_file"
         echo "    ssl_certificate $ssl_cert;" >> "$config_file"
         echo "    ssl_certificate_key $ssl_key;" >> "$config_file"
-        
-        if [ "$strong_security" = true ]; then
-            echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
-            echo "    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;" >> "$config_file"
-        else
-            echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
-            echo "    ssl_ciphers HIGH:!aNULL:!MD5;" >> "$config_file"
-        fi
+        echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
+        echo "    ssl_ciphers HIGH:!aNULL:!MD5;" >> "$config_file"
         echo "    ssl_prefer_server_ciphers off;" >> "$config_file"
-        echo "    ssl_session_cache shared:SSL:10m;" >> "$config_file"
-        echo "    ssl_session_timeout 10m;" >> "$config_file"
-        echo "" >> "$config_file"
         
-        # HSTS
         if [ "$enable_hsts" = true ]; then
             echo "    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;" >> "$config_file"
-            echo "" >> "$config_file"
         fi
         
-        # OCSP Stapling
         if [ "$enable_ocsp" = true ]; then
             echo "    ssl_stapling on;" >> "$config_file"
             echo "    ssl_stapling_verify on;" >> "$config_file"
-            echo "    resolver 8.8.8.8 8.8.4.4 valid=300s;" >> "$config_file"
+            echo "    resolver 8.8.8.8 valid=300s;" >> "$config_file"
             echo "    resolver_timeout 5s;" >> "$config_file"
-            echo "" >> "$config_file"
         fi
+        echo "" >> "$config_file"
     fi
     
-    # 通用安全头
-    echo "    # 安全头" >> "$config_file"
-    echo "    add_header X-Frame-Options \"SAMEORIGIN\" always;" >> "$config_file"
-    echo "    add_header X-Content-Type-Options \"nosniff\" always;" >> "$config_file"
-    echo "    add_header X-XSS-Protection \"1; mode=block\" always;" >> "$config_file"
-    echo "" >> "$config_file"
-    
-    # 反向代理配置（仅在启用时添加）
+    # 反向代理
     if [ "$enable_proxy" = true ]; then
-        echo "    # 反向代理" >> "$config_file"
         echo "    location $proxy_path {" >> "$config_file"
         echo "        proxy_pass $backend_url;" >> "$config_file"
         if [ "$proxy_set_host" = true ]; then
@@ -400,31 +397,19 @@ generate_nginx_config() {
         echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
         echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
         echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> "$config_file"
+        echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
+        echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
         echo "    }" >> "$config_file"
         echo "" >> "$config_file"
     fi
     
-    # 静态文件配置（仅在未启用反向代理时添加）
-    if [ "$enable_proxy" = false ]; then
+    # 静态优化
+    if [ "$enable_proxy" = false ] || [ "$proxy_path" != "/" ]; then
         if [ "$enable_gzip" = true ]; then
-            echo "    # Gzip压缩" >> "$config_file"
             echo "    gzip on;" >> "$config_file"
-            echo "    gzip_vary on;" >> "$config_file"
-            echo "    gzip_min_length 1024;" >> "$config_file"
-            echo "    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json;" >> "$config_file"
-            echo "" >> "$config_file"
+            echo "    gzip_types text/plain text/css application/json application/javascript text/xml;" >> "$config_file"
         fi
-
-        if [ "$enable_static_cache" = true ]; then
-            echo "    # 静态文件缓存" >> "$config_file"
-            echo "    location ~* \\.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|ttf|svg|eot)\$ {" >> "$config_file"
-            echo "        expires 1y;" >> "$config_file"
-            echo "        add_header Cache-Control \"public, immutable\";" >> "$config_file"
-            echo "    }" >> "$config_file"
-            echo "" >> "$config_file"
-        fi
-
-        echo "    # 默认请求处理" >> "$config_file"
+        
         echo "    location / {" >> "$config_file"
         echo "        try_files \$uri \$uri/ =404;" >> "$config_file"
         echo "    }" >> "$config_file"
@@ -433,33 +418,21 @@ generate_nginx_config() {
     echo "}" >> "$config_file"
     
     print_color "Nginx配置文件已生成: $config_file" "$GREEN"
-    echo ""
-    print_color "使用方法:" "$YELLOW"
-    echo "sudo cp $config_file /etc/nginx/sites-available/"
-    echo "sudo ln -s /etc/nginx/sites-available/$config_file /etc/nginx/sites-enabled/"
-    echo "sudo nginx -t && sudo systemctl reload nginx"
-    echo ""
-    
-    # 提供自动复制选项
     copy_nginx_config "$config_file"
 }
 
-# 生成Caddy配置
+# 生成Caddy配置 (Caddy默认支持IPv6，无需额外监听配置)
 generate_caddy_config() {
     config_file="caddy_${server_names%% *}_$(date +%Y%m%d_%H%M%S).caddyfile"
     
-    echo "# Caddy配置文件 - 生成于 $(date)" > "$config_file"
+    echo "# Caddy配置文件" > "$config_file"
     echo "# 域名: $server_names" >> "$config_file"
-    echo "# 端口配置: HTTP=$http_port, HTTPS=$https_port" >> "$config_file"
-    echo "# 反向代理: $enable_proxy" >> "$config_file"
     echo "" >> "$config_file"
     
-    # 为每个域名生成块
     for domain in $server_names; do
-        # 标准端口HTTP到HTTPS重定向
+        # 端口重定向
         if [ -n "$http_port" ] && [ -n "$https_port" ] && [ "$enable_301_redirect" = true ]; then
-            echo "# HTTP到HTTPS重定向（标准端口）" >> "$config_file"
-            if [ "$http_port" -ne 80 ]; then
+             if [ "$http_port" -ne 80 ]; then
                 echo "${domain}:${http_port} {" >> "$config_file"
             else
                 echo "http://${domain} {" >> "$config_file"
@@ -469,76 +442,28 @@ generate_caddy_config() {
             echo "" >> "$config_file"
         fi
         
-        # 主配置块
+        # 主配置
         if [ -n "$https_port" ]; then
-            if [ "$https_port" -ne 443 ]; then
-                echo "${domain}:${https_port} {" >> "$config_file"
-            else
-                echo "${domain} {" >> "$config_file"
-            fi
+            [ "$https_port" -ne 443 ] && echo "${domain}:${https_port} {" >> "$config_file" || echo "${domain} {" >> "$config_file"
         elif [ -n "$http_port" ]; then
-            if [ "$http_port" -ne 80 ]; then
-                echo "${domain}:${http_port} {" >> "$config_file"
-            else
-                echo "${domain} {" >> "$config_file"
-            fi
+            [ "$http_port" -ne 80 ] && echo "${domain}:${http_port} {" >> "$config_file" || echo "${domain} {" >> "$config_file"
         fi
         
-        # TLS/SSL配置
-        if [ -n "$https_port" ]; then
-            if [ -n "$ssl_cert" ] && [ "$ssl_cert" != "/etc/ssl/certs/ssl-cert-snakeoil.pem" ]; then
-                echo "    tls $ssl_cert $ssl_key" >> "$config_file"
-            fi
-            
-            if [ "$strong_security" = true ]; then
-                echo "    tls {" >> "$config_file"
-                echo "        protocols tls1.2 tls1.3" >> "$config_file"
-                echo "    }" >> "$config_file"
-                echo "" >> "$config_file"
-            fi
-            
-            # HSTS
-            if [ "$enable_hsts" = true ]; then
-                echo "    header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\"" >> "$config_file"
-            fi
+        # TLS
+        if [ -n "$https_port" ] && [ -n "$ssl_cert" ] && [ "$ssl_cert" != "/etc/ssl/certs/ssl-cert-snakeoil.pem" ]; then
+            echo "    tls $ssl_cert $ssl_key" >> "$config_file"
         fi
         
-        # 安全头
-        echo "    header X-Frame-Options SAMEORIGIN" >> "$config_file"
-        echo "    header X-Content-Type-Options nosniff" >> "$config_file"
-        echo "    header X-XSS-Protection \"1; mode=block\"" >> "$config_file"
-        echo "" >> "$config_file"
-        
-        # 反向代理配置
+        # 反代
         if [ "$enable_proxy" = true ]; then
-            echo "    reverse_proxy /* $backend_url {" >> "$config_file"
-            if [ "$proxy_set_host" = true ]; then
-                echo "        header_up Host {host}" >> "$config_file"
-            fi
+            echo "    reverse_proxy $proxy_path* $backend_url {" >> "$config_file"
+            [ "$proxy_set_host" = true ] && echo "        header_up Host {host}" >> "$config_file"
             echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
-            echo "        header_up X-Forwarded-Proto {scheme}" >> "$config_file"
             echo "    }" >> "$config_file"
         else
-            # 静态文件模式
             echo "    root * $root_path" >> "$config_file"
-            echo "" >> "$config_file"
-            
-            if [ "$enable_gzip" = true ]; then
-                echo "    encode gzip zstd" >> "$config_file"
-                echo "" >> "$config_file"
-            fi
-            
             echo "    file_server" >> "$config_file"
-            echo "" >> "$config_file"
-            
-            # 静态文件缓存
-            if [ "$enable_static_cache" = true ]; then
-                echo "    @static {" >> "$config_file"
-                echo "        path *.jpg *.jpeg *.png *.gif *.ico *.css *.js *.woff *.woff2 *.ttf *.svg *.eot" >> "$config_file"
-                echo "    }" >> "$config_file"
-                echo "    header @static Cache-Control \"public, max-age=31536000, immutable\"" >> "$config_file"
-                echo "" >> "$config_file"
-            fi
+            [ "$enable_gzip" = true ] && echo "    encode gzip zstd" >> "$config_file"
         fi
         
         echo "}" >> "$config_file"
@@ -546,62 +471,27 @@ generate_caddy_config() {
     done
     
     print_color "Caddy配置文件已生成: $config_file" "$GREEN"
-    echo ""
     
-    # Caddy配置安装功能
-    echo ""
-    print_color "=== Caddy配置安装 ===" "$BLUE"
-	read -e -p "是否将配置文件添加到Caddyfile并验证? [Y/n]: " install_choice
-    install_choice=${install_choice:-y}  # 修复：处理空输入，默认值为 y   
+    # Caddy安装逻辑
+    read -e -p "是否将配置文件添加到Caddyfile并验证? [Y/n]: " install_choice
+    install_choice=${install_choice:-y}
     if [[ ! "$install_choice" =~ ^[Nn] ]]; then
-        # 检查Caddyfile是否存在
         if [ -f "/etc/caddy/Caddyfile" ]; then
+            if grep -q "$server_names" "/etc/caddy/Caddyfile"; then
+                print_color "警告: 域名可能已存在，跳过追加！" "$RED"
+                return
+            fi
             echo "" >> "/etc/caddy/Caddyfile"
             cat "$config_file" >> "/etc/caddy/Caddyfile"
             
-            # 验证配置
-            print_color "验证Caddy配置..." "$YELLOW"
             if sudo caddy validate --config /etc/caddy/Caddyfile; then
-                print_color "配置验证成功！" "$GREEN"
-                read -e -p "是否立即重载Caddy配置? [Y/n]: " reload_choice
-                reload_choice=${reload_choice:-y}  # 修复：处理空输入，默认值为 y
-                if [[ ! "$reload_choice" =~ ^[Nn] ]]; then
-                    sudo systemctl reload caddy
-                    print_color "Caddy配置已重载！" "$GREEN"
-                fi
+                print_color "验证成功！" "$GREEN"
+                sudo systemctl reload caddy
             else
-                print_color "配置验证失败，已回滚更改！" "$RED"
-                # 回滚更改
-                sudo sed -i "/$(basename "$config_file")/d" "/etc/caddy/Caddyfile"
-            fi
-        else
-            print_color "Caddyfile不存在，创建新的Caddyfile..." "$YELLOW"
-            sudo cp "$config_file" "/etc/caddy/Caddyfile"
-            sudo chown caddy:caddy "/etc/caddy/Caddyfile"
-            
-            # 验证配置
-            if sudo caddy validate --config /etc/caddy/Caddyfile; then
-                print_color "配置验证成功！" "$GREEN"
-                read -e -p "是否立即启动Caddy服务? [Y/n]: " start_choice
-                start_choice=${start_choice:-y}  # 处理空输入，默认值为 y
-                if [[ ! "$start_choice" =~ ^[Nn] ]]; then
-                    sudo systemctl enable caddy
-                    sudo systemctl start caddy
-                    print_color "Caddy服务已启动！" "$GREEN"
-                fi
-            else
-                print_color "配置验证失败！" "$RED"
-                sudo rm -f "/etc/caddy/Caddyfile"
+                print_color "验证失败，请手动检查文件！" "$RED"
             fi
         fi
     fi
-    
-    echo ""
-    print_color "使用方法:" "$YELLOW"
-    echo "手动安装: cat $config_file >> /etc/caddy/Caddyfile"
-    echo "配置验证: caddy validate --config /etc/caddy/Caddyfile"
-    echo "重载服务: sudo systemctl reload caddy"
-    echo ""
 }
 
 # 主程序
@@ -609,34 +499,15 @@ main() {
     while true; do
         show_menu
         read -p "请选择 [1-3]: " choice
-        
         case $choice in
-            1)
-                get_web_config
-                generate_nginx_config
-                ;;
-            2)
-                get_web_config
-                generate_caddy_config
-                ;;
-            3)
-                print_color "再见！" "$GREEN"
-                exit 0
-                ;;
-            *)
-                print_color "无效选择，请重试" "$RED"
-                ;;
+            1) get_web_config; generate_nginx_config ;;
+            2) get_web_config; generate_caddy_config ;;
+            3) exit 0 ;;
+            *) print_color "无效选择" "$RED" ;;
         esac
-        
-        echo ""
-        read -e -p "是否继续生成其他配置? [Y/n]: " cont
-        cont=${cont:-y}
-        if [[ "$cont" =~ ^[Nn] ]]; then  # 如果是 N/n
-            print_color "再见！" "$GREEN"
-            exit 0
-        fi
+        read -e -p "是否继续? [Y/n]: " cont
+        [[ "$cont" =~ ^[Nn] ]] && exit 0
     done
 }
 
-# 运行
 main
