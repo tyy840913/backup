@@ -357,7 +357,7 @@ generate_nginx_ssl_config() {
         
         if [ "$strong_security" = true ]; then
             # 官方推荐的现代高安全性密码套件
-            config+="    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';\n"
+            config+="    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';\n"
             config+="    ssl_prefer_server_ciphers off;\n"
         else
             config+="    ssl_ciphers HIGH:!aNULL:!MD5;\n"
@@ -405,6 +405,7 @@ generate_caddy_security_and_performance() {
     config+="    header {\n"
     config+="        X-Frame-Options SAMEORIGIN\n"
     [ "$enable_hsts" = true ] && config+="        Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\"\n"
+    config+="        X-Content-Type-Options nosniff\n"
     config+="    }\n"
     
     # 性能 (Caddy默认支持 Gzip 和 Zstd)
@@ -637,9 +638,10 @@ generate_caddy_config() {
                     local path_match=$m_matcher
                     local backend_url=$m_target
                     
-                    echo "    # 反向代理: $path_match* 到 $backend_url" >> "$config_file"
-                    echo "    reverse_proxy $path_match* $backend_url {" >> "$config_file"
+                    echo "    # 反向代理: ${path_match}* 到 $backend_url" >> "$config_file"
+                    echo "    reverse_proxy ${path_match}* $backend_url {" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        header_up Host {host}" >> "$config_file"
+                    echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
                     echo "        header_up X-Forwarded-Proto {scheme}" >> "$config_file" # <<< OPTIMIZATION: 增加协议头
                     echo "    }" >> "$config_file"
                 fi
@@ -652,6 +654,7 @@ generate_caddy_config() {
                     echo "    # 子域名全站反向代理到 $backend_url" >> "$config_file"
                     echo "    reverse_proxy $backend_url {" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        header_up Host {host}" >> "$config_file"
+                    echo "        header_up X-Real-IP {remote_host}" >> "$config_file"
                     echo "        header_up X-Forwarded-Proto {scheme}" >> "$config_file" # <<< OPTIMIZATION: 增加协议头
                     echo "    }" >> "$config_file"
                     break
