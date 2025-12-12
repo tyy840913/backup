@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =======================================================
-# Web服务器配置生成器 (v6.0 修复配置填充错误/优化流程)
+# Web服务器配置生成器 (v7.0 修复菜单显示/流程优化)
 # =======================================================
 
 # 颜色定义
@@ -23,12 +23,12 @@ print_color() {
 # 显示标题
 print_title() {
     echo "==========================================" >&2
-    echo " Web服务器配置生成器 (v6.0 修复填充版)" >&2
+    echo " Web服务器配置生成器 (v7.0 菜单修复版)" >&2
     echo "==========================================" >&2
     echo "" >&2
 }
 
-# 显示菜单 (用于选择 Nginx 或 Caddy)
+# 显示主菜单 (用于选择 Nginx 或 Caddy)
 show_menu() {
     print_title
     echo "请选择要生成的服务器配置:"
@@ -83,8 +83,6 @@ normalize_path() {
 }
 
 # 获取后端服务信息 (IP/端口/协议 自动补全)
-# *** 核心修复: 将所有提示信息重定向到标准错误 (>&2) 或使用 print_color，
-# *** 确保只有最终的 URL 被函数调用者捕获。
 get_backend_info() {
     local backend_url=""
     
@@ -124,7 +122,9 @@ get_backend_info() {
         if validate_ip "$backend_host" || [ "$backend_host" == "localhost" ]; then
             backend_url="http://${backend_host}:${backend_port}"
         elif validate_domain "$backend_host"; then
-            echo "检测到域名，请选择后端协议 (1. HTTP / 2. HTTPS):" >&2
+            echo "检测到域名，请选择后端协议:" >&2
+            echo "1. HTTP" >&2
+            echo "2. HTTPS" >&2
             read -p "请选择 [1-2]: " protocol_choice
             protocol_choice=${protocol_choice:-1}
             [ "$protocol_choice" == "2" ] && backend_url="https://${backend_host}:${backend_port}" || backend_url="http://${backend_host}:${backend_port}"
@@ -135,7 +135,7 @@ get_backend_info() {
         break
     done
     
-    # 确保只有最终结果进入标准输出，被 $(...) 捕获
+    # 确保只有最终结果进入标准输出
     echo "$backend_url"
 }
 
@@ -187,9 +187,11 @@ get_generic_config() {
     echo "" >&2
     print_color "=== Web服务通用配置 ===" "$BLUE"
 
-    # 1. 端口模式选择
+    # 1. 端口模式选择 (修复多行菜单)
     while true; do
-        echo "请选择端口配置模式: 1. 标准(80/443) 2. 自定义" >&2
+        echo "请选择端口配置模式:" >&2
+        echo "1. 标准(80/443)" >&2
+        echo "2. 自定义" >&2
         read -p "请选择 [1-2]: " port_mode
         case $port_mode in
             1) http_port=80; https_port=443; enable_301_redirect=true; break ;;
@@ -246,15 +248,17 @@ get_generic_config() {
     fi
 }
 
-# 获取反代和静态映射配置 (逻辑保持不变)
+# 获取反代和静态映射配置
 get_proxy_mappings() {
     PROXY_MAPPINGS=() # 清空旧映射
     
     print_color "=== 映射配置 (根路径 '/') ===" "$BLUE"
     
-    # 1. 根路径 (Default) 强制配置
+    # 1. 根路径 (Default) 强制配置 (修复多行菜单)
     while true; do
-        echo "请定义主域名根路径 '/' 的默认行为: 1. 静态网站 2. 全站反向代理" >&2
+        echo "请定义主域名根路径 '/' 的默认行为:" >&2
+        echo "1. 静态网站" >&2
+        echo "2. 全站反向代理" >&2
         read -p "请选择 [1-2]: " root_mode
         
         if [ "$root_mode" == "1" ]; then
@@ -276,13 +280,16 @@ get_proxy_mappings() {
         fi
     done
     
-    # 2. 循环添加其他映射
+    # 2. 循环添加其他映射 (修复多行菜单)
     while true; do
         echo "" >&2
         print_color "=== 添加额外的映射 ===" "$BLUE"
         echo "当前已配置 ${#PROXY_MAPPINGS[@]} 个映射" >&2
         
-        echo "请选择要添加的映射类型: 1. 路径反向代理 2. 子域名反向代理 3. 完成" >&2
+        echo "请选择要添加的映射类型:" >&2
+        echo "1. 路径反向代理" >&2
+        echo "2. 子域名反向代理" >&2
+        echo "3. 完成" >&2
         read -p "请选择 [1-3]: " map_type
         
         if [ "$map_type" == "3" ]; then break; fi
