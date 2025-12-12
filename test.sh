@@ -24,14 +24,14 @@ ssl_cert=""
 ssl_key=""
 hsts_enabled=false
 gzip_enabled=false
-root_path=""
+root_path="" # 默认使用 /var/www/html 或 /usr/share/nginx/html，用户可覆盖
 
 # 工作模式配置
 WORK_MODE="" # static, proxy, mixed
 PROXY_CONFIG_TYPE="" # path, subdomain
 PROXY_RULES=() # 路径反代规则数组: "path|backend_url|proxy_set_host"
 SUBDOMAIN_PROXIES=() # 子域名反代规则数组: "subdomain|backend_url"
-ROOT_ACTION="" # 根路径处理: "404" 或 "proxy|backend_url|set_host"
+ROOT_ACTION="" # 根路径处理: "404", "static", 或 "proxy|backend_url|set_host"
 
 
 # 打印带颜色的消息
@@ -42,7 +42,7 @@ print_color() {
 # 显示标题
 print_title() {
     echo "========================================="
-    echo "    Web服务器配置生成器（V2.8 修复版）"
+    echo "  Web服务器配置生成器（v1.0 生产正式版）"
     echo "========================================="
     echo ""
 }
@@ -84,7 +84,7 @@ normalize_backend_url() {
     fi
 }
 
-# 路径标准化：只保证有前导斜杠，不强制添加尾部斜杠，解决路径匹配文件和目录的冲突。
+# 路径标准化：只保证有前导斜杠，不强制添加尾部斜杠
 normalize_proxy_path() {
     local path=$1
     
@@ -95,8 +95,6 @@ normalize_proxy_path() {
     if [[ ! "$path" =~ ^/ ]]; then
         path="/$path"
     fi
-
-    # 3. 不强制添加尾部斜杠 (保留用户选择的灵活性)
     
     echo "$path"
 }
@@ -104,6 +102,7 @@ normalize_proxy_path() {
 # --- 获取工作模式和根路径 ---
 get_work_mode() {
     local choice
+    local default_root="/var/www/html" # 默认规范的静态文件路径
     # 重置 root_path
     root_path=""
 
@@ -137,22 +136,23 @@ get_work_mode() {
         esac
     done
 
-    # Get root path if required
+    # Get root path if required (使用 /var/www/html 作为默认)
     if [[ "$WORK_MODE" == "static" || "$WORK_MODE" == "mixed" ]]; then
         while true; do
-            read -e -p "请输入静态网站文件的根目录绝对路径 (例如: /var/www/html): " root_path
+            read -e -p "请输入静态网站文件的根目录绝对路径 (默认: $default_root): " root_path_input
             
-            # Fatal Error 3 修复：必须有 root
-            if [[ -z "$root_path" ]]; then
-                print_color "根目录不能为空，请重新输入。" "$RED"
-                continue
+            # 使用默认值或用户输入的值
+            if [[ -z "$root_path_input" ]]; then
+                root_path="$default_root"
+            else
+                root_path="$root_path_input"
             fi
 
             if [[ -d "$root_path" ]]; then
                 print_color "静态文件根目录: $root_path" "$GREEN"
                 break
             else
-                print_color "警告: 路径 $root_path 不存在或不是目录。强烈建议使用存在的路径。" "$YELLOW"
+                print_color "警告: 路径 $root_path 不存在或不是目录。建议使用存在的路径。" "$YELLOW"
                 read -p "是否继续使用此路径? [Y/n]: " continue_path
                 if [[ "$continue_path" =~ ^[nN]$ ]]; then
                     continue
@@ -268,7 +268,7 @@ get_web_config() {
     ssl_key=""
     hsts_enabled=false
     gzip_enabled=false
-    root_path="" # 保持 root_path 清空，让 get_work_mode 处理
+    root_path="" 
 
     WORK_MODE=""
     PROXY_CONFIG_TYPE=""
@@ -334,7 +334,7 @@ get_web_config() {
     if "$ssl_enabled"; then
         print_color "--- SSL/TLS 证书配置 (支持手动填写/自签证书) ---" "$CYAN"
         
-        # Fatal Error 2 修复：即使为空，也允许继续，但需要提供默认占位符
+        # 即使为空，也允许继续，但需要提供默认占位符
         read -e -p "请输入 SSL 证书文件绝对路径 (.crt/.pem) [留空，将使用默认占位]: " ssl_cert
         read -e -p "请输入 SSL 密钥文件绝对路径 (.key) [留空，将使用默认占位]: " ssl_key
         
@@ -448,10 +448,11 @@ generate_nginx_config() {
     local config_file="nginx_$(echo "$server_names" | awk '{print $1}' | tr -cd '[:alnum:]_-')_$(date +%Y%m%d_%H%M%S).conf"
     print_color "--- 正在生成 Nginx 配置 ---" "$CYAN"
 
-    # --- 致命错误 3 修复：确定最终 root 路径（避免 root "" 错误） ---
-    local final_root_path="/usr/share/nginx/html" # Nginx 默认的安全路径
+    # --- 确定最终 root 路径（避免 root "" 错误） ---
+    # Nginx 默认的安全路径，如果 root_path (用户输入/默认值) 为空，则使用此路径
+    local final_root_path="/usr/share/nginx/html" 
     if [[ -n "$root_path" ]]; then
-        final_root_path="$root_path" # 使用用户输入的路径
+        final_root_path="$root_path" # 使用用户输入或 /var/www/html 默认值
     fi
     
     # HTTP 重定向块 (仅在启用了 SSL 且使用的是标准端口 443 时生成 301 重定向)
@@ -473,13 +474,13 @@ generate_nginx_config() {
         echo "    listen $listen_port ssl http2;" >> "$config_file"
         echo "    server_name $server_names;" >> "$config_file"
 
-        # --- 致命错误 1 修复：497 错误重定向 (移除 =301，使用 $server_port) ---
+        # 497 错误重定向 (非标准 SSL 端口的 HTTP 请求强制 301 跳转到 HTTPS)
         if [ "$listen_port" -ne 443 ]; then
-            echo "    # Nginx 497 错误强制重定向 (非标准 SSL 端口的 HTTP 请求强制 301 跳转到 HTTPS)" >> "$config_file"
+            echo "    # Nginx 497 错误处理: 强制重定向到 HTTPS (非标准 SSL 端口)" >> "$config_file"
             echo "    error_page 497 https://\$host:\$server_port\$request_uri;" >> "$config_file"
         fi
         
-        # --- 致命错误 2 修复：SSL 证书配置 (不能使用空字符串 "" ) ---
+        # SSL 证书配置 (不能使用空字符串 "" )
         echo "    # --- SSL 证书配置 (支持自签证书) ---" >> "$config_file"
         if [[ -z "$ssl_cert" || -z "$ssl_key" ]]; then
             echo "    # !!! 警告: 证书或密钥路径为空。请手动修改以下两行！" >> "$config_file"
@@ -493,13 +494,13 @@ generate_nginx_config() {
         echo "    ssl_session_cache shared:SSL:10m;" >> "$config_file"
         echo "    ssl_session_timeout 10m;" >> "$config_file"
         
-        # --- 隐患修复：ssl_prefer_server_ciphers 改为 off (现代最佳实践) ---
+        # 2025 年标准 SSL 最佳实践
         echo "    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';" >> "$config_file"
-        echo "    ssl_prefer_server_ciphers off;" >> "$config_file"
+        echo "    ssl_prefer_server_ciphers off;" >> "$config_file" # 现代最佳实践
         echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> "$config_file"
         echo "    # --- SSL 证书配置结束 ---" >> "$config_file"
 
-        # --- 隐患修复：HSTS 加上 always ---
+        # HSTS 加上 always
         if "$hsts_enabled"; then
             echo "    # 启用 HSTS (半年), 确保 always" >> "$config_file"
             echo "    add_header Strict-Transport-Security \"max-age=15768000; includeSubDomains\" always;" >> "$config_file"
@@ -510,27 +511,38 @@ generate_nginx_config() {
         echo "    server_name $server_names;" >> "$config_file"
     fi
     
-    # --- 隐患修复：添加通用安全 Header ---
+    # 添加通用安全 Header
     echo "    # 推荐安全 Header" >> "$config_file"
     echo "    add_header X-Frame-Options SAMEORIGIN;" >> "$config_file"
     echo "    add_header X-Content-Type-Options nosniff;" >> "$config_file"
     echo "    add_header X-XSS-Protection \"1; mode=block\";" >> "$config_file"
 
-    # Gzip 配置
+    # Gzip 配置 (去重优化)
     if "$gzip_enabled"; then
-        echo "    # Gzip 压缩配置" >> "$config_file"
+        echo "    # Gzip 压缩配置 (已优化类型列表)" >> "$config_file"
         echo "    gzip on;" >> "$config_file"
         echo "    gzip_min_length 1k;" >> "$config_file"
         echo "    gzip_comp_level 5;" >> "$config_file"
-        echo "    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;" >> "$config_file"
+        # 优化：移除重复条目并添加 image/svg+xml
+        echo "    gzip_types text/plain text/css application/json application/javascript text/xml application/xml+rss image/svg+xml;" >> "$config_file"
     fi
 
-    # --- 3. 根目录配置 (为 location 块提供环境) ---
+    # 根目录配置 (为 location 块提供环境)
     echo "    # 服务器根目录 (为静态文件和 location 块提供 context)" >> "$config_file"
     echo "    root $final_root_path;" >> "$config_file"
     echo "    index index.html index.htm;" >> "$config_file"
 
-    # --- 2. 路径反代配置 (优先级最高) ---
+    # --- 静态资源超长缓存（性能优化） ---
+    echo "    # 静态资源长缓存（性能优化: 1 年缓存）" >> "$config_file"
+    echo "    location ~* \\.(?:jpg|jpeg|png|gif|ico|svg|woff2?|ttf|eot|css|js)\$ {" >> "$config_file"
+    echo "        expires 1y;" >> "$config_file"
+    echo "        add_header Cache-Control \"public, immutable\";" >> "$config_file"
+    echo "        access_log off;" >> "$config_file" # 不记录静态文件访问日志
+    echo "    }" >> "$config_file"
+    echo "" >> "$config_file"
+
+
+    # --- 路径反代配置 (优先级最高) ---
     if [[ "$PROXY_CONFIG_TYPE" == "path" ]]; then
         # 遍历所有路径反代规则
         for rule in "${PROXY_RULES[@]}"; do
@@ -538,16 +550,15 @@ generate_nginx_config() {
             
             # 使用 "^~"（前缀最长匹配）确保代理规则的优先级高于 location /
             echo "    # 反向代理: $proxy_path (前缀最长匹配 ^~)" >> "$config_file"
-            # 移除 location 路径周围的引号，更符合 Nginx 习惯
             echo "    location ^~ $proxy_path {" >> "$config_file" 
             
-            # --- 隐患修复：proxy_pass 移除引号 (Nginx 不需要引号) ---
+            # proxy_pass 移除引号 + 路径处理
             if [[ "$proxy_path" =~ \*$ ]]; then
-                 # 示例: location /data/* { proxy_pass http://backend; }
+                 # location /data/* { proxy_pass http://backend; }
                  echo "        proxy_pass $backend_url;" >> "$config_file"
             elif [[ ! "$proxy_path" =~ /$ ]]; then
                 # /api 这样的路径，使用 $request_uri 确保完整路径发送
-                echo "        # Nginx 默认行为：proxy_pass 值无 / 则不剥离前缀，有 / 则剥离前缀。" >> "$config_file"
+                echo "        # Nginx 默认行为：proxy_pass 值无 / 则不剥离前缀，使用 \$request_uri 确保路径完整传递。" >> "$config_file"
                 echo "        proxy_pass $backend_url\$request_uri;" >> "$config_file"
             else
                 # proxy_path 以 / 结尾，例如 /api/
@@ -557,14 +568,14 @@ generate_nginx_config() {
             echo "        proxy_redirect off;" >> "$config_file"
             echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
             echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-            # --- 隐患修复：添加 X-Forwarded-Proto (解决后端识别协议问题) ---
+            # 关键头：添加 X-Forwarded-Proto (解决后端识别协议问题)
             echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> "$config_file"
             
             if [[ "$proxy_set_host" == "true" ]]; then
-                # 隐患修复：使用 $host (比 $http_host 更健壮)
                 echo "        proxy_set_header Host \$host;" >> "$config_file"
             fi
             
+            # WebSocket 支持
             echo "        proxy_http_version 1.1;" >> "$config_file"
             echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
             echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
@@ -572,7 +583,7 @@ generate_nginx_config() {
         done
     fi
 
-    # --- 3. 根路径 '/' 特殊处理 (处理根路径精确匹配) ---
+    # --- 根路径 '/' 特殊处理 (处理根路径精确匹配) ---
     if [[ "$WORK_MODE" != "static" && -n "$ROOT_ACTION" ]]; then
         if [[ "$ROOT_ACTION" == "404" ]]; then
             echo "    # 根路径 '/' 返回 404 (精确匹配)" >> "$config_file"
@@ -589,20 +600,20 @@ generate_nginx_config() {
             echo "    # 根路径 '/' 反向代理: / -> $root_backend_url (精确匹配)" >> "$config_file"
             echo "    location = / {" >> "$config_file"
             
-            # --- 隐患修复：proxy_pass 移除引号 ---
+            # proxy_pass 移除引号
             echo "        proxy_pass $root_backend_url;" >> "$config_file"
             
             echo "        proxy_redirect off;" >> "$config_file"
             echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
             echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-            # --- 隐患修复：添加 X-Forwarded-Proto ---
+            # 关键头：添加 X-Forwarded-Proto
             echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> "$config_file"
 
             if [[ "$root_set_host" == "true" ]]; then
-                # 隐患修复：使用 $host
                 echo "        proxy_set_header Host \$host;" >> "$config_file"
             fi
             
+            # WebSocket 支持
             echo "        proxy_http_version 1.1;" >> "$config_file"
             echo "        proxy_set_header Upgrade \$http_upgrade;" >> "$config_file"
             echo "        proxy_set_header Connection \"upgrade\";" >> "$config_file"
@@ -610,7 +621,7 @@ generate_nginx_config() {
         fi
     fi
 
-    # --- 4. 默认/兜底处理 (location /) ---
+    # --- 默认/兜底处理 (location /) ---
     echo "    # 默认/兜底处理: location / (处理未匹配的子路径)" >> "$config_file"
     echo "    location / {" >> "$config_file"
     
@@ -626,7 +637,7 @@ generate_nginx_config() {
     
     echo "}" >> "$config_file"
 
-    # --- 5. 子域名反代配置 (每个子域名独立 server 块) ---
+    # --- 子域名反代配置 (每个子域名独立 server 块) ---
     if [[ "$PROXY_CONFIG_TYPE" == "subdomain" ]]; then
         print_color "注意: 子域名反代将生成独立的 Server 块，它们使用与主域名相同的端口和 SSL 证书设置。" "$YELLOW"
         for rule in "${SUBDOMAIN_PROXIES[@]}"; do
@@ -656,12 +667,12 @@ generate_nginx_config() {
 
             echo "    # 子域名代理: $subdomain -> $backend_url" >> "$config_file"
             echo "    location / {" >> "$config_file"
-            # --- 隐患修复：proxy_pass 移除引号 ---
+            # proxy_pass 移除引号
             echo "        proxy_pass $backend_url;" >> "$config_file"
 
             echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
             echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> "$config_file"
-            # --- 隐患修复：添加 X-Forwarded-Proto ---
+            # 关键头：添加 X-Forwarded-Proto
             echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> "$config_file"
             
             echo "        proxy_set_header Host \$host;" >> "$config_file" # 子域名代理默认设置 Host
@@ -687,6 +698,12 @@ generate_nginx_config() {
 generate_caddy_config() {
     local config_file="caddy_$(echo "$server_names" | awk '{print $1}' | tr -cd '[:alnum:]_-')_$(date +%Y%m%d_%H%M%S).Caddyfile"
     print_color "--- 正在生成 Caddyfile 配置 ---" "$CYAN"
+    
+    # Nginx 默认的安全路径，如果 root_path (用户输入/默认值) 为空，则使用此路径
+    local final_root_path="/usr/share/nginx/html" 
+    if [[ -n "$root_path" ]]; then
+        final_root_path="$root_path" # 使用用户输入或 /var/www/html 默认值
+    fi
 
     # Caddyfile 头部 (主域名)
     local address
@@ -736,7 +753,7 @@ generate_caddy_config() {
         echo "    header Strict-Transport-Security \"max-age=31536000; includeSubDomains\"" >> "$config_file"
     fi
     
-    # 隐患修复：添加通用安全 Header
+    # 添加通用安全 Header
     echo "    # 推荐安全 Header" >> "$config_file"
     echo "    header X-Frame-Options SAMEORIGIN" >> "$config_file"
     echo "    header X-Content-Type-Options nosniff" >> "$config_file"
@@ -745,7 +762,7 @@ generate_caddy_config() {
     # --- 1. 静态文件配置 (仅静态/混合模式) ---
     if [[ "$WORK_MODE" == "static" || "$WORK_MODE" == "mixed" ]]; then
         echo "    # 静态文件配置" >> "$config_file"
-        echo "    root * $root_path" >> "$config_file"
+        echo "    root * $final_root_path" >> "$config_file"
         echo "    file_server" >> "$config_file"
     fi
 
