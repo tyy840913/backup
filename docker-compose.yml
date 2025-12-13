@@ -57,12 +57,12 @@ services:
 
   # xiaoya 
   xiaoya:
-    image: xiaoyaliu/alist:hostmode
+    image: xiaoyaliu/alist:latest
     container_name: xiaoya
     restart: always
     privileged: true
     ports:
-      - 5678:5678
+      - 5678:80
     volumes:
       - /etc/xiaoya:/data
       - /etc/xiaoya/data:/www/data
