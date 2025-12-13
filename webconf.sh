@@ -217,6 +217,11 @@ get_generic_config() {
             *) print_color "无效选择" "$RED" ;;
         esac
     done
+    
+    # 2. 域名输入
+    echo "" >&2
+    read -p "请输入主域名 (多个用空格分隔，留空为localhost): " server_names
+    if [ -z "$server_names" ]; then server_names="localhost"; fi
 
     # 3. SSL配置 (如果启用HTTPS)
     if [ -n "$https_port" ]; then
