@@ -69,3 +69,16 @@ services:
     restart: always
     tty: true
     network_mode: host
+
+  # xiaoya
+  xiaoya:
+    image: xiaoyaliu/alist:latest
+    container_name: xiaoya
+    restart: always
+    privileged: true
+    ports:
+      - "5678:5678"
+    volumes:
+      - /etc/xiaoya:/data
+      - /etc/xiaoya/data:/www/data
+    networks_mode: bridge
