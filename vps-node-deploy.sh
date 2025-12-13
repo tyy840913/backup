@@ -243,7 +243,7 @@ show_menu() {
         "========== 面板工具 ========" "18|新版X-UI面板" "19|伊朗版3X-UI面板" "20|Sui面板(Sing-box面板)"
         "========= 系统性能优化 ======" "21|BBR加速脚本" "GREEN|22|系统清理 (清理垃圾文件)" "RED|23|一键DD (重装系统)"
         "========== 监控与探针 =======" "24|哪吒监控面板+探针"
-        "========== 网络与检测 =======" "25|DNS流媒体解锁脚本" "26|流媒体解锁检测工具" "27|SSL证书申请脚本" "28|WEB配置文件生成" "29|网络测速与Bench测试"
+        "========== 网络与检测 =======" "25|DNS流媒体解锁脚本" "26|流媒体解锁检测工具" "27|SSL证书申请脚本" "28|Nginx & Caddy配置生成脚本" "29|网络测速与Bench测试"
         "========== 开发环境 ========" "30|Docker全家桶安装" "31|Python环境配置" "32|Node.js环境部署"
         "========== 其他代理 ========" "33|OpenVPN一键安装" "34|Telegram代理(MTProto)" "35|HUPproxy代理(docker和github加速)"
     )
@@ -308,7 +308,7 @@ execute_choice() {
         25) echo -e "${YELLOW}执行DNS流媒体解锁脚本...${NC}"; wget -N https://raw.githubusercontent.com/fscarmen/warp/main/warp.sh && chmod +x warp.sh && ./warp.sh menu ;;
         26) echo -e "${YELLOW}执行流媒体解锁检测工具...${NC}"; bash <(curl -L -s https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/main/check.sh) ;;
         27) echo -e "${YELLOW}执行SSL证书申请脚本...${NC}"; bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/acme-ssl.sh) ;;
-        28) echo -e "${YELLOW}执行WEB配置文件生成...${NC}"; bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webconf.sh) ;;
+        28) echo -e "${YELLOW}执行Nginx & Caddy配置生成脚本.sh...${NC}"; bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webconf.sh) ;;
         29) echo -e "${YELLOW}执行网络测速与Bench测试...${NC}"; wget -qO- bench.sh | bash ;;
         30) echo -e "${YELLOW}执行Docker全家桶安装...${NC}"; curl -fsSL https://get.docker.com | bash && curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose ;;
         31) echo -e "${YELLOW}执行Python环境配置...${NC}"; bash <(curl -Ls https://raw.githubusercontent.com/eooce/scripts/master/python_setup.sh) ;;
