@@ -55,16 +55,17 @@ services:
     tty: true
     network_mode: host
 
-  # xiaoya
+  # xiaoya 
   xiaoya:
     image: xiaoyaliu/alist:hostmode
     container_name: xiaoya
     restart: always
     privileged: true
+    ports:
+      - 5678:5678
     volumes:
       - /etc/xiaoya:/data
       - /etc/xiaoya/data:/www/data
-    network_mode: host
 
   # mihomo 代理
   mihomo:
