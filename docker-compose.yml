@@ -41,18 +41,6 @@ services:
       - WEB_VAULT_ENABLED=true
       - SIGNUPS_ALLOWED=true
    
-  # Watchtower - 自动更新容器
-  watchtower:
-    image: containrrr/watchtower:latest
-    container_name: watchtower
-    restart: always
-    network_mode: host
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - TZ=Asia/Shanghai
-    command: --schedule "0 30 5 * * *" --cleanup --remove-volumes
-
   # subs-check 代理池（订阅合并）
   subs-check:
     image: ghcr.nju.edu.cn/beck-8/subs-check:latest
@@ -60,9 +48,6 @@ services:
     volumes:
       - /docker_data/subs:/app/config
       - /opt/subs:/app/output
-    ports:
-      - "8199:8199"
-      - "8299:8299"
     environment:
       - TZ=Asia/Shanghai
       - API_KEY=421121
