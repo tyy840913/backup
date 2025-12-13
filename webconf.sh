@@ -218,11 +218,6 @@ get_generic_config() {
         esac
     done
 
-    # 2. 域名输入
-    echo "" >&2
-    read -p "请输入主域名 (多个用空格分隔，留空为localhost): " server_names
-    if [ -z "$server_names" ]; then server_names="localhost"; fi
-
     # 3. SSL配置 (如果启用HTTPS)
     if [ -n "$https_port" ]; then
         echo "" >&2
@@ -238,170 +233,180 @@ get_generic_config() {
         ssl_cert=""
         ssl_key=""
         
-        while true; do
-            # 阶段1: 优先尝试 ACME 默认目录
-            if [ -z "$ssl_cert" ]; then
-                local primary_domain="${server_names%% *}"  # 主域名用于匹配
-                local found_domain_dir=false
-                
-                for base_dir in "${priority_dirs[@]}"; do
-                    if [ -d "$base_dir" ]; then
-                        print_color "优先检查证书目录: $base_dir" "$YELLOW"
-                        
-                        # 通配匹配域名目录 (支持各种命名变体)
-                        local matched_dirs=("$base_dir"/*"$primary_domain"*)
-                        if [ -d "${matched_dirs[0]}" ] && [ "${matched_dirs[0]}" != "$base_dir/*$primary_domain*" ]; then
-                            local domain_dir
-                            if [ ${#matched_dirs[@]} -eq 1 ]; then
-                                domain_dir="${matched_dirs[0]}"
-                            else
-                                echo "找到多个匹配的域名目录:" >&2
-                                select domain_dir in "${matched_dirs[@]}"; do
-                                    if [ -n "$domain_dir" ]; then break; fi
-                                done
-                            fi
+        # 检查域名是否为空或为localhost，如果是则直接跳转到手动输入
+        if [ -z "$server_names" ] || [ "$server_names" = "localhost" ]; then
+            print_color "检测到域名为空或localhost，跳过自动证书查找" "$YELLOW"
+            read -p "SSL证书路径 (默认: /etc/ssl/certs/fullchain.pem): " ssl_cert
+            [ -z "$ssl_cert" ] && ssl_cert="/etc/ssl/certs/fullchain.pem"
+            read -p "SSL私钥路径 (默认: /etc/ssl/private/privkey.key): " ssl_key
+            [ -z "$ssl_key" ] && ssl_key="/etc/ssl/private/privkey.key"
+        else
+            # 原有证书自动查找逻辑
+            while true; do
+                # 阶段1: 优先尝试 ACME 默认目录
+                if [ -z "$ssl_cert" ]; then
+                    local primary_domain="${server_names%% *}"  # 主域名用于匹配
+                    local found_domain_dir=false
+                    
+                    for base_dir in "${priority_dirs[@]}"; do
+                        if [ -d "$base_dir" ]; then
+                            print_color "优先检查证书目录: $base_dir" "$YELLOW"
                             
-                            print_color "使用域名目录: $domain_dir" "$GREEN"
-                            found_domain_dir=true
-                            
-                            # 自动找证书链 (支持 .cer .pem .crt)
-                            for cert_file in fullchain.cer fullchain.pem chain.cer chain.pem cert.cer cert.pem certificate.cer certificate.pem; do
-                                if [ -f "$domain_dir/$cert_file" ]; then
-                                    ssl_cert="$domain_dir/$cert_file"
-                                    print_color "自动选择证书链: $ssl_cert" "$GREEN"
-                                    break
+                            # 通配匹配域名目录 (支持各种命名变体)
+                            local matched_dirs=("$base_dir"/*"$primary_domain"*)
+                            if [ -d "${matched_dirs[0]}" ] && [ "${matched_dirs[0]}" != "$base_dir/*$primary_domain*" ]; then
+                                local domain_dir
+                                if [ ${#matched_dirs[@]} -eq 1 ]; then
+                                    domain_dir="${matched_dirs[0]}"
+                                else
+                                    echo "找到多个匹配的域名目录:" >&2
+                                    select domain_dir in "${matched_dirs[@]}"; do
+                                        if [ -n "$domain_dir" ]; then break; fi
+                                    done
                                 fi
-                            done
-                            
-                            # 自动找私钥 (支持 .key .pem)
-                            for key_file in privkey.key privkey.pem key.key key.pem private.key private.pem; do
-                                candidate="$domain_dir/$key_file"
-                                if [ -f "$candidate" ] && [ "$candidate" != "$ssl_cert" ]; then
-                                    ssl_key="$candidate"
-                                    print_color "自动选择私钥: $ssl_key" "$GREEN"
-                                    break
-                                fi
-                            done
-                            
-                            # 如果标准匹配失败，尝试更宽松的匹配
-                            if [ -z "$ssl_cert" ]; then
-                                cert_candidate=$(ls "$domain_dir"/*.{cer,pem,crt} 2>/dev/null | head -1)
-                                [ -n "$cert_candidate" ] && ssl_cert="$cert_candidate"
-                            fi
-                            
-                            if [ -z "$ssl_key" ]; then
-                                key_candidate=$(ls "$domain_dir"/*.{key,pem} 2>/dev/null | head -1)
-                                [ -n "$key_candidate" ] && ssl_key="$key_candidate"
-                            fi
-                            
-                            if [ -z "$ssl_cert" ] || [ -z "$ssl_key" ]; then
-                                print_color "自动未找到完整证书/私钥，列出 $domain_dir 下可用文件供手动选择" "$YELLOW"
-                                ls -1 "$domain_dir"/*.pem "$domain_dir"/*.crt "$domain_dir"/*.cer "$domain_dir"/*.key 2>/dev/null || true
                                 
-                                read -p "请输入证书路径: " ssl_cert
-                                read -p "请输入私钥路径: " ssl_key
-                            else
-                                print_color "✅ 证书自动配置成功！" "$GREEN"
-                                echo "证书文件: $ssl_cert" >&2
-                                echo "私钥文件: $ssl_key" >&2
+                                print_color "使用域名目录: $domain_dir" "$GREEN"
+                                found_domain_dir=true
+                                
+                                # 自动找证书链 (支持 .cer .pem .crt)
+                                for cert_file in fullchain.cer fullchain.pem chain.cer chain.pem cert.cer cert.pem certificate.cer certificate.pem; do
+                                    if [ -f "$domain_dir/$cert_file" ]; then
+                                        ssl_cert="$domain_dir/$cert_file"
+                                        print_color "自动选择证书链: $ssl_cert" "$GREEN"
+                                        break
+                                    fi
+                                done
+                                
+                                # 自动找私钥 (支持 .key .pem)
+                                for key_file in privkey.key privkey.pem key.key key.pem private.key private.pem; do
+                                    candidate="$domain_dir/$key_file"
+                                    if [ -f "$candidate" ] && [ "$candidate" != "$ssl_cert" ]; then
+                                        ssl_key="$candidate"
+                                        print_color "自动选择私钥: $ssl_key" "$GREEN"
+                                        break
+                                    fi
+                                done
+                                
+                                # 如果标准匹配失败，尝试更宽松的匹配
+                                if [ -z "$ssl_cert" ]; then
+                                    cert_candidate=$(ls "$domain_dir"/*.{cer,pem,crt} 2>/dev/null | head -1)
+                                    [ -n "$cert_candidate" ] && ssl_cert="$cert_candidate"
+                                fi
+                                
+                                if [ -z "$ssl_key" ]; then
+                                    key_candidate=$(ls "$domain_dir"/*.{key,pem} 2>/dev/null | head -1)
+                                    [ -n "$key_candidate" ] && ssl_key="$key_candidate"
+                                fi
+                                
+                                if [ -z "$ssl_cert" ] || [ -z "$ssl_key" ]; then
+                                    print_color "自动未找到完整证书/私钥，列出 $domain_dir 下可用文件供手动选择" "$YELLOW"
+                                    ls -1 "$domain_dir"/*.pem "$domain_dir"/*.crt "$domain_dir"/*.cer "$domain_dir"/*.key 2>/dev/null || true
+                                    
+                                    read -p "请输入证书路径: " ssl_cert
+                                    read -p "请输入私钥路径: " ssl_key
+                                else
+                                    print_color "✅ 证书自动配置成功！" "$GREEN"
+                                    echo "证书文件: $ssl_cert" >&2
+                                    echo "私钥文件: $ssl_key" >&2
+                                fi
+                                
+                                break  # 已找到目录，跳出优先目录循环
                             fi
-                            
-                            break  # 已找到目录，跳出优先目录循环
+                        fi
+                    done
+           
+                    if [ "$found_domain_dir" = true ]; then
+                        # 找到后确认
+                        echo "" >&2
+                        print_color "ACME 自动配置完成：" "$GREEN"
+                        echo "证书: $ssl_cert" >&2
+                        echo "私钥: $ssl_key" >&2
+                        read -e -p "是否使用以上配置？ [Y/n]: " confirm
+                        confirm=${confirm:-y}
+                        if [[ "$confirm" =~ ^[Yy] ]]; then
+                            break
+                        else
+                            ssl_cert=""
+                            ssl_key=""
+                            print_color "重新开始配置..." "$YELLOW"
                         fi
                     fi
-                done
-       
-                if [ "$found_domain_dir" = true ]; then
-                    # 找到后确认
+                fi
+                
+                # 阶段2: 如果优先目录没找到，或用户拒绝，询问自定义根目录
+                if [ -z "$ssl_cert" ]; then
+                    read -p "请输入证书根目录 (留空手动输入路径): " cert_root_dir
+                    
+                    if [ -z "$cert_root_dir" ]; then
+                        # 手动输入
+                        read -p "SSL证书路径 (默认: /etc/ssl/certs/fullchain.pem): " ssl_cert
+                        [ -z "$ssl_cert" ] && ssl_cert="/etc/ssl/certs/fullchain.pem"
+                        read -p "SSL私钥路径 (默认: /etc/ssl/private/privkey.key): " ssl_key
+                        [ -z "$ssl_key" ] && ssl_key="/etc/ssl/private/privkey.key"
+                        break
+                    fi
+                    
+                    if [ ! -d "$cert_root_dir" ]; then
+                        print_color "错误: 目录 $cert_root_dir 不存在" "$RED"
+                        continue
+                    fi
+                    
+                    # 自定义目录下同样用通配查找域名子目录（可选增强）
+                    local primary_domain="${server_names%% *}"
+                    local matched_dirs=("$cert_root_dir"/*"$primary_domain"*)
+                    local domain_dir
+                    if [ -d "${matched_dirs[0]}" ] && [ "${matched_dirs[0]}" != "$cert_root_dir/*$primary_domain*" ]; then
+                        if [ ${#matched_dirs[@]} -eq 1 ]; then
+                            domain_dir="${matched_dirs[0]}"
+                        else
+                            echo "找到多个匹配目录:" >&2
+                            select domain_dir in "${matched_dirs[@]}"; do
+                                if [ -n "$domain_dir" ]; then break; fi
+                            done
+                        fi
+                        print_color "使用目录: $domain_dir" "$GREEN"
+                    else
+                        print_color "未找到匹配域名子目录，直接在根目录 $cert_root_dir 中查找" "$YELLOW"
+                        domain_dir="$cert_root_dir"
+                    fi
+                    
+                    # 自动优先证书链 + 私钥
+                    for cert_file in fullchain.pem chain.pem cert.pem certificate.pem; do
+                        if [ -f "$domain_dir/$cert_file" ]; then
+                            ssl_cert="$domain_dir/$cert_file"
+                            print_color "自动选择证书链: $ssl_cert" "$GREEN"
+                            break
+                        fi
+                    done
+                    
+                    for key_file in privkey.pem key.pem private.key privkey.key; do
+                        candidate="$domain_dir/$key_file"
+                        if [ -f "$candidate" ] && [ "$candidate" != "$ssl_cert" ]; then
+                            ssl_key="$candidate"
+                            print_color "自动选择私钥: $ssl_key" "$GREEN"
+                            break
+                        fi
+                    done
+                    
+                    if [ -z "$ssl_cert" ] || [ -z "$ssl_key" ]; then
+                        print_color "自动未找到，列出可用文件:" "$YELLOW"
+                        ls -1 "$domain_dir"/*.pem "$domain_dir"/*.crt "$domain_dir"/*.key "$domain_dir"/*.cer 2>/dev/null || true
+                        read -p "请输入证书路径: " ssl_cert
+                        read -p "请输入私钥路径: " ssl_key
+                    fi
+                    
+                    # 确认
                     echo "" >&2
-                    print_color "ACME 自动配置完成：" "$GREEN"
                     echo "证书: $ssl_cert" >&2
                     echo "私钥: $ssl_key" >&2
-                    read -e -p "是否使用以上配置？ [Y/n]: " confirm
+                    read -e -p "确认使用？ [Y/n]: " confirm
                     confirm=${confirm:-y}
                     if [[ "$confirm" =~ ^[Yy] ]]; then
                         break
-                    else
-                        ssl_cert=""
-                        ssl_key=""
-                        print_color "重新开始配置..." "$YELLOW"
                     fi
                 fi
-            fi
-            
-            # 阶段2: 如果优先目录没找到，或用户拒绝，询问自定义根目录
-            if [ -z "$ssl_cert" ]; then
-                read -p "请输入证书根目录 (留空手动输入路径): " cert_root_dir
-                
-                if [ -z "$cert_root_dir" ]; then
-                    # 手动输入
-                    read -p "SSL证书路径 (默认: /etc/ssl/certs/fullchain.pem): " ssl_cert
-                    [ -z "$ssl_cert" ] && ssl_cert="/etc/ssl/certs/fullchain.pem"
-                    read -p "SSL私钥路径 (默认: /etc/ssl/private/privkey.key): " ssl_key
-                    [ -z "$ssl_key" ] && ssl_key="/etc/ssl/private/privkey.key"
-                    break
-                fi
-                
-                if [ ! -d "$cert_root_dir" ]; then
-                    print_color "错误: 目录 $cert_root_dir 不存在" "$RED"
-                    continue
-                fi
-                
-                # 自定义目录下同样用通配查找域名子目录（可选增强）
-                local primary_domain="${server_names%% *}"
-                local matched_dirs=("$cert_root_dir"/*"$primary_domain"*)
-                local domain_dir
-                if [ -d "${matched_dirs[0]}" ] && [ "${matched_dirs[0]}" != "$cert_root_dir/*$primary_domain*" ]; then
-                    if [ ${#matched_dirs[@]} -eq 1 ]; then
-                        domain_dir="${matched_dirs[0]}"
-                    else
-                        echo "找到多个匹配目录:" >&2
-                        select domain_dir in "${matched_dirs[@]}"; do
-                            if [ -n "$domain_dir" ]; then break; fi
-                        done
-                    fi
-                    print_color "使用目录: $domain_dir" "$GREEN"
-                else
-                    print_color "未找到匹配域名子目录，直接在根目录 $cert_root_dir 中查找" "$YELLOW"
-                    domain_dir="$cert_root_dir"
-                fi
-                
-                # 自动优先证书链 + 私钥
-                for cert_file in fullchain.pem chain.pem cert.pem certificate.pem; do
-                    if [ -f "$domain_dir/$cert_file" ]; then
-                        ssl_cert="$domain_dir/$cert_file"
-                        print_color "自动选择证书链: $ssl_cert" "$GREEN"
-                        break
-                    fi
-                done
-                
-                for key_file in privkey.pem key.pem private.key privkey.key; do
-                    candidate="$domain_dir/$key_file"
-                    if [ -f "$candidate" ] && [ "$candidate" != "$ssl_cert" ]; then
-                        ssl_key="$candidate"
-                        print_color "自动选择私钥: $ssl_key" "$GREEN"
-                        break
-                    fi
-                done
-                
-                if [ -z "$ssl_cert" ] || [ -z "$ssl_key" ]; then
-                    print_color "自动未找到，列出可用文件:" "$YELLOW"
-                    ls -1 "$domain_dir"/*.pem "$domain_dir"/*.crt "$domain_dir"/*.key "$domain_dir"/*.cer 2>/dev/null || true
-                    read -p "请输入证书路径: " ssl_cert
-                    read -p "请输入私钥路径: " ssl_key
-                fi
-                
-                # 确认
-                echo "" >&2
-                echo "证书: $ssl_cert" >&2
-                echo "私钥: $ssl_key" >&2
-                read -e -p "确认使用？ [Y/n]: " confirm
-                confirm=${confirm:-y}
-                if [[ "$confirm" =~ ^[Yy] ]]; then
-                    break
-                fi
-            fi
-        done
+            done
+        fi  # 结束域名非空判断
         
         # 简单存在性检查
         if [ ! -f "$ssl_cert" ]; then print_color "警告: 证书文件不存在 $ssl_cert" "$YELLOW"; fi
