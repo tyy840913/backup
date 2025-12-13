@@ -75,4 +75,4 @@ services:
     restart: always
     network_mode: host
     volumes:
-      - /etc/mihomo:/root/.config/mihom
+      - /etc/mihomo:/root/.config/mihomo
