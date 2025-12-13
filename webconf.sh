@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =======================================================
-# Web服务器配置生成器 (v1.0.1 - 个人精简版)
+# Web服务器配置生成器
 # =======================================================
 
 # 颜色定义
@@ -23,7 +23,7 @@ print_color() {
 # 显示标题
 print_title() {
     echo "==========================================" >&2
-    echo " Web服务器配置生成器 (v1.0.1 个人精简版)" >&2
+    echo " Web服务器配置生成器" >&2
     echo "==========================================" >&2
     echo "" >&2
 }
@@ -678,7 +678,7 @@ generate_nginx_config() {
         echo -e "$COMMON_SEC_PERF_CONFIG" >> "$config_file"
         
         # --- Location 映射 (反代逻辑关系) ---
-        
+        echo "" >> "$config_file"
         local root_mode_found=false
         
         for mapping in "${PROXY_MAPPINGS[@]}"; do
