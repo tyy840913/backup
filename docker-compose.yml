@@ -82,3 +82,12 @@ services:
       - /etc/xiaoya:/data
       - /etc/xiaoya/data:/www/data
     networks_mode: bridge
+
+ # mihomo 代理
+ mihomo:
+    image: metacubex/mihomo:latest
+    container_name: mihomo
+    restart: always
+    network_mode: host
+    volumes:
+      - /etc/mihomo:/root/.config/mihom
