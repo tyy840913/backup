@@ -377,7 +377,7 @@ get_generic_config() {
                 echo "私钥: $ssl_key" >&2
                 read -e -p "确认使用？ [Y/n]: " confirm
                 confirm=${confirm:-y}
-                if [[ "$confirm" =~ ^[Yy]]; then
+                if [[ "$confirm" =~ ^[Yy] ]]; then
                     break
                 fi
             fi
