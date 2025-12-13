@@ -140,41 +140,60 @@ get_backend_info() {
     echo "$backend_url"
 }
 
-# Nginx文件
+# 复制并测试Nginx文件
 copy_nginx_config() {
     local config_file=$1
+    local config_filename=$(basename "$config_file")
+    
     echo ""
     print_color "=== Nginx配置安装 ===" "$BLUE"
     read -e -p "是否将配置文件复制到Nginx目录并启用? [Y/n]: " install_choice
     install_choice=${install_choice:-y}
+    
     if [[ ! "$install_choice" =~ ^[Nn] ]]; then
         if [ -d "/etc/nginx/sites-available" ] && [ -d "/etc/nginx/sites-enabled" ]; then
-            # 1. 先测试当前配置文件语法
-            print_color "正在测试配置文件语法..." "$YELLOW"
-            if nginx -t -c "$config_file"; then
-                print_color "配置文件语法测试成功！" "$GREEN"
+            # 1. 先复制文件到sites-available
+            print_color "正在复制配置文件到Nginx目录..." "$YELLOW"
+            cp "$config_file" "/etc/nginx/sites-available/$config_filename"
+            
+            # 2. 创建符号链接到sites-enabled
+            ln -sf "/etc/nginx/sites-available/$config_filename" "/etc/nginx/sites-enabled/"
+            print_color "配置文件已安装: /etc/nginx/sites-available/$config_filename" "$GREEN"
+            print_color "符号链接已创建: /etc/nginx/sites-enabled/$config_filename" "$GREEN"
+            
+            # 3. 测试整个Nginx配置（不是单独测试片段文件）
+            print_color "正在测试Nginx配置语法..." "$YELLOW"
+            if nginx -t; then
+                print_color "✅ Nginx配置语法测试成功！" "$GREEN"
                 
-                # 2. 复制文件
-                cp "$config_file" "/etc/nginx/sites-available/"
-                
-                # 3. 创建软链接
-                ln -sf "/etc/nginx/sites-available/$config_file" "/etc/nginx/sites-enabled/"
-                
-                # 4. 自动重载（不重启）
+                # 4. 自动重载Nginx
                 print_color "正在重载Nginx配置..." "$YELLOW"
-                if pkill -HUP nginx || nginx -s reload; then
-                    print_color "Nginx配置已重载完成！" "$GREEN"
+                if systemctl reload nginx || nginx -s reload || pkill -HUP nginx; then
+                    print_color "✅ Nginx配置已重载完成！" "$GREEN"
+                    print_color "🎉 配置安装成功！网站现在应该可以访问了。" "$GREEN"
                 else
-                    print_color "警告: 重载失败，但配置文件已安装" "$YELLOW"
+                    print_color "⚠️  警告: 重载失败，但配置文件已安装" "$YELLOW"
+                    print_color "请手动执行: systemctl reload nginx" "$YELLOW"
                 fi
             else
-                print_color "错误: 配置文件语法测试失败，请检查配置！" "$RED"
+                print_color "❌ 错误: Nginx配置语法测试失败！" "$RED"
+                print_color "正在回滚配置..." "$YELLOW"
+                
+                # 5. 测试失败时回滚
+                rm -f "/etc/nginx/sites-enabled/$config_filename"
+                rm -f "/etc/nginx/sites-available/$config_filename"
+                print_color "已删除失败的配置文件" "$GREEN"
+                return 1
             fi
         else
-            print_color "错误: Nginx目录不存在" "$RED"
+            print_color "❌ 错误: Nginx目录不存在" "$RED"
+            return 1
         fi
+    else
+        print_color "已跳过安装，配置文件保留在: $config_file" "$YELLOW"
     fi
 }
+
 
 # 获取通用配置 (端口、SSL、安全、性能 - 收集输入)
 get_generic_config() {
