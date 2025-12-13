@@ -615,8 +615,6 @@ generate_nginx_config() {
     local config_file="$config_output_file"  # 使用自定义文件名
 
     echo "# Nginx配置文件 - 生成于 $(date)" > "$config_file"
-    echo "# 版本: v1.0.1 权威生产版" >> "$config_file"
-    echo "# 遵循模块化设计，通用配置已单独提取" >> "$config_file"
     echo "" >> "$config_file"
 
     # --- 1. 定义所有 server_name 列表 ---
@@ -770,9 +768,6 @@ generate_caddy_config() {
     local config_file="$config_output_file"  # 使用自定义文件名
 
     echo "# Caddy配置文件 - 生成于 $(date)" > "$config_file"
-    echo "# 版本: v1.0.1 权威生产版" >> "$config_file"
-    echo "# 遵循模块化设计，通用配置已单独提取" >> "$config_file"
-    echo "# Caddy 默认支持 IPv6，无需单独配置 listen [::]:<port>" >> "$config_file"
     echo "" >> "$config_file"
     
     # --- 1. 定义所有要生成的 Caddy Block ---
@@ -824,7 +819,6 @@ generate_caddy_config() {
                     local path_match=$m_matcher
                     local backend_url=$m_target
                     
-                    # Caddy路径反代修正：/path* 是正确写法 (V1.0.1 权威修正)
                     local caddy_matcher="${path_match}*"
                     [ "$path_match" == "/" ] && caddy_matcher="/" # 根路径匹配器仍为 /
                     
