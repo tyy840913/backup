@@ -168,7 +168,7 @@ copy_nginx_config() {
                 
                 # 4. 自动重载Nginx
                 print_color "正在重载Nginx配置..." "$YELLOW"
-                if systemctl reload nginx || nginx -s reload || pkill -HUP nginx; then
+                if pkill -HUP nginx || nginx -s reload; then
                     print_color "✅ Nginx配置已重载完成！" "$GREEN"
                     print_color "🎉 配置安装成功！网站现在应该可以访问了。" "$GREEN"
                 else
@@ -480,7 +480,7 @@ get_proxy_mappings() {
     while true; do
         echo "请定义主域名根路径 '/' 的默认行为:" >&2
         echo "1. 静态网站" >&2
-        echo "2. 全站反向代理" >&2
+        echo "2. 反向代理" >&2
         read -p "请选择 [1-2]: " root_mode
         
         if [ "$root_mode" == "1" ]; then
@@ -489,7 +489,7 @@ get_proxy_mappings() {
             PROXY_MAPPINGS+=("ROOT_STATIC|/|$root_path|false")
             break
         elif [ "$root_mode" == "2" ]; then
-            print_color "--- 全站反代目标 ---" "$YELLOW"
+            print_color "--- 反代目标 ---" "$YELLOW"
             # get_backend_info 只输出 URL
             local backend_url=$(get_backend_info)
             read -e -p "是否传递Host头? [Y/n]: " pass_host
@@ -706,13 +706,13 @@ generate_nginx_config() {
                     fi
                 fi
                 
-                # 全站反代 (ROOT_PROXY)
+                # 反代 (ROOT_PROXY)
                 if [ "$m_type" == "ROOT_PROXY" ]; then
                     if [ "$root_mode_found" = false ]; then
                         local set_host=$m_flag
                         local backend_url=$m_target
                         echo "    location / {" >> "$config_file"
-                        echo "        # 根路径全站反向代理" >> "$config_file"
+                        echo "        # 根路径反向代理" >> "$config_file"
                         echo "        proxy_pass $backend_url;" >> "$config_file" 
                         [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                         echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
@@ -744,7 +744,7 @@ generate_nginx_config() {
                 local set_host=$m_flag
                 local backend_url=$m_target
                 echo "    location / {" >> "$config_file" 
-                echo "        # 子域名全站反向代理" >> "$config_file"
+                echo "        # 子域名反向代理" >> "$config_file"
                 echo "        proxy_pass $backend_url;" >> "$config_file" 
                 [ "$set_host" = "true" ] && echo "        proxy_set_header Host \$host;" >> "$config_file"
                 echo "        proxy_set_header X-Real-IP \$remote_addr;" >> "$config_file"
@@ -813,7 +813,7 @@ generate_caddy_config() {
                     echo "    root * $root_path" >> "$config_file"
                     echo "    file_server" >> "$config_file"
                     
-                # 全站代理或路径代理
+                # 代理或路径代理
                 elif [ "$m_type" == "ROOT_PROXY" ] || [ "$m_type" == "PATH_PROXY" ]; then
                     local set_host=$m_flag
                     local path_match=$m_matcher
@@ -835,7 +835,7 @@ generate_caddy_config() {
                  if [[ "$m_matcher" == "*" ]] || [[ "$sub_domain" == "$m_matcher."* ]]; then
                     local set_host=$m_flag
                     local backend_url=$m_target
-                    echo "    # 子域名全站反向代理到 $backend_url" >> "$config_file"
+                    echo "    # 子域名反向代理到 $backend_url" >> "$config_file"
                     echo "    reverse_proxy $backend_url {" >> "$config_file"
                     [ "$set_host" = "true" ] && echo "        header_up Host {host}" >> "$config_file"
                     echo "        header_up X-Real-IP {remote_host} # V1.0.1 统一新增" >> "$config_file"
