@@ -195,7 +195,7 @@ process_service_backup() {
         setup_cron_job "$upload_cmd" "# 每天上传$service备份"
         echo "✓ $service 定时上传任务设置完成"
         echo "✓ 使用内存临时目录: $memory_dir"
-        echo "打包命令: $upload_cmd"
+        echo "定时命令: $upload_cmd"
     else
         echo "⚠ $service 备份处理失败，跳过定时任务设置"
     fi
