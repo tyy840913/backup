@@ -12,7 +12,7 @@ services:
 
   # Watchtower - 自动更新容器
   watchtower:
-    image: containrrr/watchtower:latest
+    image: docker.1ms.run/containrrr/watchtower:latest
     container_name: watchtower
     restart: always
     network_mode: host
