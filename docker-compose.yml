@@ -1,4 +1,15 @@
 services:
+  # Portainer - 容器管理面板
+  portainer:
+    image: 6053537/portainer-ce:latest
+    container_name: portainer
+    restart: always
+    network_mode: bridge
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9000:9000"
+
   # openlist - 文件列表服务
   openlist:
     image: openlistteam/openlist:latest
@@ -16,13 +27,12 @@ services:
 
   # Lucky - 反向代理工具（Host 网络）
   lucky:
-    image: gdy666/lucky:v2
+    image: gdy666/lucky:latest
     container_name: lucky
     restart: always
     network_mode: host
     volumes:
-      - /docker_data/luckyconf:/app/conf
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /data/luckyconf:/goodluck
     environment:
       - TZ=Asia/Shanghai
 
@@ -35,7 +45,7 @@ services:
     volumes:
       - /docker_data/bitwarden:/data
     ports:
-      - 8081:80
+      - "8081:80"
     environment:
       - TZ=Asia/Shanghai
       - WEB_VAULT_ENABLED=true
@@ -55,17 +65,19 @@ services:
     tty: true
     network_mode: host
 
-  # xiaoya 
+  # xiaoya - 小雅Alist服务
   xiaoya:
     image: xiaoyaliu/alist:latest
     container_name: xiaoya
     restart: always
     privileged: true
-    ports:
-      - 5678:80
     volumes:
       - /etc/xiaoya:/data
       - /etc/xiaoya/data:/www/data
+    ports:
+      - "5678:80"  # 宿主机端口:容器端口
+    environment:
+      - TZ=Asia/Shanghai
 
   # mihomo 代理
   mihomo:
