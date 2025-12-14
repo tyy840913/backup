@@ -39,12 +39,13 @@ services:
 
   # Lucky - 反向代理工具（Host 网络）
   lucky:
-    image: docker.1ms.run/gdy666/lucky:latest
+    image: docker.1ms.run/gdy666/lucky:v2
     container_name: lucky
     restart: always
     network_mode: host
     volumes:
-      - /data/luckyconf:/goodluck
+      - /data/luckyconf:/app/conf
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Asia/Shanghai
 
