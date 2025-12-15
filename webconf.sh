@@ -166,32 +166,55 @@ copy_nginx_config() {
             if nginx -t; then
                 print_color "✅ Nginx配置语法测试成功！" "$GREEN"
                 
-                # 4. 自动重载Nginx
-                print_color "正在重载Nginx配置..." "$YELLOW"
-                if pkill -HUP nginx || nginx -s reload; then
-                    print_color "✅ Nginx配置已重载完成！" "$GREEN"
-                    print_color "🎉 配置安装成功！网站现在应该可以访问了。" "$GREEN"
+            # 4. 自动重载Nginx
+            print_color "正在重载Nginx配置..." "$YELLOW"
+            # 检测系统版本并选择合适的重载命令
+            reload_success=false
+
+            if command -v systemctl >/dev/null 2>&1; then
+                # 使用systemctl的系统 - 优先使用restart确保全新加载
+                print_color "检测到systemctl服务管理器，使用systemctl重启nginx" "$YELLOW"
+                if systemctl restart nginx; then
+                    reload_success=true
                 else
-                    print_color "⚠️  警告: 重载失败，但配置文件已安装" "$YELLOW"
-                    print_color "请手动执行: systemctl reload nginx" "$YELLOW"
+                    print_color "systemctl重启失败，尝试reload" "$YELLOW"
+                    systemctl reload nginx && reload_success=true
+                fi
+            elif command -v service >/dev/null 2>&1; then
+                # 使用service命令的系统
+                print_color "检测到service服务管理器，使用service重启nginx" "$YELLOW"
+                if service nginx restart; then
+                    reload_success=true
+                else
+                    print_color "service重启失败，尝试reload" "$YELLOW"
+                    service nginx reload && reload_success=true
+                fi
+            elif command -v rc-service >/dev/null 2>&1; then
+                # 使用OpenRC的系统（Alpine Linux等）
+                print_color "检测到rc-service服务管理器，使用rc-service重启nginx" "$YELLOW"
+                if rc-service nginx restart; then
+                    reload_success=true
+                else
+                    print_color "rc-service重启失败，尝试reload" "$YELLOW"
+                    rc-service nginx reload && reload_success=true
                 fi
             else
-                print_color "❌ 错误: Nginx配置语法测试失败！" "$RED"
-                print_color "正在回滚配置..." "$YELLOW"
-                
-                # 5. 测试失败时回滚
-                rm -f "/etc/nginx/sites-enabled/$config_filename"
-                rm -f "/etc/nginx/sites-available/$config_filename"
-                print_color "已删除失败的配置文件" "$GREEN"
-                return 1
+                # 最后回退到nginx原生reload命令（不是重启，但比没有好）
+                print_color "未检测到服务管理器，使用nginx原生reload命令" "$YELLOW"
+                if nginx -s reload; then
+                    reload_success=true
+                else
+                    print_color "nginx reload失败，可能需要手动重启nginx进程" "$YELLOW"
+                fi
             fi
-        else
-            print_color "❌ 错误: Nginx目录不存在" "$RED"
-            return 1
-        fi
-    else
-        print_color "已跳过安装，配置文件保留在: $config_file" "$YELLOW"
-    fi
+
+            if [ "$reload_success" = true ]; then
+                print_color "✅ Nginx配置已重载完成！" "$GREEN"
+                print_color "🎉🎉 配置安装成功！网站现在应该可以访问了。" "$GREEN"
+            else
+                print_color "⚠️  警告: 重载失败，但配置文件已安装" "$YELLOW"
+                print_color "请手动执行重启命令: systemctl restart nginx 或 service nginx restart" "$YELLOW"
+            fi
 }
 
 
@@ -897,16 +920,54 @@ generate_caddy_config() {
 
         # 4. 重载 Caddy 服务
         print_color "正在重载 Caddy 服务..." "$YELLOW"
-        if pkill -HUP caddy || caddy reload --config "$main_caddyfile" > /dev/null 2>&1; then
+        # 检测系统版本并选择合适的重载命令
+        reload_success=false
+
+        if command -v systemctl >/dev/null 2>&1; then
+            # 使用systemctl的系统
+            print_color "检测到systemctl服务管理器，使用systemctl重启caddy" "$YELLOW"
+            if systemctl restart caddy; then
+                reload_success=true
+            else
+                print_color "systemctl重启失败，尝试reload" "$YELLOW"
+                systemctl reload caddy && reload_success=true
+            fi
+        elif command -v service >/dev/null 2>&1; then
+            # 使用service命令的系统
+            print_color "检测到service服务管理器，使用service重启caddy" "$YELLOW"
+            if service caddy restart; then
+                reload_success=true
+            else
+                print_color "service重启失败，尝试reload" "$YELLOW"
+                service caddy reload && reload_success=true
+            fi
+        elif command -v rc-service >/dev/null 2>&1; then
+            # 使用OpenRC的系统（Alpine Linux等）
+            print_color "检测到rc-service服务管理器，使用rc-service重启caddy" "$YELLOW"
+            if rc-service caddy restart; then
+                reload_success=true
+            else
+                print_color "rc-service重启失败，尝试reload" "$YELLOW"
+                rc-service caddy reload && reload_success=true
+            fi
+        else
+            # 使用caddy原生reload命令
+            print_color "未检测到服务管理器，使用caddy原生reload命令" "$YELLOW"
+            if caddy reload --config "$main_caddyfile" >/dev/null 2>&1; then
+                reload_success=true
+            else
+                print_color "caddy reload失败，可能需要手动重启caddy进程" "$YELLOW"
+            fi
+        fi
+
+        if [ "$reload_success" = true ]; then
             print_color "Caddy 配置已成功应用并重载！" "$GREEN"
             print_color "站点文件: $config_file" "$BLUE"
             print_color "已 import 到: $main_caddyfile" "$BLUE"
         else
             print_color "警告: Caddy 重载失败，请手动检查日志" "$YELLOW"
+            print_color "请手动执行重启命令: systemctl restart caddy 或 service caddy restart" "$YELLOW"
         fi
-    else
-        print_color "已跳过应用，仅生成文件: $config_file" "$YELLOW"
-    fi
 }
 
 # 主程序 (已优化流程)
