@@ -215,7 +215,7 @@ copy_nginx_config() {
                 print_color "⚠️  警告: 重载失败，但配置文件已安装" "$YELLOW"
                 print_color "请手动执行重启命令: systemctl restart nginx 或 service nginx restart" "$YELLOW"
             fi
-}
+    }
 
 
 # 获取通用配置 (端口、SSL、安全、性能 - 收集输入)
