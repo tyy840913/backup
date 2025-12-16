@@ -234,6 +234,7 @@ copy_nginx_config() {
     fi
 }
 
+
 # 获取通用配置 (端口、SSL、安全、性能 - 收集输入)
 get_generic_config() {
     # 确保变量在每次运行时清空
@@ -984,6 +985,9 @@ generate_caddy_config() {
             print_color "警告: Caddy 重载失败，请手动检查日志" "$YELLOW"
             print_color "请手动执行重启命令: systemctl restart caddy 或 service caddy restart" "$YELLOW"
         fi
+    else
+        print_color "已跳过应用，仅生成文件: $config_file" "$YELLOW"
+    fi
 }
 
 # 主程序 (已优化流程)
