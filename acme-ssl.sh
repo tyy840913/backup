@@ -34,7 +34,7 @@ print_warning() {
 }
 
 print_error() {
-    print_message "$RED" "[✗]" "$1"
+    print_message "$RED" "[✗✗]" "$1"
 }
 
 # 等待用户确认
@@ -65,11 +65,12 @@ init_directories() {
 
 # ========== 依赖检查 ==========
 
-check_dependencies() {
-    print_info "检查系统依赖..."
+# 基础依赖检查（所有模式都需要）
+check_basic_dependencies() {
+    print_info "检查基础依赖..."
     
     local missing=()
-    local required=("openssl" "crontab" "dig")
+    local required=("openssl" "crontab")
     
     for cmd in "${required[@]}"; do
         if ! command -v "$cmd" &> /dev/null; then
@@ -85,13 +86,31 @@ check_dependencies() {
             echo "  - $cmd"
         done
         echo -e "\n安装示例:"
-        echo "  Ubuntu/Debian: sudo apt install openssl cron dnsutils"
-        echo "  CentOS/RHEL: sudo yum install openssl crontab bind-utils"
-        echo "  Alpine: sudo apk add openssl dcron bind-tools"
+        echo "  Ubuntu/Debian: sudo apt install openssl cron"
+        echo "  CentOS/RHEL: sudo yum install openssl crontab"
+        echo "  Alpine: sudo apk add openssl dcron"
         return 1
     fi
     
-    print_success "所有依赖已安装"
+    print_success "基础依赖已安装"
+    return 0
+}
+
+# DNS模式专用依赖检查
+check_dns_dependencies() {
+    print_info "检查DNS模式依赖..."
+    
+    if ! command -v dig &> /dev/null; then
+        print_warning "缺失命令: dig"
+        print_info "DNS模式需要dig命令进行DNS验证"
+        echo "安装示例:"
+        echo "  Ubuntu/Debian: sudo apt install dnsutils"
+        echo "  CentOS/RHEL: sudo yum install bind-utils"
+        echo "  Alpine: sudo apk add bind-tools"
+        return 1
+    fi
+    
+    print_success "DNS模式依赖已安装"
     return 0
 }
 
@@ -209,13 +228,12 @@ find_ca_file() {
     return 1
 }
 
-# 获取所有证书 - 改进版本，返回两个数组
+# 获取所有证书
 get_all_certificates() {
     local certs=()
     local cert_dirs=()
     
     if [ ! -d "$ACME_DIR" ]; then
-        # 返回两个空数组
         echo "CERTS:"
         echo "DIRS:"
         return 1
@@ -241,7 +259,6 @@ get_all_certificates() {
         fi
     done
     
-    # 分别输出两个数组
     echo "CERTS: ${certs[@]}"
     echo "DIRS: ${cert_dirs[@]}"
 }
@@ -384,24 +401,165 @@ check_dns_record() {
 
 # ========== 证书操作函数 ==========
 
-# 获取DNS TXT记录
-get_dns_txt_records() {
+# Webroot模式申请证书
+webroot_issue_cert() {
     local domain="$1"
+    
+    print_info "Webroot模式申请证书: $domain"
+    
+    # 检查是否包含通配符
+    if [[ "$domain" == *"*"* ]]; then
+        print_error "Webroot模式不支持通配符证书 (*.domain)"
+        return 1
+    fi
+    
+    read -p "请输入网站根目录路径 (例如: /var/www/html): " webroot_path
+    
+    if [ -z "$webroot_path" ]; then
+        print_error "网站根目录不能为空"
+        return 1
+    fi
+    
+    if [ ! -d "$webroot_path" ]; then
+        print_warning "指定的目录 $webroot_path 不存在或不是一个有效的目录"
+        read -p "是否继续执行? (y/n): " confirm
+        if [ "$confirm" != "y" ]; then
+            return 1
+        fi
+    fi
+    
+    # 执行申请命令
+    print_info "正在申请证书..."
+    local cmd=("$ACME_BIN" "--issue" "-d" "$domain" "-w" "$webroot_path")
+    
+    echo -e "${BLUE}==========================================${NC}"
+    if "${cmd[@]}"; then
+        echo -e "${BLUE}==========================================${NC}"
+        print_success "证书申请成功！"
+        return 0
+    else
+        echo -e "${BLUE}==========================================${NC}"
+        print_error "证书申请失败"
+        return 1
+    fi
+}
+
+# DNS API模式申请证书
+dns_api_issue_cert() {
+    local domain="$1"
+    
+    print_info "DNS API模式申请证书: $domain"
+    
+    echo "请选择DNS服务商:"
+    echo "1) Cloudflare"
+    echo "2) 阿里云"
+    echo "3) 腾讯云"
+    echo "4) 其他"
+    read -p "请选择(1-4): " dns_provider
+    
+    case $dns_provider in
+        1)
+            local api_key_name="CF_Key"
+            local api_email_name="CF_Email"
+            local dns_type="dns_cf"
+            ;;
+        2)
+            local api_key_name="Ali_Key"
+            local api_secret_name="Ali_Secret"
+            local dns_type="dns_ali"
+            ;;
+        3)
+            local api_key_name="DP_Id"
+            local api_secret_name="DP_Key"
+            local dns_type="dns_dp"
+            ;;
+        4)
+            print_info "请参考acme.sh文档配置其他DNS服务商"
+            return 1
+            ;;
+        *)
+            print_error "无效的选择"
+            return 1
+            ;;
+    esac
+    
+    # 获取API密钥
+    if [ "$dns_provider" -eq 1 ]; then
+        read -p "请输入Cloudflare Global API Key ($api_key_name): " api_key
+        read -p "请输入Cloudflare邮箱 ($api_email_name): " api_email
+        
+        if [ -z "$api_key" ] || [ -z "$api_email" ]; then
+            print_error "API密钥和邮箱不能为空"
+            return 1
+        fi
+        
+        # 设置环境变量并执行
+        export CF_Key="$api_key"
+        export CF_Email="$api_email"
+    else
+        read -p "请输入API Key ($api_key_name): " api_key
+        read -p "请输入API Secret ($api_secret_name): " api_secret
+        
+        if [ -z "$api_key" ] || [ -z "$api_secret" ]; then
+            print_error "API密钥和Secret不能为空"
+            return 1
+        fi
+        
+        # 根据服务商设置环境变量
+        case $dns_provider in
+            2)
+                export Ali_Key="$api_key"
+                export Ali_Secret="$api_secret"
+                ;;
+            3)
+                export DP_Id="$api_key"
+                export DP_Key="$api_secret"
+                ;;
+        esac
+    fi
+    
+    # 执行申请命令
+    print_info "正在申请证书..."
+    local cmd=("$ACME_BIN" "--issue" "-d" "$domain" "--dns" "$dns_type")
+    
+    echo -e "${BLUE}==========================================${NC}"
+    if "${cmd[@]}"; then
+        echo -e "${BLUE}==========================================${NC}"
+        print_success "证书申请成功！"
+        
+        # 提示自动续期配置
+        print_info "证书申请成功后，acme.sh会自动记住您的API密钥用于自动续期"
+        return 0
+    else
+        echo -e "${BLUE}==========================================${NC}"
+        print_error "证书申请失败"
+        return 1
+    fi
+}
+
+# DNS手动模式申请证书
+dns_manual_issue_cert() {
+    local domain="$1"
+    
+    print_info "DNS手动模式申请证书: $domain"
+    
+    # 检查DNS依赖
+    if ! check_dns_dependencies; then
+        print_error "DNS模式依赖检查失败"
+        return 1
+    fi
     
     create_temp_dir
     local log_file="$TEMP_DIR/acme_manual.log"
     
     print_info "获取DNS验证信息..."
     
-    # 构建命令 - 只处理单个域名
+    # 构建命令
     local cmd=("$ACME_BIN" "--issue" "--dns" "-d" "$domain")
-    
     cmd+=("--server" "letsencrypt" "--yes-I-know-dns-manual-mode-enough-go-ahead-please")
     
-    # 执行命令 - 修改这里：实时显示输出
-    echo -e "${YELLOW}[!] 正在执行acme.sh命令...${NC}"
+    # 执行命令
     echo -e "${BLUE}==========================================${NC}"
-    # 实时显示输出并保存到日志文件
     if ! "${cmd[@]}" 2>&1 | tee "$log_file"; then
         echo -e "${BLUE}==========================================${NC}"
         print_error "获取DNS验证信息失败"
@@ -409,11 +567,9 @@ get_dns_txt_records() {
     fi
     echo -e "${BLUE}==========================================${NC}"
     
-    # 从日志文件读取输出用于解析
+    # 解析TXT记录
     local cmd_output=""
     cmd_output=$(cat "$log_file")
-    
-    # 解析TXT记录
     local txt_record=""
     txt_record=$(echo "$cmd_output" | grep -A 2 "Domain: '_acme-challenge.$domain'" | grep "TXT value:" | sed -n "s/.*TXT value: '\([^']*\)'.*/\1/p")
     
@@ -469,7 +625,9 @@ get_dns_txt_records() {
     local retry_count=0
     
     while [ $retry_count -lt $max_retries ]; do
+        echo -e "${BLUE}==========================================${NC}"
         if "${renew_cmd[@]}"; then
+            echo -e "${BLUE}==========================================${NC}"
             print_success "证书申请成功！"
             return 0
         else
@@ -483,6 +641,11 @@ get_dns_txt_records() {
             fi
         fi
     done
+}
+
+# 获取DNS TXT记录（原有函数，保持兼容）
+get_dns_txt_records() {
+    dns_manual_issue_cert "$1"
 }
 
 # 证书续期
@@ -564,7 +727,7 @@ renew_certificate() {
     
     echo -e "\n${BLUE}=== 续期结果 ===${NC}"
     echo -e "${GREEN}[✓] 成功: $success_count${NC}"
-    echo -e "${RED}[✗] 失败: $fail_count${NC}"
+    echo -e "${RED}[✗✗] 失败: $fail_count${NC}"
     
     wait_for_confirmation
     return $((fail_count > 0 ? 1 : 0))
@@ -655,7 +818,7 @@ delete_certificate() {
     
     echo -e "\n${BLUE}=== 删除结果 ===${NC}"
     echo -e "${GREEN}[✓] 成功: $success_count${NC}"
-    echo -e "${RED}[✗] 失败: $fail_count${NC}"
+    echo -e "${RED}[✗✗] 失败: $fail_count${NC}"
     
     wait_for_confirmation
     return $((fail_count > 0 ? 1 : 0))
@@ -721,6 +884,23 @@ list_certificates() {
 cert_issue_menu() {
     echo -e "\n${BLUE}=== 证书申请 ===${NC}"
     
+    echo "请选择验证方式："
+    echo "1) Webroot (HTTP验证) - 适用于普通网站，不支持通配符"
+    echo "2) DNS API - 适用于通配符证书，需要API密钥"
+    echo "3) DNS手动模式 - 适用于通配符，需要手动操作TXT记录"
+    echo ""
+    read -p "请选择验证方式(1-3): " verify_choice
+    
+    case $verify_choice in
+        1|2|3)
+            ;;
+        *)
+            print_error "无效的选择"
+            return 1
+            ;;
+    esac
+    
+    echo ""
     echo "请输入域名："
     echo "示例："
     echo "  example.com                 # 单域名"
@@ -766,9 +946,29 @@ cert_issue_menu() {
         esac
     fi
     
-    # 申请证书
+    # 根据选择的验证方式申请证书
     print_info "开始申请证书: $domain"
-    if get_dns_txt_records "$domain"; then
+    
+    local result=1
+    case $verify_choice in
+        1)
+            if webroot_issue_cert "$domain"; then
+                result=0
+            fi
+            ;;
+        2)
+            if dns_api_issue_cert "$domain"; then
+                result=0
+            fi
+            ;;
+        3)
+            if dns_manual_issue_cert "$domain"; then
+                result=0
+            fi
+            ;;
+    esac
+    
+    if [ $result -eq 0 ]; then
         # 显示证书信息
         echo -e "\n${BLUE}=== 证书申请成功 ===${NC}"
         
@@ -892,8 +1092,9 @@ main() {
     
     init_directories
     
-    if ! check_dependencies; then
-        print_error "依赖检查失败"
+    # 只检查基础依赖
+    if ! check_basic_dependencies; then
+        print_error "基础依赖检查失败"
         wait_for_confirmation
         exit 1
     fi
