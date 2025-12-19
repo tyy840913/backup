@@ -146,23 +146,4 @@ DOMAIN-SUFFIX,storage.msn.com
 # Porn
 DOMAIN-SUFFIX,xvideos.com
 DOMAIN-SUFFIX,xnxx.com
-DOMAIN-SUFFIX,xhamster.com
-DOMAIN-SUFFIX,spankbang.com
-DOMAIN-SUFFIX,chaturbate.com
-DOMAIN-SUFFIX,bongacams.com
-DOMAIN-SUFFIX,livejasmin.com
 
-# CDN 加速
-DOMAIN-SUFFIX,xvideos-cdn.com
-DOMAIN-SUFFIX,xnxx-cdn.com
-DOMAIN-SUFFIX,phncdn.com
-DOMAIN-SUFFIX,phprcdn.com
-DOMAIN-SUFFIX,rdtcdn.com
-DOMAIN-SUFFIX,sb-cd.com
-DOMAIN-SUFFIX,dditscdn.com
-DOMAIN-SUFFIX,bcvcdn.com
-DOMAIN-SUFFIX,ahcdn.com
-DOMAIN-SUFFIX,afcdn.net
-DOMAIN-SUFFIX,aucdn.net
-DOMAIN-SUFFIX,ypncdn.com
-DOMAIN-SUFFIX,orbsrv.com
