@@ -206,13 +206,11 @@ proxy-groups:
     type: url-test
     include-all: true
     interval: 300
-    tolerance: 50
   - name: 💬 智能平台
     include-all: true
     filter: ^(?i)(?!.*(?:中|CN|China|港|HK|HongKong|澳|MO|Macao|台|TW|Taiwan|俄|RU|Russia|Iran|IR|朝|KP|NorthKorea|Cuba|CU|Syria|SY|Belarus|BY)).*
     type: url-test
     interval: 300
-    tolerance: 50
 rule-providers:
   ProxyLite:
     url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/ProxyLite.list
