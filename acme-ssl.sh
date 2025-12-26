@@ -1141,6 +1141,7 @@ reinstall_acme() {
 }
 
 # 主菜单
+# 主菜单
 main_menu() {
     while true; do
         echo -e "\n${BLUE}=== ACME证书管理脚本 ===${NC}"
@@ -1152,12 +1153,6 @@ main_menu() {
         echo "6) 重新安装"
         echo "0) 退出脚本"
         echo ""
-        
-        # 清理输入缓冲区
-        while read -r -t 0; do
-            read -r
-        done
-        
         read -p "请选择操作(0-6): " choice
         
         case $choice in
@@ -1190,14 +1185,9 @@ main_menu() {
                 print_success "再见！"
                 exit 0
                 ;;
-            "")
-                # 空输入，继续循环
-                continue
-                ;;
             *)
                 print_error "无效的选择，请输入 0-6"
-                # 添加短暂延迟，避免快速循环
-                sleep 1
+                wait_for_confirmation
                 ;;
         esac
     done
