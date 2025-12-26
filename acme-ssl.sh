@@ -1170,7 +1170,7 @@ main_menu() {
             3) 
                 # 调用外部安装脚本
                 print_info "正在下载并运行证书安装脚本..."
-                if curl -fsSL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webconf.sh | bash; then
+                if bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webconf.sh); then
                     print_success "证书安装脚本执行完成"
                 else
                     print_error "证书安装脚本执行失败"
