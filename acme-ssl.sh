@@ -1152,13 +1152,23 @@ main_menu() {
         echo "6) 重新安装"
         echo "0) 退出脚本"
         echo ""
+        
+        # 清理输入缓冲区
+        while read -r -t 0; do
+            read -r
+        done
+        
         read -p "请选择操作(0-6): " choice
         
         case $choice in
-            1) cert_issue_menu ;;
-            2) renew_certificate ;;
+            1) 
+                cert_issue_menu 
+                ;;
+            2) 
+                renew_certificate 
+                ;;
             3) 
-                # 调用外部安装脚本（推荐方式）
+                # 调用外部安装脚本
                 print_info "正在下载并运行证书安装脚本..."
                 if curl -fsSL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webconf.sh | bash; then
                     print_success "证书安装脚本执行完成"
@@ -1167,15 +1177,27 @@ main_menu() {
                 fi
                 wait_for_confirmation
                 ;;
-            4) delete_certificate ;;
-            5) list_certificates ;;
-            6) reinstall_acme ;;
+            4) 
+                delete_certificate 
+                ;;
+            5) 
+                list_certificates 
+                ;;
+            6) 
+                reinstall_acme 
+                ;;
             0) 
                 print_success "再见！"
                 exit 0
                 ;;
+            "")
+                # 空输入，继续循环
+                continue
+                ;;
             *)
                 print_error "无效的选择，请输入 0-6"
+                # 添加短暂延迟，避免快速循环
+                sleep 1
                 ;;
         esac
     done
