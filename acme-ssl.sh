@@ -1180,3 +1180,27 @@ main_menu() {
         esac
     done
 }
+
+# 主程序
+main() {
+    if [ "$EUID" -eq 0 ]; then
+        print_success "以ROOT权限运行"
+    else
+        print_warning "以普通用户运行，建议使用sudo运行"
+        echo ""
+    fi
+    
+    init_directories
+    
+    # 只检查acme.sh依赖
+    if ! install_acme; then
+        print_error "acme.sh安装失败"
+        wait_for_confirmation
+        exit 1
+    fi
+    
+    main_menu
+}
+
+# 运行主程序
+main
