@@ -34,7 +34,7 @@ print_warning() {
 }
 
 print_error() {
-    print_message "$RED" "[✗✗]" "$1"
+    print_message "$RED" "[✗✗✗✗]" "$1"
 }
 
 # 等待用户确认
@@ -63,54 +63,115 @@ init_directories() {
     mkdir -p "$ACME_DIR"
 }
 
-# ========== 依赖检查 ==========
+# ========== 依赖安装函数 ==========
 
-# 基础依赖检查（所有模式都需要）
-check_basic_dependencies() {
-    print_info "检查基础依赖..."
+# 安装命令依赖
+install_command() {
+    local cmd="$1"
+    local pkg_name="${2:-$cmd}"
     
-    local missing=()
-    local required=("openssl" "crontab")
+    print_info "安装依赖: $cmd"
     
-    for cmd in "${required[@]}"; do
-        if ! command -v "$cmd" &> /dev/null; then
-            missing+=("$cmd")
-            print_warning "缺失命令: $cmd"
-        fi
-    done
-    
-    if [ ${#missing[@]} -gt 0 ]; then
-        print_warning "发现缺失命令: ${missing[*]}"
-        print_info "请手动安装以下命令:"
-        for cmd in "${missing[@]}"; do
-            echo "  - $cmd"
-        done
-        echo -e "\n安装示例:"
-        echo "  Ubuntu/Debian: sudo apt install openssl cron"
-        echo "  CentOS/RHEL: sudo yum install openssl crontab"
-        echo "  Alpine: sudo apk add openssl dcron"
+    if command -v apt-get &> /dev/null; then
+        # Debian/Ubuntu
+        sudo apt-get update && sudo apt-get install -y "$pkg_name"
+    elif command -v yum &> /dev/null; then
+        # CentOS/RHEL
+        sudo yum install -y "$pkg_name"
+    elif command -v dnf &> /dev/null; then
+        # Fedora
+        sudo dnf install -y "$pkg_name"
+    elif command -v apk &> /dev/null; then
+        # Alpine
+        sudo apk add "$pkg_name"
+    elif command -v pacman &> /dev/null; then
+        # Arch Linux
+        sudo pacman -S --noconfirm "$pkg_name"
+    else
+        print_error "不支持的包管理器，请手动安装: $pkg_name"
         return 1
     fi
+}
+
+# 按需检查并安装命令
+check_and_install_command() {
+    local cmd="$1"
+    local pkg_name="${2:-$cmd}"
     
-    print_success "基础依赖已安装"
+    if command -v "$cmd" &> /dev/null; then
+        return 0
+    fi
+    
+    print_warning "命令不存在: $cmd"
+    read -p "是否自动安装? (y/n): " confirm
+    if [[ $confirm =~ ^[Yy]$ ]]; then
+        if install_command "$cmd" "$pkg_name"; then
+            print_success "安装成功: $cmd"
+            return 0
+        else
+            print_error "安装失败: $cmd"
+            return 1
+        fi
+    else
+        print_error "用户取消安装，脚本无法继续"
+        return 1
+    fi
+}
+
+# ========== 基础依赖检查（按需） ==========
+
+# 检查openssl（证书操作需要）
+check_openssl() {
+    if ! command -v openssl &> /dev/null; then
+        print_warning "openssl未安装，证书操作需要openssl"
+        if ! check_and_install_command "openssl"; then
+            return 1
+        fi
+    fi
     return 0
 }
 
-# DNS模式专用依赖检查
-check_dns_dependencies() {
-    print_info "检查DNS模式依赖..."
-    
-    if ! command -v dig &> /dev/null; then
-        print_warning "缺失命令: dig"
-        print_info "DNS模式需要dig命令进行DNS验证"
-        echo "安装示例:"
-        echo "  Ubuntu/Debian: sudo apt install dnsutils"
-        echo "  CentOS/RHEL: sudo yum install bind-utils"
-        echo "  Alpine: sudo apk add bind-tools"
-        return 1
+# 检查crontab（自动续期需要）
+check_crontab() {
+    if ! command -v crontab &> /dev/null; then
+        print_warning "crontab未安装，自动续期需要crontab"
+        if ! check_and_install_command "crontab" "cron"; then
+            return 1
+        fi
     fi
-    
-    print_success "DNS模式依赖已安装"
+    return 0
+}
+
+# 检查curl（acme.sh安装需要）
+check_curl() {
+    if ! command -v curl &> /dev/null; then
+        print_warning "curl未安装，acme.sh安装需要curl"
+        if ! check_and_install_command "curl"; then
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# 检查dig（DNS验证需要）
+check_dig() {
+    if ! command -v dig &> /dev/null; then
+        print_warning "dig未安装，DNS验证需要dig"
+        local pkg_name=""
+        if command -v apt-get &> /dev/null; then
+            pkg_name="dnsutils"
+        elif command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+            pkg_name="bind-utils"
+        elif command -v apk &> /dev/null; then
+            pkg_name="bind-tools"
+        else
+            pkg_name="dnsutils"
+        fi
+        
+        if ! check_and_install_command "dig" "$pkg_name"; then
+            return 1
+        fi
+    fi
     return 0
 }
 
@@ -125,6 +186,12 @@ install_acme() {
     fi
     
     print_warning "acme.sh未安装，开始安装..."
+    
+    # 检查curl依赖
+    if ! check_curl; then
+        print_error "curl安装失败，无法安装acme.sh"
+        return 1
+    fi
     
     if curl -fsSL https://get.acme.sh | sh; then
         print_success "acme.sh安装成功"
@@ -307,6 +374,12 @@ show_cert_info() {
     local domain="$1"
     local cert_dir="$2"
     
+    # 检查openssl依赖
+    if ! check_openssl; then
+        print_error "无法显示证书信息：openssl未安装"
+        return 1
+    fi
+    
     print_info "证书目录: $cert_dir"
     echo ""
     
@@ -366,6 +439,12 @@ show_cert_info() {
 check_dns_record() {
     local domain="$1"
     local txt_record="$2"
+    
+    # 检查dig依赖
+    if ! check_dig; then
+        print_error "DNS检查失败：dig未安装"
+        return 1
+    fi
     
     local check_domain="_acme-challenge.$domain"
     if [[ "$domain" == **\** ]]; then
@@ -544,7 +623,7 @@ dns_manual_issue_cert() {
     print_info "DNS手动模式申请证书: $domain"
     
     # 检查DNS依赖
-    if ! check_dns_dependencies; then
+    if ! check_dig; then
         print_error "DNS模式依赖检查失败"
         return 1
     fi
@@ -682,9 +761,14 @@ renew_certificate() {
             local cert_file=$(find_cert_file "$cert_dir" "$cert_name")
             
             if [ -n "$cert_file" ]; then
-                local expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
-                if [ -n "$expiry_date" ]; then
-                    echo "$((i+1))) $cert_name - 到期时间: $expiry_date"
+                # 检查openssl依赖
+                if check_openssl; then
+                    local expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+                    if [ -n "$expiry_date" ]; then
+                        echo "$((i+1))) $cert_name - 到期时间: $expiry_date"
+                    else
+                        echo "$((i+1))) $cert_name"
+                    fi
                 else
                     echo "$((i+1))) $cert_name"
                 fi
@@ -727,7 +811,7 @@ renew_certificate() {
     
     echo -e "\n${BLUE}=== 续期结果 ===${NC}"
     echo -e "${GREEN}[✓] 成功: $success_count${NC}"
-    echo -e "${RED}[✗✗] 失败: $fail_count${NC}"
+    echo -e "${RED}[✗✗✗✗] 失败: $fail_count${NC}"
     
     wait_for_confirmation
     return $((fail_count > 0 ? 1 : 0))
@@ -818,7 +902,7 @@ delete_certificate() {
     
     echo -e "\n${BLUE}=== 删除结果 ===${NC}"
     echo -e "${GREEN}[✓] 成功: $success_count${NC}"
-    echo -e "${RED}[✗✗] 失败: $fail_count${NC}"
+    echo -e "${RED}[✗✗✗✗] 失败: $fail_count${NC}"
     
     wait_for_confirmation
     return $((fail_count > 0 ? 1 : 0))
@@ -848,9 +932,14 @@ list_certificates() {
         local cert_file=$(find_cert_file "$cert_dir" "$cert_name")
         
         if [ -n "$cert_file" ]; then
-            local expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
-            if [ -n "$expiry_date" ]; then
-                echo "$((i+1))) $cert_name - 到期时间: $expiry_date"
+            # 检查openssl依赖
+            if check_openssl; then
+                local expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+                if [ -n "$expiry_date" ]; then
+                    echo "$((i+1))) $cert_name - 到期时间: $expiry_date"
+                else
+                    echo "$((i+1))) $cert_name"
+                fi
             else
                 echo "$((i+1))) $cert_name"
             fi
@@ -1057,56 +1146,37 @@ main_menu() {
         echo -e "\n${BLUE}=== ACME证书管理脚本 ===${NC}"
         echo "1) 申请证书"
         echo "2) 证书续期"
-        echo "3) 删除证书"
-        echo "4) 列出证书"
-        echo "5) 重新安装"
+        echo "3) 安装证书"
+        echo "4) 删除证书"
+        echo "5) 列出证书"
+        echo "6) 重新安装"
         echo "0) 退出脚本"
         echo ""
-        read -p "请选择操作(0-5): " choice
+        read -p "请选择操作(0-6): " choice
         
         case $choice in
             1) cert_issue_menu ;;
             2) renew_certificate ;;
-            3) delete_certificate ;;
-            4) list_certificates ;;
-            5) reinstall_acme ;;
+            3) 
+                # 调用外部安装脚本（推荐方式）
+                print_info "正在下载并运行证书安装脚本..."
+                if curl -fsSL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/acme-ssl.sh | bash; then
+                    print_success "证书安装脚本执行完成"
+                else
+                    print_error "证书安装脚本执行失败"
+                fi
+                wait_for_confirmation
+                ;;
+            4) delete_certificate ;;
+            5) list_certificates ;;
+            6) reinstall_acme ;;
             0) 
                 print_success "再见！"
                 exit 0
                 ;;
             *)
-                print_error "无效的选择，请输入 0-5"
+                print_error "无效的选择，请输入 0-6"
                 ;;
         esac
     done
 }
-
-# 主程序
-main() {
-    if [ "$EUID" -eq 0 ]; then
-        print_success "以ROOT权限运行"
-    else
-        print_warning "以普通用户运行，建议使用sudo运行"
-        echo ""
-    fi
-    
-    init_directories
-    
-    # 只检查基础依赖
-    if ! check_basic_dependencies; then
-        print_error "基础依赖检查失败"
-        wait_for_confirmation
-        exit 1
-    fi
-    
-    if ! install_acme; then
-        print_error "acme.sh安装失败"
-        wait_for_confirmation
-        exit 1
-    fi
-    
-    main_menu
-}
-
-# 运行主程序
-main
