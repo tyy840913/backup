@@ -193,7 +193,7 @@ install_acme() {
         return 1
     fi
 
-    if curl -fsSL https://woskee.ae.kg/https://raw.githubusercontent.com/acmesh-official/acme.sh/master/acme.sh | sh; then
+    if curl -fsSL https://woskee.ae.kg/https://raw.githubusercontent.com/acmesh-official/acme.sh/master/acme.sh | sh -s; then
         print_success "acme.sh安装成功"
         return 0
     fi
