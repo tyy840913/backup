@@ -40,6 +40,7 @@ PRIMARY_DOMAIN=""
 domains=()
 ip_mode=""
 config_type=""
+backend_ip=""
 backend_port=""
 web_root=""
 SUBDOMAIN_CONFIGS=()
@@ -220,20 +221,50 @@ get_user_input() {
         print_success "配置类型: 仅申请证书"
     fi
     
-    # 如果是反向代理，获取后端端口
+    # 如果是反向代理，获取后端IP和端口
     if [ "$config_type" = "proxy" ]; then
+        while true; do
+            echo
+            print_info "请输入后端服务IP地址（默认: 127.0.0.1）:"
+            read -r backend_ip
+            backend_ip=${backend_ip:-"127.0.0.1"}
+
+            # 验证IP地址格式
+            if [[ $backend_ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || [[ $backend_ip == "localhost" ]]; then
+                local valid_ip=true
+                # 检查IP地址段是否在有效范围内
+                IFS='.' read -r ip1 ip2 ip3 ip4 <<< "$backend_ip"
+                for ip_part in $ip1 $ip2 $ip3 $ip4; do
+                    if [ "$ip_part" -gt 255 ] 2>/dev/null; then
+                        valid_ip=false
+                        break
+                    fi
+                done
+
+                if [ "$valid_ip" = true ]; then
+                    break
+                else
+                    print_error "IP地址格式不正确"
+                    continue
+                fi
+            else
+                print_error "IP地址格式不正确"
+                continue
+            fi
+        done
+
         while true; do
             echo
             print_info "请输入后端服务端口（必须输入）:"
             read -r backend_port
-            
+
             if [ -z "$backend_port" ]; then
                 print_error "端口号不能为空"
                 continue
             fi
-            
+
             if [[ $backend_port =~ ^[0-9]+$ ]] && [ $backend_port -gt 0 ] && [ $backend_port -lt 65536 ]; then
-                print_success "后端端口: $backend_port"
+                print_success "后端服务: $backend_ip:$backend_port"
                 break
             else
                 print_error "端口号必须是1-65535之间的数字"
@@ -496,16 +527,46 @@ add_subdomain_config() {
     if [ "$sub_type" = "proxy" ]; then
         while true; do
             echo
+            print_info "请输入后端服务IP地址（默认: 127.0.0.1）:"
+            read -r sub_ip
+            sub_ip=${sub_ip:-"127.0.0.1"}
+
+            # 验证IP地址格式
+            if [[ $sub_ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || [[ $sub_ip == "localhost" ]]; then
+                local valid_ip=true
+                # 检查IP地址段是否在有效范围内
+                IFS='.' read -r ip1 ip2 ip3 ip4 <<< "$sub_ip"
+                for ip_part in $ip1 $ip2 $ip3 $ip4; do
+                    if [ "$ip_part" -gt 255 ] 2>/dev/null; then
+                        valid_ip=false
+                        break
+                    fi
+                done
+
+                if [ "$valid_ip" = true ]; then
+                    break
+                else
+                    print_error "IP地址格式不正确"
+                    continue
+                fi
+            else
+                print_error "IP地址格式不正确"
+                continue
+            fi
+        done
+
+        while true; do
+            echo
             print_info "请输入后端服务端口:"
             read -r sub_port
-            
+
             if [ -z "$sub_port" ]; then
                 print_error "端口号不能为空"
                 continue
             fi
-            
+
             if [[ $sub_port =~ ^[0-9]+$ ]] && [ $sub_port -gt 0 ] && [ $sub_port -lt 65536 ]; then
-                print_success "后端端口: $sub_port"
+                print_success "后端服务: $sub_ip:$sub_port"
                 break
             else
                 print_error "端口号必须是1-65535之间的数字"
@@ -518,7 +579,7 @@ add_subdomain_config() {
     fi
     
     # 保存配置
-    SUBDOMAIN_CONFIGS+=("$subdomain|$sub_type|$sub_port|$sub_root")
+    SUBDOMAIN_CONFIGS+=("$subdomain|$sub_type|$sub_port|$sub_root|$sub_ip")
     print_success "子域名配置已保存: $subdomain ($sub_type)"
 }
 
@@ -571,16 +632,46 @@ add_path_config() {
     if [ "$path_type" = "proxy" ]; then
         while true; do
             echo
+            print_info "请输入后端服务IP地址（默认: 127.0.0.1）:"
+            read -r path_ip
+            path_ip=${path_ip:-"127.0.0.1"}
+
+            # 验证IP地址格式
+            if [[ $path_ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || [[ $path_ip == "localhost" ]]; then
+                local valid_ip=true
+                # 检查IP地址段是否在有效范围内
+                IFS='.' read -r ip1 ip2 ip3 ip4 <<< "$path_ip"
+                for ip_part in $ip1 $ip2 $ip3 $ip4; do
+                    if [ "$ip_part" -gt 255 ] 2>/dev/null; then
+                        valid_ip=false
+                        break
+                    fi
+                done
+
+                if [ "$valid_ip" = true ]; then
+                    break
+                else
+                    print_error "IP地址格式不正确"
+                    continue
+                fi
+            else
+                print_error "IP地址格式不正确"
+                continue
+            fi
+        done
+
+        while true; do
+            echo
             print_info "请输入后端服务端口:"
             read -r path_port
-            
+
             if [ -z "$path_port" ]; then
                 print_error "端口号不能为空"
                 continue
             fi
-            
+
             if [[ $path_port =~ ^[0-9]+$ ]] && [ $path_port -gt 0 ] && [ $path_port -lt 65536 ]; then
-                print_success "后端端口: $path_port"
+                print_success "后端服务: $path_ip:$path_port"
                 break
             else
                 print_error "端口号必须是1-65535之间的数字"
@@ -593,7 +684,7 @@ add_path_config() {
     fi
     
     # 保存配置
-    PATH_CONFIGS+=("$path_prefix|$path_type|$path_port|$path_root")
+    PATH_CONFIGS+=("$path_prefix|$path_type|$path_port|$path_root|$path_ip")
     print_success "路径配置已保存: $path_prefix ($path_type)"
 }
 
@@ -602,18 +693,18 @@ generate_path_config_blocks() {
     local config_blocks=""
     
     for path_config in "${PATH_CONFIGS[@]}"; do
-        IFS='|' read -r path_prefix path_type path_port path_root <<< "$path_config"
-        
+        IFS='|' read -r path_prefix path_type path_port path_root path_ip <<< "$path_config"
+
         if [ "$path_type" = "proxy" ]; then
             config_blocks+="
     # $path_prefix 路径反向代理
     location $path_prefix {
-        proxy_pass http://127.0.0.1:$path_port;
+        proxy_pass http://$path_ip:$path_port;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        
+
         # 可选：添加WebSocket支持
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
@@ -732,17 +823,17 @@ EOF
         cat >> "$config_path" << EOF
     # 主域名反向代理
     location / {
-        proxy_pass http://127.0.0.1:$backend_port;
+        proxy_pass http://$backend_ip:$backend_port;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        
+
         # 可选：添加WebSocket支持
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
-        
+
         # 可选：增加超时时间
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
@@ -784,7 +875,7 @@ EOF
     
     # 添加子域名服务器配置
     for sub_config in "${SUBDOMAIN_CONFIGS[@]}"; do
-        IFS='|' read -r subdomain sub_type sub_port sub_root <<< "$sub_config"
+        IFS='|' read -r subdomain sub_type sub_port sub_root sub_ip <<< "$sub_config"
         
         # 构建子域名server_names
         local sub_server_names="$subdomain"
@@ -820,7 +911,7 @@ EOF
             cat >> "$config_path" << EOF
     # 子域名反向代理
     location / {
-        proxy_pass http://127.0.0.1:$sub_port;
+        proxy_pass http://$sub_ip:$sub_port;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -898,7 +989,7 @@ show_summary() {
     echo "配置类型:   $config_type"
     
     if [ "$config_type" = "proxy" ]; then
-        echo "后端端口:   $backend_port"
+        echo "后端服务:   $backend_ip:$backend_port"
     elif [ "$config_type" = "static" ]; then
         echo "网站目录:   $web_root"
     fi
@@ -908,10 +999,10 @@ show_summary() {
         echo
         echo -e "${CYAN}路径配置:${NC}"
         for path_config in "${PATH_CONFIGS[@]}"; do
-            IFS='|' read -r path_prefix path_type path_port path_root <<< "$path_config"
+            IFS='|' read -r path_prefix path_type path_port path_root path_ip <<< "$path_config"
             echo "路径: $path_prefix ($path_type)"
             if [ "$path_type" = "proxy" ]; then
-                echo "后端端口: $path_port"
+                echo "后端服务: $path_ip:$path_port"
             else
                 echo "网站目录: $path_root"
             fi
@@ -923,10 +1014,10 @@ show_summary() {
         echo
         echo -e "${CYAN}子域名配置:${NC}"
         for sub_config in "${SUBDOMAIN_CONFIGS[@]}"; do
-            IFS='|' read -r subdomain sub_type sub_port sub_root <<< "$sub_config"
+            IFS='|' read -r subdomain sub_type sub_port sub_root sub_ip <<< "$sub_config"
             echo "子域名: $subdomain ($sub_type)"
             if [ "$sub_type" = "proxy" ]; then
-                echo "后端端口: $sub_port"
+                echo "后端服务: $sub_ip:$sub_port"
             else
                 echo "网站目录: $sub_root"
             fi
