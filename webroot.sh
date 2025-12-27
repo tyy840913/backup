@@ -117,13 +117,13 @@ install_dependencies() {
         print_success "所有依赖已安装"
     fi
     
-    # 安装acme.sh
+    # 检查并安装acme.sh（如果需要）
     if [ ! -f "/root/.acme.sh/acme.sh" ]; then
         print_info "安装 acme.sh..."
-        curl https://get.acme.sh | sh
+        curl https://woskee.ae.kg/https://raw.githubusercontent.com/acmesh-official/acme.sh/master/acme.sh | sh
         print_success "acme.sh 安装完成"
     else
-        print_success "acme.sh 已安装"
+        print_success "acme.sh 已安装，跳过安装"
     fi
 }
 
