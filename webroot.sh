@@ -120,7 +120,7 @@ install_dependencies() {
     # 检查并安装acme.sh（如果需要）
     if [ ! -f "/root/.acme.sh/acme.sh" ]; then
         print_info "安装 acme.sh..."
-        curl https://woskee.ae.kg/https://raw.githubusercontent.com/acmesh-official/acme.sh/master/acme.sh | sh
+        curl https://woskee.ae.kg/https://raw.githubusercontent.com/acmesh-official/acme.sh/master/acme.sh | sh -s
         print_success "acme.sh 安装完成"
     else
         print_success "acme.sh 已安装，跳过安装"
@@ -986,16 +986,36 @@ main() {
     echo "    支持多域名、子域名、路径配置"
     echo "══════════════════════════════════════════════"
     echo -e "${NC}"
-    
+
     # 检查root权限
     if [ "$EUID" -ne 0 ]; then
         print_error "请使用root权限运行"
         exit 1
     fi
-    
+
     # 执行步骤
     install_dependencies
-    get_user_input
+
+    # 检查是否通过命令行参数传入了域名
+    if [ $# -gt 0 ]; then
+        # 使用命令行参数作为主域名
+        PRIMARY_DOMAIN="$1"
+        domains=("$PRIMARY_DOMAIN")
+
+        # 如果提供了第二个参数，作为其他域名
+        if [ $# -gt 1 ]; then
+            shift
+            for arg in "$@"; do
+                domains+=("$arg")
+            done
+        fi
+
+        print_success "使用命令行参数的域名: ${domains[*]}"
+    else
+        # 交互式获取用户输入
+        get_user_input
+    fi
+
     create_acme_challenge_dir
     
     # 第一阶段：生成初始配置（无301重定向）
