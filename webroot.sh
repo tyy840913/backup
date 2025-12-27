@@ -6,6 +6,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
+PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
 # 打印彩色信息
@@ -29,8 +30,20 @@ print_step() {
     echo -e "${CYAN}[STEP]${NC} $1"
 }
 
+print_menu() {
+    echo -e "${PURPLE}[MENU]${NC} $1"
+}
+
 # 全局变量
 FINAL_CONFIG_NAME=""
+PRIMARY_DOMAIN=""
+domains=()
+ip_mode=""
+config_type=""
+backend_port=""
+web_root=""
+SUBDOMAIN_CONFIGS=()
+PATH_CONFIGS=()
 
 # 检测系统信息
 detect_system() {
@@ -107,7 +120,7 @@ install_dependencies() {
     # 安装acme.sh
     if [ ! -f "/root/.acme.sh/acme.sh" ]; then
         print_info "安装 acme.sh..."
-        curl https://get.acme.sh | sh -s email=admin@${domains[0]}
+        curl https://get.acme.sh | sh
         print_success "acme.sh 安装完成"
     else
         print_success "acme.sh 已安装"
@@ -283,14 +296,12 @@ generate_initial_config() {
     local config_path="/etc/nginx/conf.d/$FINAL_CONFIG_NAME"
     
     # 生成一个单独的server块用于证书验证
-    # 这是为了确保所有域名都能正确验证
     cat > "$config_path" << EOF
 # 阶段1: 证书申请阶段配置
 # 生成时间: $(date)
 # 域名:$server_names
 
 # 证书验证专用server块
-# 确保所有域名都能访问验证文件
 server {
     $listen_80
     server_name$server_names;
@@ -299,14 +310,12 @@ server {
         root /var/www/acme-challenge;
     }
     
-    # 证书申请阶段，不重定向，直接返回验证信息
     location / {
         return 200 "Domain verification in progress for:$server_names";
         add_header Content-Type text/plain;
     }
 }
 
-# 443端口暂时禁用
 server {
     $listen_443
     server_name$server_names;
@@ -402,9 +411,231 @@ issue_certificate() {
     fi
 }
 
-# 更新Nginx配置（添加SSL证书和重定向）
+# 添加额外配置的交互界面
+add_additional_configs() {
+    print_step "添加额外配置"
+    
+    while true; do
+        echo
+        print_menu "是否要为主域名添加额外配置？"
+        echo "1) 不添加，完成配置"
+        echo "2) 通过子域名添加配置"
+        echo "3) 通过路径添加配置"
+        read -p "请选择 (1/2/3): " add_choice
+        
+        case $add_choice in
+            1)
+                print_success "跳过额外配置"
+                break
+                ;;
+            2)
+                add_subdomain_config
+                ;;
+            3)
+                add_path_config
+                ;;
+            *)
+                print_error "无效选择"
+                continue
+                ;;
+        esac
+        
+        echo
+        print_menu "是否继续添加更多配置？"
+        echo "1) 继续添加"
+        echo "2) 完成配置"
+        read -p "请选择 (1/2): " continue_choice
+        
+        if [ "$continue_choice" != "1" ]; then
+            break
+        fi
+    done
+}
+
+# 添加子域名配置
+add_subdomain_config() {
+    echo
+    print_info "添加子域名配置"
+    
+    # 获取子域名
+    while true; do
+        print_info "请输入子域名前缀（如: api, admin, app 等）:"
+        read -r sub_prefix
+        
+        if [ -z "$sub_prefix" ]; then
+            print_error "子域名前缀不能为空"
+            continue
+        fi
+        
+        if [[ $sub_prefix =~ ^[a-zA-Z0-9-]+$ ]]; then
+            subdomain="$sub_prefix.$PRIMARY_DOMAIN"
+            print_success "子域名: $subdomain"
+            break
+        else
+            print_error "子域名前缀只能包含字母、数字和连字符"
+        fi
+    done
+    
+    # 选择配置类型
+    echo
+    print_info "请选择子域名配置类型:"
+    echo "1) 反向代理到后端服务"
+    echo "2) 静态文件服务"
+    while true; do
+        read -p "请选择 (1/2): " sub_type_choice
+        case $sub_type_choice in
+            1) sub_type="proxy"; break ;;
+            2) sub_type="static"; break ;;
+            *) print_error "无效选择" ;;
+        esac
+    done
+    
+    local sub_port=""
+    local sub_root=""
+    
+    if [ "$sub_type" = "proxy" ]; then
+        while true; do
+            echo
+            print_info "请输入后端服务端口:"
+            read -r sub_port
+            
+            if [ -z "$sub_port" ]; then
+                print_error "端口号不能为空"
+                continue
+            fi
+            
+            if [[ $sub_port =~ ^[0-9]+$ ]] && [ $sub_port -gt 0 ] && [ $sub_port -lt 65536 ]; then
+                print_success "后端端口: $sub_port"
+                break
+            else
+                print_error "端口号必须是1-65535之间的数字"
+            fi
+        done
+    else
+        read -p "请输入网站根目录 (默认: /var/www/$sub_prefix): " sub_root
+        sub_root=${sub_root:-/var/www/$sub_prefix}
+        print_success "网站根目录: $sub_root"
+    fi
+    
+    # 保存配置
+    SUBDOMAIN_CONFIGS+=("$subdomain|$sub_type|$sub_port|$sub_root")
+    print_success "子域名配置已保存: $subdomain ($sub_type)"
+}
+
+# 添加路径配置
+add_path_config() {
+    echo
+    print_info "添加路径配置"
+    
+    # 获取路径
+    while true; do
+        print_info "请输入路径前缀（如: /api/, /admin/, /app/ 等）:"
+        read -r path_prefix
+        
+        if [ -z "$path_prefix" ]; then
+            print_error "路径前缀不能为空"
+            continue
+        fi
+        
+        # 确保路径以/开头
+        if [[ $path_prefix != /* ]]; then
+            path_prefix="/$path_prefix"
+        fi
+        
+        # 确保路径以/结尾（对于路径配置很重要）
+        if [[ $path_prefix != */ ]]; then
+            path_prefix="$path_prefix/"
+        fi
+        
+        print_success "路径: $path_prefix"
+        break
+    done
+    
+    # 选择配置类型
+    echo
+    print_info "请选择路径配置类型:"
+    echo "1) 反向代理到后端服务"
+    echo "2) 静态文件服务"
+    while true; do
+        read -p "请选择 (1/2): " path_type_choice
+        case $path_type_choice in
+            1) path_type="proxy"; break ;;
+            2) path_type="static"; break ;;
+            *) print_error "无效选择" ;;
+        esac
+    done
+    
+    local path_port=""
+    local path_root=""
+    
+    if [ "$path_type" = "proxy" ]; then
+        while true; do
+            echo
+            print_info "请输入后端服务端口:"
+            read -r path_port
+            
+            if [ -z "$path_port" ]; then
+                print_error "端口号不能为空"
+                continue
+            fi
+            
+            if [[ $path_port =~ ^[0-9]+$ ]] && [ $path_port -gt 0 ] && [ $path_port -lt 65536 ]; then
+                print_success "后端端口: $path_port"
+                break
+            else
+                print_error "端口号必须是1-65535之间的数字"
+            fi
+        done
+    else
+        read -p "请输入网站根目录 (默认: /var/www$(echo $path_prefix | sed 's|/$||')): " path_root
+        path_root=${path_root:-/var/www$(echo $path_prefix | sed 's|/$||')}
+        print_success "网站根目录: $path_root"
+    fi
+    
+    # 保存配置
+    PATH_CONFIGS+=("$path_prefix|$path_type|$path_port|$path_root")
+    print_success "路径配置已保存: $path_prefix ($path_type)"
+}
+
+# 生成路径配置块
+generate_path_config_blocks() {
+    local config_blocks=""
+    
+    for path_config in "${PATH_CONFIGS[@]}"; do
+        IFS='|' read -r path_prefix path_type path_port path_root <<< "$path_config"
+        
+        if [ "$path_type" = "proxy" ]; then
+            config_blocks+="
+    # $path_prefix 路径反向代理
+    location $path_prefix {
+        proxy_pass http://127.0.0.1:$path_port;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        
+        # 可选：添加WebSocket支持
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \"upgrade\";
+    }"
+        else
+            config_blocks+="
+    # $path_prefix 路径静态文件
+    location $path_prefix {
+        root $path_root;
+        index index.html index.htm;
+        try_files \$uri \$uri/ =404;
+    }"
+        fi
+    done
+    
+    echo "$config_blocks"
+}
+
+# 更新Nginx配置（添加SSL证书和重定向，以及额外配置）
 update_final_config() {
-    print_step "更新Nginx配置（添加SSL证书）"
+    print_step "更新Nginx配置（添加SSL证书和额外配置）"
     
     # 获取证书目录
     local cert_dir="/root/.acme.sh/${PRIMARY_DOMAIN}_ecc"
@@ -443,15 +674,17 @@ update_final_config() {
     # 配置路径
     local config_path="/etc/nginx/conf.d/$FINAL_CONFIG_NAME"
     
-    # 根据配置类型生成最终配置
-    if [ "$config_type" = "proxy" ]; then
-        # 反向代理最终配置
-        cat > "$config_path" << EOF
-# 阶段2: 最终SSL配置
+    # 生成路径配置块
+    local path_config_blocks=$(generate_path_config_blocks)
+    
+    # 生成主配置
+    cat > "$config_path" << EOF
+# 最终SSL配置
 # 生成时间: $(date)
 # 域名:$server_names
 # IP模式: $ip_mode
 
+# 80端口重定向服务器
 server {
     $listen_80
     server_name$server_names;
@@ -460,17 +693,118 @@ server {
         root /var/www/acme-challenge;
     }
     
-    # 80端口重定向到443
+    # 重定向所有HTTP请求到HTTPS
     location / {
         return 301 https://\$host\$request_uri;
     }
 }
 
+# 主HTTPS服务器 - $PRIMARY_DOMAIN
 server {
     $listen_443
     server_name$server_names;
     
     # SSL证书配置
+    ssl_certificate $cert_file;
+    ssl_certificate_key $key_file;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    
+    # SSL会话配置
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    
+    # 证书验证路径
+    location /.well-known/acme-challenge/ {
+        root /var/www/acme-challenge;
+    }
+    
+    # 安全响应头
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    
+EOF
+    
+    # 添加主配置内容
+    if [ "$config_type" = "proxy" ]; then
+        cat >> "$config_path" << EOF
+    # 主域名反向代理
+    location / {
+        proxy_pass http://127.0.0.1:$backend_port;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        
+        # 可选：添加WebSocket支持
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        # 可选：增加超时时间
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+EOF
+    elif [ "$config_type" = "static" ]; then
+        cat >> "$config_path" << EOF
+    # 主域名静态文件服务
+    root $web_root;
+    index index.html index.htm;
+    
+    location / {
+        try_files \$uri \$uri/ =404;
+    }
+EOF
+    else
+        cat >> "$config_path" << EOF
+    # 证书测试模式
+    location / {
+        return 200 "SSL Certificate is working for all domains!";
+        add_header Content-Type text/plain;
+    }
+EOF
+    fi
+    
+    # 添加路径配置
+    if [ -n "$path_config_blocks" ]; then
+        cat >> "$config_path" << EOF
+    # 路径配置$path_config_blocks
+EOF
+    fi
+    
+    # 结束主服务器配置
+    cat >> "$config_path" << EOF
+}
+
+EOF
+    
+    # 添加子域名服务器配置
+    for sub_config in "${SUBDOMAIN_CONFIGS[@]}"; do
+        IFS='|' read -r subdomain sub_type sub_port sub_root <<< "$sub_config"
+        
+        # 构建子域名server_names
+        local sub_server_names="$subdomain"
+        for domain in "${domains[@]:1}"; do
+            # 为其他域名也添加相应的子域名
+            if [[ $domain == *"$PRIMARY_DOMAIN" ]]; then
+                sub_domain_part=$(echo "$domain" | sed "s/$PRIMARY_DOMAIN\$//" | sed 's/\.$//')
+                if [ -n "$sub_domain_part" ]; then
+                    sub_server_names="$sub_server_names $sub_domain_part.$subdomain"
+                fi
+            fi
+        done
+        
+        cat >> "$config_path" << EOF
+# 子域名服务器 - $subdomain
+server {
+    $listen_443
+    server_name $sub_server_names;
+    
+    # SSL证书配置（使用主域名的通配符证书）
     ssl_certificate $cert_file;
     ssl_certificate_key $key_file;
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -480,9 +814,13 @@ server {
         root /var/www/acme-challenge;
     }
     
-    # 反向代理
+EOF
+        
+        if [ "$sub_type" = "proxy" ]; then
+            cat >> "$config_path" << EOF
+    # 子域名反向代理
     location / {
-        proxy_pass http://127.0.0.1:$backend_port;
+        proxy_pass http://127.0.0.1:$sub_port;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -490,46 +828,10 @@ server {
     }
 }
 EOF
-        print_success "更新反向代理最终配置"
-        
-    elif [ "$config_type" = "static" ]; then
-        # 静态文件最终配置
-        cat > "$config_path" << EOF
-# 阶段2: 最终SSL配置
-# 生成时间: $(date)
-# 域名:$server_names
-# IP模式: $ip_mode
-
-server {
-    $listen_80
-    server_name$server_names;
-    
-    location /.well-known/acme-challenge/ {
-        root /var/www/acme-challenge;
-    }
-    
-    # 80端口重定向到443
-    location / {
-        return 301 https://\$host\$request_uri;
-    }
-}
-
-server {
-    $listen_443
-    server_name$server_names;
-    
-    # SSL证书配置
-    ssl_certificate $cert_file;
-    ssl_certificate_key $key_file;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    
-    # 证书验证路径
-    location /.well-known/acme-challenge/ {
-        root /var/www/acme-challenge;
-    }
-    
-    # 静态文件服务
-    root $web_root;
+        else
+            cat >> "$config_path" << EOF
+    # 子域名静态文件服务
+    root $sub_root;
     index index.html index.htm;
     
     location / {
@@ -537,52 +839,12 @@ server {
     }
 }
 EOF
-        print_success "更新静态文件最终配置"
+        fi
         
-    else
-        # 仅证书模式最终配置
-        cat > "$config_path" << EOF
-# 阶段2: 最终SSL配置
-# 生成时间: $(date)
-# 域名:$server_names
-# IP模式: $ip_mode
-
-server {
-    $listen_80
-    server_name$server_names;
+        echo >> "$config_path"
+    done
     
-    location /.well-known/acme-challenge/ {
-        root /var/www/acme-challenge;
-    }
-    
-    # 80端口重定向到443
-    location / {
-        return 301 https://\$host\$request_uri;
-    }
-}
-
-server {
-    $listen_443
-    server_name$server_names;
-    
-    # SSL证书配置
-    ssl_certificate $cert_file;
-    ssl_certificate_key $key_file;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    
-    # 证书验证路径
-    location /.well-known/acme-challenge/ {
-        root /var/www/acme-challenge;
-    }
-    
-    location / {
-        return 200 "SSL Certificate is working for all domains!";
-        add_header Content-Type text/plain;
-    }
-}
-EOF
-        print_success "更新证书测试最终配置"
-    fi
+    print_success "更新最终配置，包含主域名和额外配置"
     
     # 测试并重载Nginx配置
     if nginx -t; then
@@ -615,8 +877,6 @@ setup_auto_renew() {
     
     print_success "自动续期已设置"
     print_info "执行时间: 每天凌晨2点"
-    print_info "续期策略: 证书剩余有效期少于30天时自动续期"
-    print_info "如果证书有效期大于30天，会自动跳过不续期"
     
     if [ "$ip_mode" = "ipv6" ]; then
         print_info "使用IPv6网络进行续期"
@@ -643,39 +903,43 @@ show_summary() {
         echo "网站目录:   $web_root"
     fi
     
+    # 显示路径配置
+    if [ ${#PATH_CONFIGS[@]} -gt 0 ]; then
+        echo
+        echo -e "${CYAN}路径配置:${NC}"
+        for path_config in "${PATH_CONFIGS[@]}"; do
+            IFS='|' read -r path_prefix path_type path_port path_root <<< "$path_config"
+            echo "路径: $path_prefix ($path_type)"
+            if [ "$path_type" = "proxy" ]; then
+                echo "后端端口: $path_port"
+            else
+                echo "网站目录: $path_root"
+            fi
+        done
+    fi
+    
+    # 显示子域名配置
+    if [ ${#SUBDOMAIN_CONFIGS[@]} -gt 0 ]; then
+        echo
+        echo -e "${CYAN}子域名配置:${NC}"
+        for sub_config in "${SUBDOMAIN_CONFIGS[@]}"; do
+            IFS='|' read -r subdomain sub_type sub_port sub_root <<< "$sub_config"
+            echo "子域名: $subdomain ($sub_type)"
+            if [ "$sub_type" = "proxy" ]; then
+                echo "后端端口: $sub_port"
+            else
+                echo "网站目录: $sub_root"
+            fi
+        done
+    fi
+    
     echo
     echo -e "${CYAN}证书信息:${NC}"
     echo "证书目录:   /root/.acme.sh/${PRIMARY_DOMAIN}_ecc"
-    echo "证书文件:   /root/.acme.sh/${PRIMARY_DOMAIN}_ecc/fullchain.cer"
-    echo "私钥文件:   /root/.acme.sh/${PRIMARY_DOMAIN}_ecc/$PRIMARY_DOMAIN.key"
-    
-    echo
-    echo -e "${CYAN}证书验证:${NC}"
-    local cert_file="/root/.acme.sh/${PRIMARY_DOMAIN}_ecc/fullchain.cer"
-    if [ -f "$cert_file" ]; then
-        echo "证书有效期:"
-        openssl x509 -in "$cert_file" -noout -dates
-        
-        echo
-        echo "证书包含的域名:"
-        openssl x509 -in "$cert_file" -noout -text 2>/dev/null | \
-            grep -A1 "Subject Alternative Name" | tail -n1 | \
-            sed 's/DNS://g' | sed 's/, /\n/g' | sed 's/^[[:space:]]*//' | \
-            while read domain; do
-                echo "  - $domain"
-            done
-    fi
     
     echo
     echo -e "${CYAN}配置文件:${NC}"
     echo "/etc/nginx/conf.d/$FINAL_CONFIG_NAME"
-    
-    echo
-    echo -e "${CYAN}自动续期:${NC}"
-    echo "已设置每天凌晨2点自动续期"
-    echo "证书剩余有效期少于30天时自动续期"
-    echo "证书有效期大于30天时自动跳过"
-    [ "$ip_mode" = "ipv6" ] && echo "使用IPv6网络续期"
     
     echo
     echo -e "${CYAN}测试命令:${NC}"
@@ -683,19 +947,32 @@ show_summary() {
         echo "测试 $domain: curl -I https://$domain"
     done
     
-    echo
-    echo -e "${CYAN}手动操作:${NC}"
-    if [ "$ip_mode" = "ipv6" ]; then
-        echo "手动续期:   /root/.acme.sh/acme.sh --cron --listen-v6"
-    else
-        echo "手动续期:   /root/.acme.sh/acme.sh --cron"
-    fi
-    echo "查看证书:   /root/.acme.sh/acme.sh --list"
+    for sub_config in "${SUBDOMAIN_CONFIGS[@]}"; do
+        IFS='|' read -r subdomain sub_type sub_port sub_root <<< "$sub_config"
+        echo "测试 $subdomain: curl -I https://$subdomain"
+    done
     
     echo
-    echo -e "${GREEN}完成！请测试所有域名:${NC}"
+    echo -e "${CYAN}路径访问:${NC}"
+    for path_config in "${PATH_CONFIGS[@]}"; do
+        IFS='|' read -r path_prefix path_type path_port path_root <<< "$path_config"
+        echo "访问 $path_prefix: https://$PRIMARY_DOMAIN$path_prefix"
+    done
+    
+    echo
+    echo -e "${GREEN}完成！请测试所有域名和路径:${NC}"
     for domain in "${domains[@]}"; do
         echo "https://$domain"
+    done
+    
+    for sub_config in "${SUBDOMAIN_CONFIGS[@]}"; do
+        IFS='|' read -r subdomain sub_type sub_port sub_root <<< "$sub_config"
+        echo "https://$subdomain"
+    done
+    
+    for path_config in "${PATH_CONFIGS[@]}"; do
+        IFS='|' read -r path_prefix path_type path_port path_root <<< "$path_config"
+        echo "https://$PRIMARY_DOMAIN$path_prefix"
     done
     echo
 }
@@ -706,7 +983,7 @@ main() {
     echo -e "${CYAN}"
     echo "══════════════════════════════════════════════"
     echo "         SSL证书自动部署脚本"
-    echo "        支持多域名证书"
+    echo "    支持多域名、子域名、路径配置"
     echo "══════════════════════════════════════════════"
     echo -e "${NC}"
     
@@ -726,6 +1003,9 @@ main() {
     
     # 第二阶段：申请证书
     issue_certificate
+    
+    # 添加额外配置的交互界面
+    add_additional_configs
     
     # 第三阶段：更新配置（添加SSL证书和301重定向）
     update_final_config
