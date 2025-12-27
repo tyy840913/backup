@@ -13,6 +13,11 @@ https://github.com/ACL4SSR/ACL4SSR/tree/master
 bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/acme-ssl.sh)
 ```
 
+# webroot证书申请
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webroot.sh)
+```
+
 # Nginx & Caddy 配置文件快速生成
 ```bash
 bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webconf.sh)
