@@ -59,3 +59,5 @@ DOMAIN-SUFFIX,bytedanceapi.com
 DOMAIN-REGEX,(p\d+\.douyinpic
 DOMAIN,pull-rtmp-l13.douyincdn.com
 DOMAIN,tnc3-alisc1.bytedance
+DOMAIN,mon11-misc-lf.fqnovel.com
+DOMAIN-SUFFIX,douyinpic.com
