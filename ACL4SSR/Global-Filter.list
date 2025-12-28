@@ -36,12 +36,14 @@
 # DOMAIN-SUFFIX,pangolin-sdk-toutiao1.com
 # DOMAIN-SUFFIX,pangolin-sdk-toutiao-b.com
 # DOMAIN-SUFFIX,pglstatp-toutiao.com
+# DOMAIN-KEYWORD,toutiao
 # DOMAIN-KEYWORD,normal   #（不能屏蔽，否则页面加载不全）
 
 # 字节跳动相关域名匹配（仅主域名）
-DOMAIN-KEYWORD,pangolin
-# DOMAIN-KEYWORD,toutiao
+DOMAIN-KEYWORD,pa# 域名关键词
 DOMAIN-KEYWORD,ecombdapi
+
+# 域名后缀
 DOMAIN-SUFFIX,zijieapi.com
 DOMAIN-SUFFIX,amemv.com
 DOMAIN-SUFFIX,byteimg.com
@@ -56,9 +58,15 @@ DOMAIN-SUFFIX,byteorge.com
 DOMAIN-SUFFIX,chengzijianzhan.cn
 DOMAIN-SUFFIX,douyin.com
 DOMAIN-SUFFIX,bytedanceapi.com
-DOMAIN-REGEX,(p\d+\.douyinpic
+DOMAIN-SUFFIX,douyinpic.com
+
+
+# 域名正则表达式
+DOMAIN-REGEX,^mon\d+-misc-lf\.fqnovel\.com$
+
+
+# 域名
 DOMAIN,pull-rtmp-l13.douyincdn.com
 DOMAIN,tnc3-alisc1.bytedance
-DOMAIN,mon11-misc-lf.fqnovel.com
-DOMAIN-SUFFIX,douyinpic.com
 DOMAIN,lf3-reading.fqnovelpic.com
+
