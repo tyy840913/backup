@@ -64,10 +64,11 @@ DOMAIN-SUFFIX,douyinpic.com
 # 域名正则表达式
 DOMAIN-REGEX,^mon\d+-misc-lf\.fqnovel\.com$
 DOMAIN-REGEX,^api\d+-[^.]+\.fqnovel\.com$
+DOMAIN-REGEX,^log\d+-applog-lf\.fqnovel\.com$
+
 
 # 域名
 DOMAIN,pull-rtmp-l13.douyincdn.com
 DOMAIN,tnc3-alisc1.bytedance
 DOMAIN,lf3-reading.fqnovelpic.com
-DOMAIN,log0-applog-lf.fqnovel.com
 
