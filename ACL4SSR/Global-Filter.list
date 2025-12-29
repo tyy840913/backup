@@ -65,6 +65,8 @@ DOMAIN-SUFFIX,douyinpic.com
 DOMAIN-REGEX,^mon\d+-misc-lf\.fqnovel\.com$
 # DOMAIN-REGEX,^api\d+-[^.]+\.fqnovel\.com$
 DOMAIN-REGEX,^log\d+-applog-lf\.fqnovel\.com$
+DOMAIN-REGEX,^lf\d+-short\.ibytedapm\.com$
+
 
 
 # 域名
