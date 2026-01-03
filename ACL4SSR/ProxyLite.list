@@ -17,7 +17,6 @@ DOMAIN-SUFFIX,work.gd
 DOMAIN-SUFFIX,workers.dev
 DOMAIN-SUFFIX,greasyfork.org
 DOMAIN-SUFFIX,netassist.ua
-DOMAIN-SUFFIX,workers.dev
 DOMAIN-SUFFIX,netlib.re
 DOMAIN-SUFFIX,dynu.com
 DOMAIN-SUFFIX,ip6.arpa
@@ -33,7 +32,7 @@ DOMAIN-SUFFIX,sg
 DOMAIN-SUFFIX,tw
 DOMAIN-SUFFIX,uk
 
-# 国外域名关键字
+# 国外域名关键字（已合并 + 补充）
 DOMAIN-KEYWORD,telegram
 DOMAIN-KEYWORD,youtube
 DOMAIN-KEYWORD,github
@@ -57,7 +56,39 @@ DOMAIN-KEYWORD,twitter
 DOMAIN-KEYWORD,whatsapp
 DOMAIN-KEYWORD,cloudflare
 
-
+# 新增常见国外服务（国内普遍被墙）
+DOMAIN-KEYWORD,discord
+DOMAIN-KEYWORD,slack
+DOMAIN-KEYWORD,signal
+DOMAIN-KEYWORD,line
+DOMAIN-KEYWORD,wikipedia
+DOMAIN-KEYWORD,wikimedia
+DOMAIN-KEYWORD,mega
+DOMAIN-KEYWORD,gravatar
+DOMAIN-KEYWORD,archive
+DOMAIN-KEYWORD,medium
+DOMAIN-KEYWORD,reddit
+DOMAIN-KEYWORD,quora
+DOMAIN-KEYWORD,vimeo
+DOMAIN-KEYWORD,dailymotion
+DOMAIN-KEYWORD,netflix
+DOMAIN-KEYWORD,hulu
+DOMAIN-KEYWORD,disneyplus
+DOMAIN-KEYWORD,primevideo
+DOMAIN-KEYWORD,bbc
+DOMAIN-KEYWORD,nytimes
+DOMAIN-KEYWORD,cloudfront
+DOMAIN-KEYWORD,fastly
+DOMAIN-KEYWORD,jsdelivr
+DOMAIN-KEYWORD,unpkg
+DOMAIN-KEYWORD,vercel
+DOMAIN-KEYWORD,akamai
+DOMAIN-KEYWORD,mozilla
+DOMAIN-KEYWORD,steam
+DOMAIN-KEYWORD,epicgames
+DOMAIN-KEYWORD,opera
+DOMAIN-KEYWORD,wasabi
+DOMAIN-KEYWORD,backblaze
 
 # Telegram
 DOMAIN-SUFFIX,t.me
@@ -90,7 +121,7 @@ DOMAIN-SUFFIX,ytimg.com
 IP-CIDR,74.125.0.0/16,no-resolve
 IP-CIDR,173.194.0.0/16,no-resolve
 
-# Developer 开发者常用国外网站、镜像和论坛
+# Developer 开发者常用国外网站
 DOMAIN-SUFFIX,gcr.io
 DOMAIN-SUFFIX,docker.com
 DOMAIN-SUFFIX,docker.io
@@ -98,8 +129,8 @@ DOMAIN-SUFFIX,compose-spec.io
 DOMAIN-SUFFIX,dockerhub.com
 DOMAIN-SUFFIX,apache.org
 DOMAIN-SUFFIX,elastic.co
-DOMAIN-SUFFIX,leaflow.net
 DOMAIN-SUFFIX,elastic.com
+DOMAIN-SUFFIX,leaflow.net
 DOMAIN-SUFFIX,gitlab.com
 DOMAIN-SUFFIX,gitlab.io
 DOMAIN-SUFFIX,jitpack.io
@@ -118,7 +149,7 @@ DOMAIN-SUFFIX,nodeseek.com
 DOMAIN-SUFFIX,stackoverflow.com
 DOMAIN-SUFFIX,archive.org
 
-# GoogleCNProxyIP 谷歌中国服务 services.googleapis.cn
+# GoogleCNProxyIP
 IP-CIDR,120.232.181.162/32,no-resolve
 IP-CIDR,120.241.147.226/32,no-resolve
 IP-CIDR,120.253.253.226/32,no-resolve
@@ -150,4 +181,3 @@ DOMAIN-SUFFIX,storage.msn.com
 # Porn
 DOMAIN-SUFFIX,xvideos.com
 DOMAIN-SUFFIX,xnxx.com
-
