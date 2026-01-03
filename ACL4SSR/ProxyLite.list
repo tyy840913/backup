@@ -1,139 +1,85 @@
-# IP检测与DDNS服务
-DOMAIN-KEYWORD,ip
-DOMAIN-KEYWORD,myip
-DOMAIN-KEYWORD,ipapi
-DOMAIN-KEYWORD,ipinfo
-DOMAIN-KEYWORD,ident
-DOMAIN-KEYWORD,dyndns
-DOMAIN-KEYWORD,freemyip
+# --- [IP检测与DDNS] ---
+DOMAIN-SUFFIX,api.ip.sb
+DOMAIN-SUFFIX,ip-api.com
+DOMAIN-SUFFIX,ipwho.is
+DOMAIN-SUFFIX,ipinfo.io
+DOMAIN-SUFFIX,ipapi.co
+DOMAIN-SUFFIX,myip.com
+DOMAIN-SUFFIX,ident.me
+DOMAIN-SUFFIX,ip-ddns.com
+DOMAIN-SUFFIX,ddns-ip.net
 DOMAIN-KEYWORD,cloudns
-DOMAIN-KEYWORD,dynu
+DOMAIN-KEYWORD,freemyip
 DOMAIN-KEYWORD,duckdns
-DOMAIN-KEYWORD,no-ip
-DOMAIN-KEYWORD,changeip
-DOMAIN-KEYWORD,dynv6
-DOMAIN-KEYWORD,freeddns
 DOMAIN-KEYWORD,dnsomatic
-DOMAIN-KEYWORD,zapto
-DOMAIN-KEYWORD,hopto
-DOMAIN-KEYWORD,greasyfork
-DOMAIN-KEYWORD,netassist
-DOMAIN-KEYWORD,netlib
 DOMAIN-KEYWORD,nodeloc
 DOMAIN-KEYWORD,ggff
 
-# 云服务商与CDN
-DOMAIN-KEYWORD,cloudflare
-DOMAIN-KEYWORD,cloudfront
-DOMAIN-KEYWORD,fastly
-DOMAIN-KEYWORD,akamai
-DOMAIN-KEYWORD,vercel
-DOMAIN-KEYWORD,amazonaws
-DOMAIN-KEYWORD,azure
-DOMAIN-KEYWORD,googleapis
-DOMAIN-KEYWORD,github
-DOMAIN-KEYWORD,gitlab
-DOMAIN-KEYWORD,jsdelivr
-DOMAIN-KEYWORD,unpkg
-DOMAIN-KEYWORD,backblaze
-DOMAIN-KEYWORD,wasabi
-DOMAIN-KEYWORD,bunny
-DOMAIN-KEYWORD,ovh
-DOMAIN-KEYWORD,digitalocean
-DOMAIN-KEYWORD,linode
-DOMAIN-KEYWORD,vultr
-DOMAIN-KEYWORD,hetzner
-DOMAIN-KEYWORD,scaleway
-DOMAIN-KEYWORD,upcloud
-DOMAIN-KEYWORD,exoscale
-DOMAIN-KEYWORD,netlify
-DOMAIN-KEYWORD,heroku
-DOMAIN-KEYWORD,firebase
-DOMAIN-KEYWORD,cloudinary
-DOMAIN-KEYWORD,imgix
-DOMAIN-KEYWORD,imgproxy
-DOMAIN-KEYWORD,picturepush
-
-# 大公司核心服务（Google/Alphabet）
+# --- [全球科技巨头核心服务] ---
+# Google 相关
 DOMAIN-KEYWORD,google
 DOMAIN-KEYWORD,gstatic
 DOMAIN-KEYWORD,gmail
+DOMAIN-KEYWORD,1e100
 DOMAIN-KEYWORD,android
 DOMAIN-KEYWORD,chrome
 DOMAIN-KEYWORD,youtu
 DOMAIN-KEYWORD,ytimg
-DOMAIN-KEYWORD,recaptcha
-DOMAIN-KEYWORD,doubleclick
-DOMAIN-KEYWORD,admob
-DOMAIN-KEYWORD,adsense
+DOMAIN-SUFFIX,g.co
+DOMAIN-SUFFIX,goo.gl
+DOMAIN-SUFFIX,yt.be
+DOMAIN-SUFFIX,2mdn.net
+DOMAIN-SUFFIX,app-measurement.net
+DOMAIN-SUFFIX,gvt0.com
+DOMAIN-SUFFIX,gvt1.com
+DOMAIN-SUFFIX,gvt2.com
+DOMAIN-SUFFIX,gvt3.com
+DOMAIN-SUFFIX,xn--ngstr-lra8j.com
 
-# 大公司核心服务（Microsoft）
+# Microsoft / OneDrive / Office
 DOMAIN-KEYWORD,microsoft
-DOMAIN-KEYWORD,bing
 DOMAIN-KEYWORD,office
 DOMAIN-KEYWORD,outlook
+DOMAIN-KEYWORD,bing
 DOMAIN-KEYWORD,skype
 DOMAIN-KEYWORD,windows
 DOMAIN-KEYWORD,xbox
-DOMAIN-KEYWORD,linkedin
-DOMAIN-KEYWORD,onedrive
 DOMAIN-KEYWORD,live
-DOMAIN-KEYWORD,hotmail
+DOMAIN-KEYWORD,msn
+DOMAIN-KEYWORD,onedrive
 DOMAIN-KEYWORD,skydrive
 DOMAIN-KEYWORD,oneclient
-DOMAIN-KEYWORD,photos
-DOMAIN-KEYWORD,storage
 
-# 大公司核心服务（Meta/Facebook）
+# Apple / iCloud
+DOMAIN-KEYWORD,apple
+DOMAIN-KEYWORD,icloud
+DOMAIN-KEYWORD,itunes
+DOMAIN-KEYWORD,appstore
+
+# Meta
 DOMAIN-KEYWORD,facebook
 DOMAIN-KEYWORD,fbcdn
 DOMAIN-KEYWORD,instagram
 DOMAIN-KEYWORD,whatsapp
 DOMAIN-KEYWORD,messenger
 DOMAIN-KEYWORD,oculus
-DOMAIN-KEYWORD,threads
 DOMAIN-KEYWORD,meta
-DOMAIN-KEYWORD,wikipedia
+DOMAIN-KEYWORD,threads
 
-# 大公司核心服务（Amazon）
+# Amazon
 DOMAIN-KEYWORD,amazon
 DOMAIN-KEYWORD,twitch
 DOMAIN-KEYWORD,imdb
 DOMAIN-KEYWORD,primevideo
 
-# 大公司核心服务（Apple）
-DOMAIN-KEYWORD,apple
-DOMAIN-KEYWORD,icloud
-DOMAIN-KEYWORD,itunes
-DOMAIN-KEYWORD,appstore
-
-# 大公司核心服务（Netflix）
-DOMAIN-KEYWORD,netflix
-
-# 社交与通讯平台
-DOMAIN-KEYWORD,twitter
-DOMAIN-KEYWORD,x
-DOMAIN-KEYWORD,telegram
-DOMAIN-KEYWORD,discord
-DOMAIN-KEYWORD,slack
-DOMAIN-KEYWORD,line
-
-# 视频与娱乐平台
-DOMAIN-KEYWORD,vimeo
-DOMAIN-KEYWORD,dailymotion
-DOMAIN-KEYWORD,hulu
-DOMAIN-KEYWORD,disneyplus
-
-# 开发与技术社区/工具
-DOMAIN-KEYWORD,nodejs
-DOMAIN-KEYWORD,npmjs
+# --- [开发者与技术工具] ---
+DOMAIN-KEYWORD,github
+DOMAIN-KEYWORD,gitlab
+DOMAIN-KEYWORD,docker
 DOMAIN-KEYWORD,python
 DOMAIN-KEYWORD,pypi
 DOMAIN-KEYWORD,rust-lang
 DOMAIN-KEYWORD,crates
-DOMAIN-KEYWORD,golang
-DOMAIN-KEYWORD,docker
-DOMAIN-KEYWORD,dockerhub
 DOMAIN-KEYWORD,apache
 DOMAIN-KEYWORD,elastic
 DOMAIN-KEYWORD,maven
@@ -146,25 +92,112 @@ DOMAIN-KEYWORD,terraform
 DOMAIN-KEYWORD,hashicorp
 DOMAIN-KEYWORD,jetbrains
 DOMAIN-KEYWORD,gradle
-DOMAIN-KEYWORD,mozilla
-DOMAIN-KEYWORD,opera
-DOMAIN-KEYWORD,archive
+DOMAIN-KEYWORD,spring
+DOMAIN-KEYWORD,sourcegraph
+DOMAIN-KEYWORD,nodeseek
+DOMAIN-SUFFIX,golang.org
+DOMAIN-SUFFIX,nodejs.org
+DOMAIN-SUFFIX,npmjs.com
+DOMAIN-SUFFIX,gcr.io
+DOMAIN-SUFFIX,jitpack.io
+DOMAIN-SUFFIX,quay.io
+DOMAIN-SUFFIX,redhat.com
+DOMAIN-SUFFIX,sonatype.org
 
-# 其他常见国外服务（社区、存储、新闻、音乐等）
-DOMAIN-KEYWORD,mega
-DOMAIN-KEYWORD,gravatar
-DOMAIN-KEYWORD,medium
+# --- [社交、新闻与存储] ---
+DOMAIN-KEYWORD,twitter
+DOMAIN-KEYWORD,telegram
+DOMAIN-KEYWORD,discord
+DOMAIN-KEYWORD,slack
+DOMAIN-KEYWORD,line
 DOMAIN-KEYWORD,reddit
+DOMAIN-KEYWORD,medium
 DOMAIN-KEYWORD,quora
-DOMAIN-KEYWORD,bbc
-DOMAIN-KEYWORD,nytimes
+DOMAIN-KEYWORD,wikipedia
+DOMAIN-KEYWORD,archive
+DOMAIN-KEYWORD,dropbox
+DOMAIN-KEYWORD,mega
+DOMAIN-KEYWORD,spotify
+DOMAIN-KEYWORD,netflix
+DOMAIN-KEYWORD,vimeo
+DOMAIN-KEYWORD,hulu
+DOMAIN-KEYWORD,disneyplus
 DOMAIN-KEYWORD,steam
 DOMAIN-KEYWORD,epicgames
-DOMAIN-KEYWORD,dropbox
-DOMAIN-KEYWORD,spotify
-DOMAIN-KEYWORD,sci-hub
+DOMAIN-KEYWORD,bbc
+DOMAIN-KEYWORD,nytimes
 DOMAIN-KEYWORD,blogspot
+DOMAIN-KEYWORD,sci-hub
+DOMAIN-SUFFIX,x.com
+
+# --- [云服务与CDN] ---
+DOMAIN-KEYWORD,cloudflare
+DOMAIN-KEYWORD,cloudfront
+DOMAIN-KEYWORD,fastly
+DOMAIN-KEYWORD,akamai
+DOMAIN-KEYWORD,vercel
+DOMAIN-KEYWORD,azure
+DOMAIN-KEYWORD,digitalocean
+DOMAIN-KEYWORD,vultr
+DOMAIN-KEYWORD,linode
+DOMAIN-KEYWORD,hetzner
+DOMAIN-KEYWORD,ovh
+DOMAIN-KEYWORD,bunny
+DOMAIN-KEYWORD,netlify
+DOMAIN-KEYWORD,heroku
+DOMAIN-KEYWORD,firebase
+
+# --- [自定义与特殊后缀] ---
+DOMAIN-KEYWORD,greasyfork
+DOMAIN-KEYWORD,netassist
+DOMAIN-KEYWORD,netlib
+DOMAIN-SUFFIX,work.gd
+DOMAIN-SUFFIX,workers.dev
+DOMAIN-SUFFIX,ip6.arpa
+DOMAIN-SUFFIX,eu
+DOMAIN-SUFFIX,hk
+DOMAIN-SUFFIX,jp
+DOMAIN-SUFFIX,kr
+DOMAIN-SUFFIX,sg
+DOMAIN-SUFFIX,tw
+DOMAIN-SUFFIX,uk
+DOMAIN-SUFFIX,be
+DOMAIN-SUFFIX,ch
+
+# --- [成人内容 (Porn)] ---
 DOMAIN-KEYWORD,pornhub
 DOMAIN-KEYWORD,redtube
 DOMAIN-KEYWORD,xvideos
 DOMAIN-KEYWORD,xnxx
+
+# --- [IP段规则 - 精确匹配] ---
+# Telegram
+IP-CIDR,91.108.0.0/16,no-resolve
+IP-CIDR,109.239.140.0/24,no-resolve
+IP-CIDR,149.154.160.0/20,no-resolve
+IP-CIDR6,2001:67c:4e8::/48,no-resolve
+IP-CIDR6,2001:b28:f23d::/48,no-resolve
+IP-CIDR6,2001:b28:f23f::/48,no-resolve
+
+# Google & Google China
+IP-CIDR,74.125.0.0/16,no-resolve
+IP-CIDR,173.194.0.0/16,no-resolve
+IP-CIDR,203.208.39.0/24,no-resolve
+IP-CIDR,203.208.40.0/24,no-resolve
+IP-CIDR,203.208.41.0/24,no-resolve
+IP-CIDR,203.208.43.0/24,no-resolve
+IP-CIDR,203.208.50.0/24,no-resolve
+# 谷歌中国单点IP
+IP-CIDR,120.232.181.162/32,no-resolve
+IP-CIDR,120.241.147.226/32,no-resolve
+IP-CIDR,120.253.253.226/32,no-resolve
+IP-CIDR,120.253.255.162/32,no-resolve
+IP-CIDR,120.253.255.34/32,no-resolve
+IP-CIDR,120.253.255.98/32,no-resolve
+IP-CIDR,180.163.150.162/32,no-resolve
+IP-CIDR,180.163.150.34/32,no-resolve
+IP-CIDR,180.163.151.162/32,no-resolve
+IP-CIDR,180.163.151.34/32,no-resolve
+IP-CIDR,220.181.174.162/32,no-resolve
+IP-CIDR,220.181.174.226/32,no-resolve
+IP-CIDR,220.181.174.34/32,no-resolve
