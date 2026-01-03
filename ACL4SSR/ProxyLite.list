@@ -1,38 +1,25 @@
 # IP地址检测
-DOMAIN-SUFFIX,api.ip.sb
-DOMAIN-SUFFIX,ip-api.com
-DOMAIN-SUFFIX,ipwho.is
-DOMAIN-SUFFIX,ipinfo.io
-DOMAIN-SUFFIX,ident.me
-DOMAIN-SUFFIX,ipapi.co
-DOMAIN-SUFFIX,api.myip.com
+DOMAIN-KEYWORD,ip
+DOMAIN-KEYWORD,myip
+DOMAIN-KEYWORD,ipapi
+DOMAIN-KEYWORD,ipinfo
+DOMAIN-KEYWORD,ident
 
 # 自定义域名
-DOMAIN-SUFFIX,freemyip.com
-DOMAIN-SUFFIX,cloudns.be
-DOMAIN-SUFFIX,cloudns.ch
-DOMAIN-SUFFIX,ip-ddns.com
-DOMAIN-SUFFIX,ddns-ip.net
-DOMAIN-SUFFIX,work.gd
-DOMAIN-SUFFIX,workers.dev
-DOMAIN-SUFFIX,greasyfork.org
-DOMAIN-SUFFIX,netassist.ua
-DOMAIN-SUFFIX,netlib.re
-DOMAIN-SUFFIX,dynu.com
-DOMAIN-SUFFIX,ip6.arpa
-DOMAIN-SUFFIX,nodeloc.com
-DOMAIN-SUFFIX,ggff.net
+DOMAIN-KEYWORD,freemyip
+DOMAIN-KEYWORD,cloudns
+DOMAIN-KEYWORD,ip-ddns
+DOMAIN-KEYWORD,ddns-ip
+DOMAIN-KEYWORD,work
+DOMAIN-KEYWORD,workers
+DOMAIN-KEYWORD,greasyfork
+DOMAIN-KEYWORD,netassist
+DOMAIN-KEYWORD,netlib
+DOMAIN-KEYWORD,dynu
+DOMAIN-KEYWORD,nodeloc
+DOMAIN-KEYWORD,ggff
 
-# 国外域名
-DOMAIN-SUFFIX,eu
-DOMAIN-SUFFIX,hk
-DOMAIN-SUFFIX,jp
-DOMAIN-SUFFIX,kr
-DOMAIN-SUFFIX,sg
-DOMAIN-SUFFIX,tw
-DOMAIN-SUFFIX,uk
-
-# 国外域名关键字（已合并 + 补充）
+# 国外域名关键字
 DOMAIN-KEYWORD,telegram
 DOMAIN-KEYWORD,youtube
 DOMAIN-KEYWORD,github
@@ -56,7 +43,7 @@ DOMAIN-KEYWORD,twitter
 DOMAIN-KEYWORD,whatsapp
 DOMAIN-KEYWORD,cloudflare
 
-# 新增常见国外服务（国内普遍被墙）
+# 新增常见国外服务
 DOMAIN-KEYWORD,discord
 DOMAIN-KEYWORD,slack
 DOMAIN-KEYWORD,signal
@@ -90,95 +77,60 @@ DOMAIN-KEYWORD,opera
 DOMAIN-KEYWORD,wasabi
 DOMAIN-KEYWORD,backblaze
 
-# Telegram
-DOMAIN-SUFFIX,t.me
-DOMAIN-SUFFIX,tdesktop.com
-DOMAIN-SUFFIX,telegra.ph
-DOMAIN-SUFFIX,telesco.pe
-IP-CIDR,91.108.0.0/16,no-resolve
-IP-CIDR,109.239.140.0/24,no-resolve
-IP-CIDR,149.154.160.0/20,no-resolve
-IP-CIDR6,2001:67c:4e8::/48,no-resolve
-IP-CIDR6,2001:b28:f23d::/48,no-resolve
-IP-CIDR6,2001:b28:f23f::/48,no-resolve
+# Google系列
+DOMAIN-KEYWORD,google
+DOMAIN-KEYWORD,gstatic
+DOMAIN-KEYWORD,gvt
+DOMAIN-KEYWORD,youtu
+DOMAIN-KEYWORD,ytimg
+DOMAIN-KEYWORD,2mdn
+DOMAIN-KEYWORD,app-measurement
+DOMAIN-KEYWORD,ggpht
+DOMAIN-KEYWORD,xn--ngstr-lra8j
 
-# Google
-DOMAIN-SUFFIX,2mdn.net
-DOMAIN-SUFFIX,app-measurement.net
-DOMAIN-SUFFIX,g.co
-DOMAIN-SUFFIX,ggpht.com
-DOMAIN-SUFFIX,goo.gl
-DOMAIN-SUFFIX,gstatic.cn
-DOMAIN-SUFFIX,gstatic.com
-DOMAIN-SUFFIX,gvt0.com
-DOMAIN-SUFFIX,gvt1.com
-DOMAIN-SUFFIX,gvt2.com
-DOMAIN-SUFFIX,gvt3.com
-DOMAIN-SUFFIX,xn--ngstr-lra8j.com
-DOMAIN-SUFFIX,youtu.be
-DOMAIN-SUFFIX,yt.be
-DOMAIN-SUFFIX,ytimg.com
-IP-CIDR,74.125.0.0/16,no-resolve
-IP-CIDR,173.194.0.0/16,no-resolve
-
-# Developer 开发者常用国外网站
-DOMAIN-SUFFIX,gcr.io
-DOMAIN-SUFFIX,docker.com
-DOMAIN-SUFFIX,docker.io
-DOMAIN-SUFFIX,linux.do
-DOMAIN-SUFFIX,compose-spec.io
-DOMAIN-SUFFIX,dockerhub.com
-DOMAIN-SUFFIX,apache.org
-DOMAIN-SUFFIX,elastic.co
-DOMAIN-SUFFIX,elastic.com
-DOMAIN-SUFFIX,leaflow.net
-DOMAIN-SUFFIX,gitlab.com
-DOMAIN-SUFFIX,gitlab.io
-DOMAIN-SUFFIX,jitpack.io
-DOMAIN-SUFFIX,maven.org
-DOMAIN-SUFFIX,medium.com
-DOMAIN-SUFFIX,mvnrepository.com
-DOMAIN-SUFFIX,quay.io
-DOMAIN-SUFFIX,reddit.com
-DOMAIN-SUFFIX,huggingface.co
-DOMAIN-SUFFIX,redhat.com
-DOMAIN-SUFFIX,sonatype.org
-DOMAIN-SUFFIX,sourcegraph.com
-DOMAIN-SUFFIX,spring.io
-DOMAIN-SUFFIX,spring.net
-DOMAIN-SUFFIX,nodeseek.com
-DOMAIN-SUFFIX,stackoverflow.com
-DOMAIN-SUFFIX,archive.org
-
-# GoogleCNProxyIP
-IP-CIDR,120.232.181.162/32,no-resolve
-IP-CIDR,120.241.147.226/32,no-resolve
-IP-CIDR,120.253.253.226/32,no-resolve
-IP-CIDR,120.253.255.162/32,no-resolve
-IP-CIDR,120.253.255.34/32,no-resolve
-IP-CIDR,120.253.255.98/32,no-resolve
-IP-CIDR,180.163.150.162/32,no-resolve
-IP-CIDR,180.163.150.34/32,no-resolve
-IP-CIDR,180.163.151.162/32,no-resolve
-IP-CIDR,180.163.151.34/32,no-resolve
-IP-CIDR,203.208.39.0/24,no-resolve
-IP-CIDR,203.208.40.0/24,no-resolve
-IP-CIDR,203.208.41.0/24,no-resolve
-IP-CIDR,203.208.43.0/24,no-resolve
-IP-CIDR,203.208.50.0/24,no-resolve
-IP-CIDR,220.181.174.162/32,no-resolve
-IP-CIDR,220.181.174.226/32,no-resolve
-IP-CIDR,220.181.174.34/32,no-resolve
+# Developer开发者相关
+DOMAIN-KEYWORD,docker
+DOMAIN-KEYWORD,linux
+DOMAIN-KEYWORD,compose-spec
+DOMAIN-KEYWORD,dockerhub
+DOMAIN-KEYWORD,apache
+DOMAIN-KEYWORD,elastic
+DOMAIN-KEYWORD,leaflow
+DOMAIN-KEYWORD,gitlab
+DOMAIN-KEYWORD,jitpack
+DOMAIN-KEYWORD,maven
+DOMAIN-KEYWORD,mvnrepository
+DOMAIN-KEYWORD,quay
+DOMAIN-KEYWORD,huggingface
+DOMAIN-KEYWORD,redhat
+DOMAIN-KEYWORD,sonatype
+DOMAIN-KEYWORD,sourcegraph
+DOMAIN-KEYWORD,spring
+DOMAIN-KEYWORD,nodeseek
+DOMAIN-KEYWORD,stackoverflow
+DOMAIN-KEYWORD,sourceforge
+DOMAIN-KEYWORD,codeberg
+DOMAIN-KEYWORD,launchpad
+DOMAIN-KEYWORD,nodejs
+DOMAIN-KEYWORD,npmjs
+DOMAIN-KEYWORD,python
+DOMAIN-KEYWORD,pypi
+DOMAIN-KEYWORD,rust-lang
+DOMAIN-KEYWORD,crates
+DOMAIN-KEYWORD,golang
+DOMAIN-KEYWORD,terraform
+DOMAIN-KEYWORD,hashicorp
+DOMAIN-KEYWORD,jetbrains
+DOMAIN-KEYWORD,gradle
 
 # OneDrive
 DOMAIN-KEYWORD,onedrive
 DOMAIN-KEYWORD,skydrive
-DOMAIN-SUFFIX,oneclient.sfx.ms
-DOMAIN-SUFFIX,photos.live.com
-DOMAIN-SUFFIX,spoprod-a.akamaihd.net
-DOMAIN-SUFFIX,storage.live.com
-DOMAIN-SUFFIX,storage.msn.com
+DOMAIN-KEYWORD,oneclient
+DOMAIN-KEYWORD,photos.live
+DOMAIN-KEYWORD,storage.live
+DOMAIN-KEYWORD,storage.msn
 
 # Porn
-DOMAIN-SUFFIX,xvideos.com
-DOMAIN-SUFFIX,xnxx.com
+DOMAIN-KEYWORD,xvideos
+DOMAIN-KEYWORD,xnxx
