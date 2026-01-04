@@ -40,7 +40,6 @@
 # DOMAIN-KEYWORD,normal   #（不能屏蔽，否则页面加载不全）
 
 # 字节跳动相关域名匹配（仅主域名）
-DOMAIN-KEYWORD,pa# 域名关键词
 DOMAIN-KEYWORD,ecombdapi
 
 # 域名后缀
@@ -63,7 +62,6 @@ DOMAIN-SUFFIX,douyinpic.com
 
 # 域名正则表达式
 DOMAIN-REGEX,^mon\d+-misc-lf\.fqnovel\.com$
-# DOMAIN-REGEX,^api\d+-[^.]+\.fqnovel\.com$
 DOMAIN-REGEX,^log\d+-applog-lf\.fqnovel\.com$
 DOMAIN-REGEX,^lf\d+-short\.ibytedapm\.com$
 
