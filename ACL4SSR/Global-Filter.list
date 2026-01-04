@@ -61,11 +61,7 @@ DOMAIN-SUFFIX,douyinpic.com
 
 
 # 域名正则表达式
-DOMAIN-REGEX,^mon\d+-misc-lf\.fqnovel\.com$
-DOMAIN-REGEX,^log\d+-applog-lf\.fqnovel\.com$
-DOMAIN-REGEX,^lf\d+-short\.ibytedapm\.com$
-
-
+DOMAIN-REGEX,^(?:mon\d+-misc-lf|log\d+-applog-lf|lf\d+-short)\.(?:fqnovel|ibytedapm)\.com$
 
 # 域名
 DOMAIN,pull-rtmp-l13.douyincdn.com
