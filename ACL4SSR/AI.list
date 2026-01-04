@@ -2,6 +2,7 @@
 DOMAIN-KEYWORD,anthropic
 DOMAIN-KEYWORD,claude
 DOMAIN-KEYWORD,openai
+DOMAIN-KEYWORD,google
 DOMAIN-KEYWORD,chatgpt
 DOMAIN-KEYWORD,oaistatic
 DOMAIN-KEYWORD,googleapis
@@ -23,6 +24,7 @@ DOMAIN-KEYWORD,huggingface
 DOMAIN-KEYWORD,notionai
 DOMAIN-KEYWORD,blackbox
 DOMAIN-KEYWORD,phind
+DOMAIN-KEYWORD,bing
 DOMAIN-KEYWORD,playground
 DOMAIN-KEYWORD,copilot
 DOMAIN-KEYWORD,cursor
@@ -38,6 +40,7 @@ DOMAIN-SUFFIX,groq.com
 DOMAIN-SUFFIX,modal.com
 DOMAIN-SUFFIX,modal.run
 DOMAIN-SUFFIX,ai21.com
+DOMAIN-SUFFIX,x.com
 DOMAIN-SUFFIX,x.ai
 DOMAIN-SUFFIX,grok.com
 
@@ -52,11 +55,11 @@ DOMAIN-SUFFIX,arkoselabs.com
 DOMAIN-SUFFIX,intercom.io
 DOMAIN-SUFFIX,intercomcdn.com
 DOMAIN-SUFFIX,segment.io
+DOMAIN-SUFFIX,appcenter.ms
 
 # --- [大厂 AI 专属云服务接口] ---
 DOMAIN-SUFFIX,ai.azure.com
 DOMAIN-SUFFIX,azureedge.net
-DOMAIN-SUFFIX,ai.google.dev
 DOMAIN-SUFFIX,cloudflareai.com
 
 # --- [笔记与生产力 AI 增强] ---
