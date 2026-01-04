@@ -29,7 +29,7 @@
         "ecombdapi"
       ],
       "domain_regex": [
-        "^(?:mon\d+-misc-lf|log\d+-applog-lf|lf\d+-short)\.(?:fqnovel|ibytedapm)\.com$"
+        "^(?:mon\\d+-misc-lf|log\\d+-applog-lf|lf\\d+-short)\\.(?:fqnovel|ibytedapm)\\.com$"
       ]
     }
   ]
