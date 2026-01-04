@@ -2,8 +2,34 @@
   "version": 1,
   "rules": [
     {
-      "domain_suffix": ["zijieapi.com", "amemv.com", "byteimg.com", "pstatp.com", "zjurl.cn", "bdurl.net", "bsccdn.net", "bytesfield.com", "pangolin-sdk-toutiao.com", "pangolin-sdk-toutiao1.com", "pangolin-sdk-toutiao-b.com", "pglstatp-toutiao.com", "fqnovelvod.com", "byteorge.com", "chengzijianzhan.cn", "douyin.com"],
-      "domain_regex": ["(p\\d+\\.douyinpic\\.com|mon\\d+-misc-lf\\.fqnovel\\.com)"]
+      "domain_keyword": [
+        "ecombdapi"
+      ],
+      "domain_suffix": [
+        "zijieapi.com",
+        "amemv.com",
+        "byteimg.com",
+        "pstatp.com",
+        "snssdk.com",
+        "zjurl.cn",
+        "bdurl.net",
+        "bsccdn.net",
+        "bytesfield.com",
+        "fqnovelvod.com",
+        "byteorge.com",
+        "chengzijianzhan.cn",
+        "douyin.com",
+        "bytedanceapi.com",
+        "douyinpic.com"
+      ],
+      "domain": [
+        "pull-rtmp-l13.douyincdn.com",
+        "tnc3-alisc1.bytedance",
+        "lf3-reading.fqnovelpic.com"
+      ],
+      "domain_regex": [
+        "^(?:mon\\d+-misc-lf|log\\d+-applog-lf|lf\\d+-short)\\.(?:fqnovel|ibytedapm)\\.com$"
+      ]
     }
   ]
 }
