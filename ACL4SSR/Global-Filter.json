@@ -2,10 +2,8 @@
   "version": 1,
   "rules": [
     {
-      "domain": [
-        "pull-rtmp-l13.douyincdn.com",
-        "tnc3-alisc1.bytedance",
-        "lf3-reading.fqnovelpic.com"
+      "domain_keyword": [
+        "ecombdapi"
       ],
       "domain_suffix": [
         "zijieapi.com",
@@ -24,9 +22,10 @@
         "bytedanceapi.com",
         "douyinpic.com"
       ],
-      "domain_keyword": [
-        "pa",
-        "ecombdapi"
+      "domain": [
+        "pull-rtmp-l13.douyincdn.com",
+        "tnc3-alisc1.bytedance",
+        "lf3-reading.fqnovelpic.com"
       ],
       "domain_regex": [
         "^(?:mon\\d+-misc-lf|log\\d+-applog-lf|lf\\d+-short)\\.(?:fqnovel|ibytedapm)\\.com$"
