@@ -17,7 +17,6 @@ DOMAIN-KEYWORD,ggff
 
 # --- [全球科技巨头核心服务] ---
 # Google 相关
-DOMAIN-KEYWORD,google
 DOMAIN-KEYWORD,gstatic
 DOMAIN-KEYWORD,gmail
 DOMAIN-KEYWORD,1e100
@@ -40,7 +39,6 @@ DOMAIN-SUFFIX,xn--ngstr-lra8j.com
 DOMAIN-KEYWORD,microsoft
 DOMAIN-KEYWORD,office
 DOMAIN-KEYWORD,outlook
-DOMAIN-KEYWORD,bing
 DOMAIN-KEYWORD,skype
 DOMAIN-KEYWORD,windows
 DOMAIN-KEYWORD,xbox
