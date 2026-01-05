@@ -29,17 +29,8 @@ DOMAIN-SUFFIX,goo.gl
 DOMAIN-SUFFIX,yt.be
 DOMAIN-SUFFIX,2mdn.net
 DOMAIN-SUFFIX,app-measurement.net
-DOMAIN-SUFFIX,gvt0.com
-DOMAIN-SUFFIX,gvt1.com
-DOMAIN-SUFFIX,gvt2.com
-DOMAIN-SUFFIX,gvt3.com
-DOMAIN-SUFFIX,gvt4.com
-DOMAIN-SUFFIX,gvt5.com
-DOMAIN-SUFFIX,gvt6.com
-DOMAIN-SUFFIX,gvt7.com
-DOMAIN-SUFFIX,gvt8.com
-DOMAIN-SUFFIX,gvt9.com
 DOMAIN-SUFFIX,xn--ngstr-lra8j.com
+DOMAIN-REGEX,gvt[0-9]\.com$
 
 # Microsoft / OneDrive / Office
 DOMAIN-KEYWORD,microsoft
