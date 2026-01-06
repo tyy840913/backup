@@ -126,7 +126,6 @@ DOMAIN-KEYWORD,blogspot
 DOMAIN-KEYWORD,sci-hub
 
 # --- [云服务与CDN] ---
-DOMAIN-KEYWORD,cloudflare
 DOMAIN-KEYWORD,cloudfront
 DOMAIN-KEYWORD,fastly
 DOMAIN-KEYWORD,akamai
