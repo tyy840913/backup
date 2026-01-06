@@ -13,8 +13,8 @@ DOMAIN-KEYWORD,freemyip
 DOMAIN-KEYWORD,duckdns
 DOMAIN-KEYWORD,dnsomatic
 DOMAIN-KEYWORD,nodeloc
-DOMAIN-KEYWORD,gcore.com
-DOMAIN-KEYWORD,ggff
+
+
 
 # --- [全球科技巨头核心服务] ---
 # Google 相关
@@ -141,6 +141,7 @@ DOMAIN-KEYWORD,netlify
 DOMAIN-KEYWORD,heroku
 DOMAIN-KEYWORD,firebase
 
+
 # --- [自定义与特殊后缀] ---
 DOMAIN-KEYWORD,greasyfork
 DOMAIN-KEYWORD,netassist
@@ -150,7 +151,8 @@ DOMAIN-SUFFIX,t.me
 DOMAIN-SUFFIX,work.gd
 DOMAIN-SUFFIX,workers.dev
 DOMAIN-SUFFIX,ip6.arpa
-
+DOMAIN-SUFFIX,ggff.net
+DOMAIN-SUFFIX,gcore.com
 
 # --- [成人内容 (Porn)] ---
 DOMAIN-KEYWORD,pornhub
