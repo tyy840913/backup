@@ -141,7 +141,8 @@ DOMAIN-KEYWORD,bunny
 DOMAIN-KEYWORD,netlify
 DOMAIN-KEYWORD,heroku
 DOMAIN-KEYWORD,firebase
-
+DOMAIN,browser-intake-datadoghq.com
+DOMAIN,api.revenuecat.com
 
 # --- [自定义与特殊后缀] ---
 DOMAIN-KEYWORD,greasyfork
