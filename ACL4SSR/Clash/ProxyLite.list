@@ -1,11 +1,4 @@
-# --- [IP检测与DDNS] ---
-DOMAIN-SUFFIX,api.ip.sb
-DOMAIN-SUFFIX,ip-api.com
-DOMAIN-SUFFIX,ipwho.is
-DOMAIN-SUFFIX,ipinfo.io
-DOMAIN-SUFFIX,ipapi.co
-DOMAIN-SUFFIX,myip.com
-DOMAIN-SUFFIX,ident.me
+# --- [自定义与特殊后缀] ---
 DOMAIN-SUFFIX,ip-ddns.com
 DOMAIN-SUFFIX,ddns-ip.net
 DOMAIN-KEYWORD,cloudns
@@ -13,7 +6,17 @@ DOMAIN-KEYWORD,freemyip
 DOMAIN-KEYWORD,duckdns
 DOMAIN-KEYWORD,dnsomatic
 DOMAIN-KEYWORD,nodeloc
-
+DOMAIN-KEYWORD,greasyfork
+DOMAIN-KEYWORD,netassist
+DOMAIN-KEYWORD,netlib
+DOMAIN-SUFFIX,t.me
+DOMAIN-SUFFIX,dedyn.io
+DOMAIN-SUFFIX,work.gd
+DOMAIN-SUFFIX,workers.dev
+DOMAIN-SUFFIX,ip6.arpa
+DOMAIN-SUFFIX,ggff.net
+DOMAIN-SUFFIX,gcore.com
+DOMAIN-SUFFIX,prodregistryv2.org
 
 
 
@@ -142,19 +145,6 @@ DOMAIN-KEYWORD,netlify
 DOMAIN-KEYWORD,heroku
 DOMAIN-KEYWORD,firebase
 
-
-# --- [自定义与特殊后缀] ---
-DOMAIN-KEYWORD,greasyfork
-DOMAIN-KEYWORD,netassist
-DOMAIN-KEYWORD,netlib
-DOMAIN-SUFFIX,t.me
-DOMAIN-SUFFIX,dedyn.io
-DOMAIN-SUFFIX,work.gd
-DOMAIN-SUFFIX,workers.dev
-DOMAIN-SUFFIX,ip6.arpa
-DOMAIN-SUFFIX,ggff.net
-DOMAIN-SUFFIX,gcore.com
-DOMAIN-SUFFIX,prodregistryv2.org
 
 # --- [成人内容]---
 DOMAIN-KEYWORD,pornhub
