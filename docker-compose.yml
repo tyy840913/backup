@@ -1,7 +1,7 @@
 services:
   # Portainer - 容器管理面板
   portainer:
-    image: docker.1ms.run/6053537/portainer-ce:latest
+    image: woskee.ae.kg/6053537/portainer-ce:latest
     container_name: portainer
     restart: always
     network_mode: bridge
@@ -12,7 +12,7 @@ services:
 
   # Watchtower - 自动更新容器
   watchtower:
-    image: docker.1ms.run/containrrr/watchtower:latest
+    image: woskee.ae.kg/containrrr/watchtower:latest
     container_name: watchtower
     restart: always
     network_mode: host
@@ -24,7 +24,7 @@ services:
 
   # openlist - 文件列表服务
   openlist:
-    image: docker.1ms.run/openlistteam/openlist:latest
+    image: woskee.ae.kg/openlistteam/openlist:latest
     container_name: openlist
     restart: always
     network_mode: bridge
@@ -39,7 +39,7 @@ services:
 
   # Lucky - 反向代理工具（Host 网络）
   lucky:
-    image: docker.1ms.run/gdy666/lucky:v2
+    image: woskee.ae.kg/gdy666/lucky:v2
     container_name: lucky
     restart: always
     network_mode: host
@@ -51,7 +51,7 @@ services:
 
   # Vaultwarden - 密码管理服务
   vaultwarden:
-    image: docker.1ms.run/vaultwarden/server:latest
+    image: woskee.ae.kg/vaultwarden/server:latest
     container_name: vaultwarden
     restart: always
     network_mode: bridge
@@ -80,7 +80,7 @@ services:
 
   # xiaoya - 小雅Alist服务
   xiaoya:
-    image: docker.1ms.run/xiaoyaliu/alist:latest
+    image: woskee.ae.kg/xiaoyaliu/alist:latest
     container_name: xiaoya
     restart: always
     privileged: true
@@ -95,7 +95,7 @@ services:
 
   # mihomo 代理
   mihomo:
-    image: docker.1ms.run/metacubex/mihomo:latest
+    image: woskee.ae.kg/metacubex/mihomo:latest
     container_name: mihomo
     restart: always
     network_mode: host
