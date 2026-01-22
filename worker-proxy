@@ -2,7 +2,7 @@
 const CONFIG = {
   DEFAULT_PROTOCOL: 'https',          // 默认使用HTTPS
   USER_AGENT: 'Mozilla/5.0',         // 模拟浏览器UA
-  RESOURCE_CACHE_TTL: 86400,         // 静态资源缓存时间(秒)
+  RESOURCE_CACHE_TTL: 0,         // 静态资源缓存时间(秒)
   MAX_REDIRECTS: 5,                  // 最大重定向次数
   PRESERVE_COOKIES: false,           // 默认不保留Cookie（合规性考虑）
   ALLOWED_DOMAINS: null              // 可设置为['example.com']限制仅代理特定域名
