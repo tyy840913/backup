@@ -27,6 +27,11 @@ bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/ma
 ```bash
 bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/main.sh)"
 ```
+# LXC容器创建
+```bash
+bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/LXC一键脚本.sh)"
+```
+
 # mihomo-docker代理
 ```bash
 bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/mihomo_install.sh)"
