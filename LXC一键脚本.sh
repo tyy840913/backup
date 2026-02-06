@@ -65,13 +65,13 @@ read_container_name() {
 # 输入密码
 read_password() {
     while true; do
-        read -s -p "请输入root密码: " password
+        read -p "请输入root密码: " password
         echo ""
         if [ ${#password} -lt 6 ]; then
             echo -e "${RED}密码长度至少为6位${NC}"
             continue
         fi
-        read -s -p "确认密码: " password_confirm
+        read -p "请确认输入密码: " password_confirm
         echo ""
         if [ "$password" = "$password_confirm" ]; then
             break
