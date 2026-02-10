@@ -35,6 +35,13 @@ get_gateway() {
     echo "$gateway"
 }
 
+# 从网关IP中提取网络前缀（前三位）
+get_network_prefix() {
+    local gateway=$1
+    # 提取前三个字节，例如 192.168.1.1 -> 192.168.1
+    echo "$gateway" | awk -F. '{print $1"."$2"."$3}'
+}
+
 # 获取用户输入 - 容器名（验证：不能有空格）
 read_container_name() {
     echo ""
@@ -113,9 +120,11 @@ select_network() {
     echo ""
     echo -e "${YELLOW}=== 网络配置 ===${NC}"
     
-    # 自动获取网关
     gateway=$(get_gateway)
     echo -e "${GREEN}自动检测到网关IP: $gateway${NC}"
+    
+    # 从网关获取网络前缀
+    network_prefix=$(get_network_prefix "$gateway")
     
     read -p "请输入IP地址最后一段 (1-254): " ip_last_octet
     while [[ ! $ip_last_octet =~ ^[0-9]+$ ]] || [ $ip_last_octet -lt 1 ] || [ $ip_last_octet -gt 254 ]; do
@@ -123,7 +132,10 @@ select_network() {
         read -p "请输入IP地址最后一段 (1-254): " ip_last_octet
     done
     
-    echo "完整IP地址: 192.168.1.$ip_last_octet"
+    # 组合完整IP地址
+    full_ip="${network_prefix}.${ip_last_octet}"
+    echo ""
+    echo "完整IP地址: $full_ip"
 }
 
 # 选择资源配置
@@ -318,7 +330,7 @@ show_summary() {
     echo -e "容器ID:      $ctid"
     echo -e "容器名:      $container_name"
     echo -e "模板:        ${template#local:vztmpl/}"
-    echo -e "IP地址:      192.168.1.$ip_last_octet/24"
+    echo -e "IP地址:      $full_ip/24"
     echo -e "网关:        $gateway"
     echo -e "CPU核心:     ${cores} 核"
     echo -e "内存:        ${memory}MB"
@@ -399,7 +411,7 @@ main() {
     
     # 确认创建（空输入默认为创建）
     echo ""
-    read -p "确认创建容器？(y/n): " confirm
+    read -p "确认创建容器？(Y/n): " confirm
     # 空输入、y、Y 都确认创建，只有 n/N 才取消
     if [[ "$confirm" =~ ^[Nn]$ ]]; then
         echo "操作已取消"
