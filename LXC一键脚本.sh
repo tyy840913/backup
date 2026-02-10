@@ -14,10 +14,10 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # 固定配置
-CORES=4
-MEMORY=2048
-SWAP=512
-DISK_SIZE=4
+CORES=4         # CPU核心数量
+MEMORY=2048     # 内存大小
+SWAP=512        # 交换容量
+DISK_SIZE=4     # 硬盘大小
 UNPRIVILEGED=0  # 特权容器
 FIREWALL=0      # 禁用防火墙
 
@@ -43,6 +43,13 @@ get_gateway() {
     echo "$gateway"
 }
 
+# 从网关IP中提取网络前缀（前三位）
+get_network_prefix() {
+    local gateway=$1
+    # 提取前三个字节，例如 192.168.1.1 -> 192.168.1
+    echo "$gateway" | awk -F. '{print $1"."$2"."$3}'
+}
+
 # 输入容器名（不能有空格）
 read_container_name() {
     echo -e "${YELLOW}=== 基本配置 ===${NC}"
@@ -65,13 +72,12 @@ read_container_name() {
 # 输入密码
 read_password() {
     while true; do
-        read -p "请输入root密码: " password
-        echo ""
+        read -p "请输入密码: " password
         if [ ${#password} -lt 6 ]; then
             echo -e "${RED}密码长度至少为6位${NC}"
             continue
         fi
-        read -p "请确认输入密码: " password_confirm
+        read -p "再次确认密码: " password_confirm
         echo ""
         if [ "$password" = "$password_confirm" ]; then
             break
@@ -96,9 +102,7 @@ select_template() {
     
     if [ ${#templates[@]} -eq 0 ]; then
         echo -e "${RED}错误：未找到已下载的模板${NC}"
-        echo "请先下载模板："
-        echo "  pveam update"
-        echo "  pveam download local debian-12-standard_12.7-1_amd64.tar.zst"
+        echo "请先下载模板后再创建LXC容器"
         exit 1
     fi
     
@@ -117,8 +121,12 @@ select_template() {
 read_ip() {
     echo ""
     echo -e "${YELLOW}=== 网络配置 ===${NC}"
+    
     gateway=$(get_gateway)
     echo -e "${GREEN}自动检测到网关IP: $gateway${NC}"
+    
+    # 从网关获取网络前缀
+    network_prefix=$(get_network_prefix "$gateway")
     
     read -p "请输入IP地址最后一段 (1-254): " ip_last_octet
     while [[ ! $ip_last_octet =~ ^[0-9]+$ ]] || [ $ip_last_octet -lt 1 ] || [ $ip_last_octet -gt 254 ]; do
@@ -126,7 +134,10 @@ read_ip() {
         read -p "请输入IP地址最后一段 (1-254): " ip_last_octet
     done
     
-    echo "完整IP地址: 192.168.1.$ip_last_octet"
+    # 组合完整IP地址
+    full_ip="${network_prefix}.${ip_last_octet}"
+    echo ""
+    echo "完整IP地址: $full_ip"
 }
 
 # 显示配置摘要
@@ -137,7 +148,7 @@ show_summary() {
     echo -e "容器ID:      $ctid"
     echo -e "容器名:      $container_name"
     echo -e "模板:        ${template#local:vztmpl/}"
-    echo -e "IP地址:      192.168.1.$ip_last_octet/24"
+    echo -e "IP地址:      $full_ip/24"
     echo -e "网关:        $gateway"
     echo -e "CPU核心:     ${CORES} 核"
     echo -e "内存:        ${MEMORY}MB"
@@ -159,7 +170,7 @@ create_container() {
         --memory "$MEMORY" \
         --swap "$SWAP" \
         --cores "$CORES" \
-        --net0 "name=eth0,bridge=vmbr0,firewall=$FIREWALL,gw=$gateway,ip=192.168.1.$ip_last_octet/24,type=veth" \
+        --net0 "name=eth0,bridge=vmbr0,firewall=$FIREWALL,gw=$gateway,ip=$full_ip/24,type=veth" \
         --rootfs "local-lvm:${DISK_SIZE}" \
         --unprivileged "$UNPRIVILEGED" \
         --features "keyctl=1,nesting=1,fuse=1,mount=nfs;cifs" \
@@ -173,7 +184,7 @@ create_container() {
         echo -e "${GREEN}容器创建成功！${NC}"
         echo "容器ID: $ctid"
         echo "容器名: $container_name"
-        echo "IP地址: 192.168.1.$ip_last_octet"
+        echo "IP地址: $full_ip"
         echo ""
         echo "常用命令："
         echo "  pct status $ctid          # 查看状态"
