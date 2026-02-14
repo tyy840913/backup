@@ -5,6 +5,7 @@ set -e
 
 #############################################################
 # Mihomo 安装与配置脚本 (精简版)
+# 支持系统: Debian, Ubuntu, Alpine Linux
 # 功能:
 # 1. 检查依赖项
 # 2. 运行官方 Docker 安装脚本
@@ -12,6 +13,27 @@ set -e
 #############################################################
 
 DEST_DIR="/etc/mihomo"
+
+# 检测操作系统
+OS=""
+VERSION_ID=""
+detect_os() {
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        OS=$ID
+        VERSION_ID=$VERSION_ID
+    else
+        echo -e "${RED}错误: 无法检测操作系统${PLAIN}"
+        exit 1
+    fi
+    
+    if [[ $OS != "debian" && $OS != "ubuntu" && $OS != "alpine" ]]; then
+        echo -e "${RED}错误: 此脚本只支持 Debian、Ubuntu 或 Alpine 系统${PLAIN}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}检测到系统: $OS $VERSION_ID${PLAIN}"
+}
 
 # --- 颜色定义 ---
 RED='\033[0;31m'
@@ -30,13 +52,61 @@ check_command() {
     fi
 }
 
+# 检查并安装Docker
+check_and_install_docker() {
+    if ! command -v docker &> /dev/null; then
+        echo -e "${YELLOW}未检测到Docker，正在安装...${PLAIN}"
+        
+        case $OS in
+            alpine)
+                apk update
+                apk add docker docker-compose
+                rc-update add docker boot
+                service docker start
+                ;;
+            debian|ubuntu)
+                echo -e "${CYAN}正在安装Docker...${PLAIN}"
+                curl -fsSL https://get.docker.com | sh
+                systemctl enable docker
+                systemctl start docker
+                ;;
+        esac
+        
+        # 验证安装
+        if command -v docker &> /dev/null; then
+            echo -e "${GREEN}Docker安装成功${PLAIN}"
+        else
+            echo -e "${RED}Docker安装失败，请手动安装后重试${PLAIN}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}Docker已安装: $(docker --version)${PLAIN}"
+    fi
+}
+
+# 检查并安装cron (Alpine需要单独安装)
+check_and_install_cron() {
+    if [[ $OS == "alpine" ]]; then
+        if ! command -v crontab &> /dev/null; then
+            echo -e "${YELLOW}安装cronie...${PLAIN}"
+            apk add cronie
+            rc-update add crond boot
+            service crond start
+        fi
+    fi
+    check_command "crontab"
+}
+
 # --- 脚本开始 ---
+
+# 检测操作系统
+detect_os
 
 echo -e "${CYAN}--- 步骤 1: 检查系统依赖 ---${PLAIN}"
 check_command "curl"
 check_command "tar"
-check_command "docker"
-check_command "crontab"
+check_and_install_docker
+check_and_install_cron
 echo -e "${GREEN}所有依赖项均已安装。${PLAIN}
 "
 
@@ -54,7 +124,11 @@ fi
 
 # --- 配置定时任务 ---
 echo -e "${CYAN}--- 步骤 3: 配置定时任务 (Cron Jobs) ---${PLAIN}"
-CRON_JOB_1="0 8 * * * /usr/bin/bash /etc/mihomo/mihomo.sh && docker restart mihomo >/dev/null 2>&1"
+if [[ $OS == "alpine" ]]; then
+    CRON_JOB_1="0 8 * * * /bin/sh /etc/mihomo/mihomo.sh && docker restart mihomo >/dev/null 2>&1"
+else
+    CRON_JOB_1="0 8 * * * /usr/bin/bash /etc/mihomo/mihomo.sh && docker restart mihomo >/dev/null 2>&1"
+fi
 
 # 使用临时文件来安全地修改 crontab
 CURRENT_CRONTAB=$(sudo crontab -l 2>/dev/null || true)
