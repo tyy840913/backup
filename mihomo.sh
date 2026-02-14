@@ -204,7 +204,7 @@ start_mihomo_container() {
     docker stop mihomo 2>/dev/null
     docker rm mihomo 2>/dev/null
     
-    local host_ip=$(hostname -I | awk '{print $1}')
+    local host_ip=$(hostname -i | awk '{print $1}')
     local container_started=0
     local access_url=""
     
@@ -350,7 +350,7 @@ main() {
     start_mihomo_container
     
     # 显示完成信息
-    local host_ip=$(hostname -I | awk '{print $1}')
+    local host_ip=$(hostname -i | awk '{print $1}')
     echo -e "\n${GREEN}======================================================${PLAIN}"
     echo -e "${GREEN}代理机配置完成！${PLAIN}"
     echo -e "${GREEN}控制面板地址: http://${host_ip}:9090/ui${PLAIN}"
