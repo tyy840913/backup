@@ -1,6 +1,7 @@
 #!/bin/bash
 #############################################################
 # Mihomo 代理机配置脚本 (精简版)
+# 支持系统: Debian, Ubuntu, Alpine Linux
 # 不安装Docker但检查Docker状态，优先host网络，其次桥接
 #############################################################
 
@@ -34,8 +35,8 @@ check_os() {
         handle_error "无法检测操作系统"
     fi
     
-    if [[ $OS != "debian" && $OS != "ubuntu" ]]; then
-        handle_error "此脚本只支持 Debian 或 Ubuntu 系统"
+    if [[ $OS != "debian" && $OS != "ubuntu" && $OS != "alpine" ]]; then
+        handle_error "此脚本只支持 Debian、Ubuntu 或 Alpine 系统"
     fi
     
     echo -e "${GREEN}检测到系统: $OS $VERSION_ID${PLAIN}"
@@ -45,14 +46,29 @@ check_os() {
 install_essential_tools() {
     echo -e "${CYAN}检查基础工具...${PLAIN}"
     
+    local pkg_manager=""
+    if [[ $OS == "alpine" ]]; then
+        pkg_manager="apk"
+    elif command -v apt-get &> /dev/null; then
+        pkg_manager="apt-get"
+    fi
+    
     if ! command -v curl &> /dev/null; then
         echo -e "${YELLOW}安装curl...${PLAIN}"
-        apt-get update && apt-get install -y curl || echo -e "${YELLOW}curl安装失败，继续尝试...${PLAIN}"
+        if [[ $pkg_manager == "apk" ]]; then
+            apk add curl || echo -e "${YELLOW}curl安装失败，继续尝试...${PLAIN}"
+        elif [[ $pkg_manager == "apt-get" ]]; then
+            apt-get update && apt-get install -y curl || echo -e "${YELLOW}curl安装失败，继续尝试...${PLAIN}"
+        fi
     fi
     
     if ! command -v wget &> /dev/null; then
         echo -e "${YELLOW}安装wget...${PLAIN}"
-        apt-get install -y wget || echo -e "${YELLOW}wget安装失败，继续尝试...${PLAIN}"
+        if [[ $pkg_manager == "apk" ]]; then
+            apk add wget || echo -e "${YELLOW}wget安装失败，继续尝试...${PLAIN}"
+        elif [[ $pkg_manager == "apt-get" ]]; then
+            apt-get install -y wget || echo -e "${YELLOW}wget安装失败，继续尝试...${PLAIN}"
+        fi
     fi
 }
 
@@ -64,7 +80,11 @@ check_docker() {
     else
         echo -e "${RED}未检测到Docker，请先安装Docker${PLAIN}"
         echo -e "${YELLOW}可以参考以下命令安装Docker:${PLAIN}"
-        echo -e "${CYAN}curl -fsSL https://get.docker.com | sh${PLAIN}"
+        if [[ $OS == "alpine" ]]; then
+            echo -e "${CYAN}apk add docker docker-compose && rc-update add docker boot && service docker start${PLAIN}"
+        else
+            echo -e "${CYAN}curl -fsSL https://get.docker.com | sh${PLAIN}"
+        fi
         return 1
     fi
 }
