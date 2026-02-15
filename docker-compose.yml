@@ -10,6 +10,15 @@ services:
     ports:
       - "9000:9000"
 
+  # WEB-SSH 网页终端模拟器
+  webssh:
+    image: docker.1ms.run/eooce/webssh:latest
+    container_name: webssh
+    network_mode: bridge
+    ports:
+      - "8888:88888
+    restart: always
+
   # Watchtower - 自动更新容器
   watchtower:
     image: docker.1ms.run/containrrr/watchtower:latest
