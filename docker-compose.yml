@@ -16,7 +16,7 @@ services:
     container_name: webssh
     network_mode: bridge
     ports:
-      - "8888:88888
+      - "8888:8888"
     restart: always
 
   # Watchtower - 自动更新容器
