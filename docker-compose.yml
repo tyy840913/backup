@@ -84,7 +84,7 @@ services:
     container_name: xiaoya
     restart: always
     privileged: true
-    network_mode: bridge
+    network_mode: host
     volumes:
       - /etc/xiaoya:/data
       - /etc/xiaoya/data:/www/data
