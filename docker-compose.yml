@@ -71,21 +71,7 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - WEB_VAULT_ENABLED=true
-      - SIGNUPS_ALLOWED=true
-   
-  # subs-check 代理池（订阅合并）
-  subs-check:
-    image: ghcr.nju.edu.cn/beck-8/subs-check:latest  # 保持原样，因为这是 GitHub Container Registry
-    container_name: subs-check
-    volumes:
-      - /docker_data/subs:/app/config
-      - /opt/subs:/app/output
-    environment:
-      - TZ=Asia/Shanghai
-      - API_KEY=421121
-    restart: always
-    tty: true
-    network_mode: host
+      - SIGNUPS_ALLOWED=true 
 
   # xiaoya - 小雅Alist服务
   xiaoya:
