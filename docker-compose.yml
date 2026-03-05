@@ -1,4 +1,4 @@
-services服务：
+services:
   # Portainer - 容器管理面板
   portainer:
     image: docker.1ms.run/6053537/portainer-ce:latest
