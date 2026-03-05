@@ -1,39 +1,39 @@
-服务：:
-  # Portainer - 容器管理面板# Portainer - 容器管理面板
-  端口管理器::
-    镜像: docker.1ms.run/6053537/portainer-ce:最新: docker.1ms.run/6053537/portainer-ce:latest
-    容器名称: portainer: portainer
-    重启：始终: always
-    网络模式: 桥接: bridge
-    卷::
-      - /var/run/docker.sock:/var/run/docker.sock/var/run/docker.sock:/var/run/docker.sock
-    端口::
-      - "9000:9000""9000:9000"
+services服务：
+  # Portainer - 容器管理面板
+  portainer:
+    image: docker.1ms.run/6053537/portainer-ce:latest
+    container_name: portainer
+    restart: always
+    network_mode: bridge
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9000:9000"
 
-  # Watchtower - 自动更新容器# Watchtower - 自动更新容器
-  瞭望塔::
-    镜像: docker.1ms.run/containrrr/watchtower:最新: docker.1ms.run/containrrr/watchtower:latest
-    容器名称: watchtower: watchtower
-    重启：始终: always
-    网络模式：主机: host
-    卷::
-      - /var/run/docker.sock:/var/run/docker.sock/var/run/docker.sock:/var/run/docker.sock
-    环境::
-      - TZ=亚洲/上海TZ=Asia/Shanghai
-    命令: --schedule "0 30 5 * * *" --cleanup --remove-volumes: --schedule "0 30 5 * * *" --cleanup --remove-volumes
+  # Watchtower - 自动更新容器
+  watchtower:
+    image: docker.1ms.run/containrrr/watchtower:latest
+    container_name: watchtower
+    restart: always
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=Asia/Shanghai
+    command: --schedule "0 30 5 * * *" --cleanup --remove-volumes
 
-  # openlist - 文件列表服务# openlist - 文件列表服务
-  开放列表::
-    镜像: docker.1ms.run/openlistteam/openlist:最新: docker.1ms.run/openlistteam/openlist:latest
-    容器名称: openlist: openlist
-    重启：始终: always
-    网络模式: 桥接: bridge
-    用户: "1001:1001": "1001:1001"
-    卷::
-      - /docker_data/openlist:/opt/openlist/data/docker_data/openlist:/opt/openlist/data
-    端口::
-      - "5244:5244""5244:5244"
-    环境::
+  # openlist - 文件列表服务
+  openlist:
+    image: docker.1ms.run/openlistteam/openlist:latest
+    container_name: openlist
+    restart: always
+    network_mode: bridge
+    user: "1001:1001"
+    volumes:
+      - /docker_data/openlist:/opt/openlist/data
+    ports:
+      - "5244:5244"
+    environment:
       - TZ=Asia/Shanghai
       - UMASK=022
 
