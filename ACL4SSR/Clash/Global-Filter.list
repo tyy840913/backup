@@ -32,10 +32,8 @@
 # SUB-RULE: 子规则（具体实现因工具而异）
 # MATCH: 通常用作最终规则，匹配所有未被前面规则匹配的流量
 
-# DOMAIN-SUFFIX,pangolin-sdk-toutiao.com
 # DOMAIN-SUFFIX,pangolin-sdk-toutiao1.com
 # DOMAIN-SUFFIX,pangolin-sdk-toutiao-b.com
-# DOMAIN-SUFFIX,pglstatp-toutiao.com
 # DOMAIN-KEYWORD,toutiao
 # DOMAIN-KEYWORD,normal   #（不能屏蔽，否则页面加载不全）
 
@@ -58,7 +56,8 @@ DOMAIN-SUFFIX,chengzijianzhan.cn
 DOMAIN-SUFFIX,douyin.com
 DOMAIN-SUFFIX,bytedanceapi.com
 DOMAIN-SUFFIX,douyinpic.com
-
+DOMAIN-SUFFIX,pglstatp-toutiao.com
+DOMAIN-SUFFIX,pangolin-sdk-toutiao.com
 
 # 域名正则表达式
 DOMAIN-REGEX,^(?:mon\d+-misc-lf|log\d+-applog-lf|lf\d+-short)\.(?:fqnovel|ibytedapm)\.com$
