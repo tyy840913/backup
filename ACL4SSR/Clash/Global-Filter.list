@@ -62,12 +62,15 @@ DOMAIN-SUFFIX,p1-lm.adkwai.com
 DOMAIN-SUFFIX,open.e.kuaishou.com
 DOMAIN-SUFFIX,fqnovel.com
 DOMAIN-SUFFIX,ibytedapm.com
+DOMAIN-SUFFIX,fqnovelpic.com
+DOMAIN-SUFFIX,bytedance.com
+DOMAIN-SUFFIX,douyincdn.com
 
 # 域名正则表达式
 # DOMAIN-REGEX,^(?:mon\d+-misc-lf|log\d+-applog-lf|lf\d+-short)\.(?:fqnovel|ibytedapm)\.com$
 
 # 域名
-DOMAIN,pull-rtmp-l13.douyincdn.com
-DOMAIN,tnc3-alisc1.bytedance.com
-DOMAIN,lf3-reading.fqnovelpic.com
+# DOMAIN,pull-rtmp-l13.douyincdn.com
+# DOMAIN,tnc3-alisc1.bytedance.com
+# DOMAIN,lf3-reading.fqnovelpic.com
 
