@@ -66,7 +66,7 @@ DOMAIN-SUFFIX,open.e.kuaishou.com
 DOMAIN-REGEX,^(?:mon\d+-misc-lf|.*log\d+-applog-lf|lf\d+-short)\.(?:fqnovel|ibytedapm)\.com$
 
 # 域名
-DOMAIN,pull-rtmp-l13.douyincdn.com
-DOMAIN,tnc3-alisc1.bytedance.com
-DOMAIN,lf3-reading.fqnovelpic.com
+# DOMAIN,pull-rtmp-l13.douyincdn.com
+# DOMAIN,tnc3-alisc1.bytedance.com
+# DOMAIN,lf3-reading.fqnovelpic.com
 
