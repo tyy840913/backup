@@ -63,7 +63,7 @@ DOMAIN-SUFFIX,open.e.kuaishou.com
 
 
 # 域名正则表达式
-DOMAIN-REGEX,^(?:mon\d+-misc-lf|log\d+-applog-lf|lf\d+-short)\.(?:fqnovel|ibytedapm)\.com$
+DOMAIN-REGEX,^(?:mon\d+-misc-lf|(?:rt)?log\d+-applog-lf|lf\d+-short)\.(?:fqnovel|ibytedapm)\.com$
 
 # 域名
 DOMAIN,pull-rtmp-l13.douyincdn.com
