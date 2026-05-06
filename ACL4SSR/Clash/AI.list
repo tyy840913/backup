@@ -46,6 +46,7 @@ DOMAIN-SUFFIX,x.com
 DOMAIN-SUFFIX,x.ai
 DOMAIN-SUFFIX,meta.ai
 DOMAIN-SUFFIX,grok.com
+DOMAIN-SUFFIX,mozilla.org
 
 # --- [AI 必须的身份验证与风控服务] ---
 DOMAIN-SUFFIX,auth0.com
