@@ -37,7 +37,7 @@
 
 # 字节跳动相关域名匹配（仅主域名）
 DOMAIN-KEYWORD,ecombdapi
-
+DOMAIN-KEYWORD,ecombdimg
 # 域名后缀
 DOMAIN-SUFFIX,zijieapi.com
 DOMAIN-SUFFIX,amemv.com
@@ -63,7 +63,7 @@ DOMAIN-SUFFIX,bytedance.com
 # 域名正则表达式
 DOMAIN-REGEX,^(?:mon\d+-misc-lf|.*log\d+-applog-lf|lf\d+-short|.*-toutiao-lf)\.(?:fqnovel|ibytedapm)\.com$
 DOMAIN-REGEX,^pangolin-sdk-toutiao.*\.com$
-DOMAIN-REGEX,^.*-(?:item|aio)\.ecombdimg\.com$
+
 
 # 域名
 DOMAIN,pull-rtmp-l13.douyincdn.com
