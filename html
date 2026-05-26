@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -12,37 +11,18 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%);
+            background: #000;
         }
-        /* CSS 星云层：提供绚丽的色彩和深度感 */
-        .nebula {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(80px);
-            opacity: 0.3;
-            animation: breathe 8s ease-in-out infinite alternate;
-            pointer-events: none;
-        }
-        .n1 { width: 600px; height: 600px; background: #4a00e0; top: -10%; left: -10%; }
-        .n2 { width: 500px; height: 500px; background: #00d2ff; bottom: -15%; right: -10%; animation-delay: -4s; }
-        .n3 { width: 400px; height: 400px; background: #ff00cc; top: 40%; left: 50%; animation-delay: -2s; }
-        @keyframes breathe { 
-            from { transform: scale(1); opacity: 0.2; } 
-            to { transform: scale(1.2); opacity: 0.4; } 
-        }
-        
         canvas {
             display: block;
             position: absolute;
             top: 0;
             left: 0;
-            z-index: 1;
         }
-
         /* 底部爱情文字样式 */
         .love-text {
             position: fixed;
-            bottom: 8%;
+            bottom: 10%;
             left: 50%;
             transform: translateX(-50%);
             color: rgba(255, 220, 240, 0.9);
@@ -51,86 +31,119 @@
             letter-spacing: 4px;
             text-align: center;
             line-height: 1.8;
-            text-shadow: 0 0 10px rgba(255, 105, 180, 0.6), 0 0 30px rgba(255, 105, 180, 0.4);
+            text-shadow: 0 0 10px rgba(255, 105, 180, 0.8), 0 0 30px rgba(255, 105, 180, 0.5);
             animation: textGlow 3s ease-in-out infinite alternate;
             z-index: 10;
             pointer-events: none;
+            white-space: nowrap;
         }
         @keyframes textGlow {
-            from { opacity: 0.7; text-shadow: 0 0 5px rgba(255, 105, 180, 0.4); }
-            to { opacity: 1; text-shadow: 0 0 20px rgba(255, 105, 180, 0.8), 0 0 40px rgba(255, 105, 180, 0.5); }
+            from { opacity: 0.6; }
+            to { opacity: 1; }
         }
     </style>
 </head>
 <body>
-    <!-- 星云背景 -->
-    <div class="nebula n1"></div>
-    <div class="nebula n2"></div>
-    <div class="nebula n3"></div>
+    <canvas id="c"></canvas>
     
-    <!-- 动态星空与流星画布 -->
-    <canvas id="universe"></canvas>
-
-    <!-- 底部爱情文字 -->
     <div class="love-text">
         星河璀璨，不及你眼中光芒<br>
         宇宙浩瀚，唯愿与你共度此生
     </div>
 
     <script>
-        var c = document.getElementById('universe'), x = c.getContext('2d');
+        var c = document.getElementById('c'), x = c.getContext('2d');
         var w = c.width = innerWidth, h = c.height = innerHeight;
+        
+        // 绘制深空背景
+        function drawBackground() {
+            var grd = x.createRadialGradient(w/2, h, 0, w/2, h, Math.max(w, h));
+            grd.addColorStop(0, '#1a1a2e');
+            grd.addColorStop(0.5, '#0f0f1a');
+            grd.addColorStop(1, '#000000');
+            x.fillStyle = grd;
+            x.fillRect(0, 0, w, h);
+        }
 
-        // 🌟 星星：缓慢下落并闪烁
+        // 🌕 新增：绘制月亮及其光晕
+        function drawMoon() {
+            var moonX = w * 0.8; // 位于屏幕右侧偏上
+            var moonY = h * 0.15;
+            var moonRadius = Math.min(w, h) * 0.08; // 响应式大小
+
+            // 1. 绘制大范围月光光晕 (极淡的散射光)
+            var outerGlow = x.createRadialGradient(moonX, moonY, moonRadius * 0.5, moonX, moonY, moonRadius * 6);
+            outerGlow.addColorStop(0, 'rgba(255, 255, 220, 0.1)');
+            outerGlow.addColorStop(1, 'rgba(255, 255, 220, 0)');
+            x.fillStyle = outerGlow;
+            x.beginPath();
+            x.arc(moonX, moonY, moonRadius * 6, 0, Math.PI * 2);
+            x.fill();
+
+            // 2. 绘制月亮本体渐变 (左上角稍亮，模拟光源)
+            var moonGrad = x.createRadialGradient(moonX - moonRadius * 0.3, moonY - moonRadius * 0.3, moonRadius * 0.1, moonX, moonY, moonRadius);
+            moonGrad.addColorStop(0, '#ffffee'); // 亮面
+            moonGrad.addColorStop(1, '#ffeedd'); // 暗面
+            x.beginPath();
+            x.arc(moonX, moonY, moonRadius, 0, Math.PI * 2);
+            x.fillStyle = moonGrad;
+            x.fill();
+
+            // 3. 绘制月球表面环形山 (若有若无的纹理，增加真实感)
+            x.save();
+            x.globalAlpha = 0.08; // 极低透明度，不破坏整体光感
+            x.fillStyle = '#aaaaaa';
+            x.beginPath(); x.arc(moonX + moonRadius * 0.3, moonY - moonRadius * 0.2, moonRadius * 0.15, 0, Math.PI * 2); x.fill();
+            x.beginPath(); x.arc(moonX - moonRadius * 0.2, moonY + moonRadius * 0.3, moonRadius * 0.12, 0, Math.PI * 2); x.fill();
+            x.beginPath(); x.arc(moonX + moonRadius * 0.1, moonY + moonRadius * 0.1, moonRadius * 0.08, 0, Math.PI * 2); x.fill();
+            x.restore();
+        }
+
+        // 🌟 星星
         class Star {
             constructor() { this.init(true); }
             init(rand) {
                 this.x = Math.random() * w;
                 this.y = rand ? Math.random() * h : -10;
-                this.size = Math.random() * 2;
-                this.speed = 0.2 + Math.random() * 0.5;
-                this.opacity = Math.random();
-                this.fadeDir = 0.02 * (Math.random() > 0.5 ? 1 : -1);
+                this.size = Math.random() * 1.5 + 0.5;
+                this.speed = 0.2 + Math.random() * 0.3;
+                this.blink = Math.random() * Math.PI * 2;
             }
             update() {
                 this.y += this.speed;
-                this.opacity += this.fadeDir;
-                if (this.opacity > 1 || this.opacity < 0) this.fadeDir = -this.fadeDir;
+                this.blink += 0.05;
                 if (this.y > h) this.init(false);
             }
             draw() {
+                var opacity = 0.5 + Math.sin(this.blink) * 0.5;
                 x.beginPath();
                 x.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                x.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                x.fillStyle = `rgba(255, 255, 255, ${opacity})`;
                 x.fill();
             }
         }
 
-        // ☄️ 流星：更垂直下落，分布更靠下
+        // ☄️ 流星 (更垂直，更多)
         class Meteor {
             constructor() { this.reset(); }
             reset() {
-                // 扩大X轴生成范围，让屏幕各处都能有流星
-                this.x = Math.random() * w * 1.5; 
-                // Y轴从屏幕偏上方20%区域生成，确保中下部能看到长轨迹
-                this.y = Math.random() * h * 0.2 - 50; 
-                this.len = 80 + Math.random() * 120;
-                this.speed = 8 + Math.random() * 10;
+                this.x = Math.random() * w * 1.2; 
+                this.y = -50 - Math.random() * h * 0.3; 
+                this.len = 60 + Math.random() * 100;
+                this.speed = 12 + Math.random() * 10; 
                 this.opacity = 1;
             }
             update() {
-                // 调整横向和纵向速度比，使其更偏向垂直下落
-                this.x -= this.speed * 0.3; 
-                this.y += this.speed * 0.9; 
-                this.opacity -= 0.012;
-                if (this.x < -200 || this.y > h + 200 || this.opacity <= 0) this.reset();
+                this.x -= this.speed * 0.25; 
+                this.y += this.speed * 0.95;  
+                this.opacity -= 0.015;
+                if (this.x < -100 || this.y > h + 100 || this.opacity <= 0) this.reset();
             }
             draw() {
                 x.beginPath();
                 x.moveTo(this.x, this.y);
-                // 拖尾方向反向计算，保持与运动方向一致
-                x.lineTo(this.x + this.len * 0.3, this.y - this.len * 0.9);
-                var g = x.createLinearGradient(this.x, this.y, this.x + this.len * 0.3, this.y - this.len * 0.9);
+                x.lineTo(this.x + this.len * 0.25, this.y - this.len * 0.95);
+                var g = x.createLinearGradient(this.x, this.y, this.x + this.len * 0.25, this.y - this.len * 0.95);
                 g.addColorStop(0, `rgba(255, 255, 255, ${this.opacity})`);
                 g.addColorStop(1, `rgba(255, 255, 255, 0)`);
                 x.strokeStyle = g;
@@ -140,11 +153,11 @@
         }
 
         var stars = Array.from({length: 300}, () => new Star());
-        // 增加流星数量到5条，让下半屏更丰富
-        var meteors = Array.from({length: 5}, () => new Meteor());
+        var meteors = Array.from({length: 6}, () => new Meteor());
 
         function animate() {
-            x.clearRect(0, 0, w, h);
+            drawBackground();
+            drawMoon(); // 🌕 在背景之上、星空之下绘制月亮
             
             stars.forEach(s => { s.update(); s.draw(); });
             meteors.forEach(m => { m.update(); m.draw(); });
