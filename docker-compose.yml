@@ -20,7 +20,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Asia/Shanghai
-    command: --schedule "0 30 5 * * *" --cleanup --remove-volumes
+    command: --schedule "0 0 */2 * * *" --cleanup --remove-volumes
 
   # openlist - 文件列表服务
   openlist:
