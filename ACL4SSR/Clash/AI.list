@@ -5,7 +5,6 @@ DOMAIN-KEYWORD,openai
 DOMAIN-KEYWORD,google
 DOMAIN-KEYWORD,chatgpt
 DOMAIN-KEYWORD,oaistatic
-DOMAIN-KEYWORD,googleapis
 DOMAIN-KEYWORD,oaiusercontent
 DOMAIN-KEYWORD,gemini
 DOMAIN-KEYWORD,generative
@@ -31,7 +30,6 @@ DOMAIN-KEYWORD,copilot
 DOMAIN-KEYWORD,cursor
 DOMAIN-KEYWORD,grazie
 DOMAIN-KEYWORD,elevenlabs
-DOMAIN-KEYWORD,cloudflare
 
 # --- [短词/易误伤服务 (后缀匹配)] ---
 DOMAIN-SUFFIX,jan.ai
