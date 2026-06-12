@@ -108,6 +108,7 @@ DOMAIN-SUFFIX,jitpack.io
 DOMAIN-SUFFIX,quay.io
 DOMAIN-SUFFIX,redhat.com
 DOMAIN-SUFFIX,sonatype.org
+DOMAIN-KEYWORD,huggingface
 
 # --- [社交、新闻与存储] ---
 DOMAIN-KEYWORD,twitter
