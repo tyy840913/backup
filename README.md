@@ -90,3 +90,12 @@ curl -LsO https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/m
 ```bash
 curl -LsO https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/network.sh && chmod +x network.sh
 ```
+
+# Git & Cloudflare 工具安装检查（Git-CF）
+```bash
+curl -o /root/Git-CF.sh -sL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/Git-CF.sh && chmod +x /root/Git-CF.sh && bash /root/Git-CF.sh
+```
+
+```bash
+Git-CF
+```
