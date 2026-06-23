@@ -39,9 +39,9 @@ ensure_tools() {
   local pm; [[ $OS == alpine ]] && pm="apk" || pm="apt-get"
   command -v curl &>/dev/null || { echo -e "${YELLOW}安装 curl...${PLAIN}"; $pm install -y curl 2>/dev/null || true; }
   command -v wget &>/dev/null || { echo -e "${YELLOW}安装 wget...${PLAIN}"; $pm install -y wget 2>/dev/null || true; }
-  [[ $OS == alpine ]] && ! command -v crontab &>/dev/null && {
+  if [[ $OS == alpine ]] && ! command -v crontab &>/dev/null; then
     apk add cronie; rc-update add crond boot; service crond start
-  }
+  fi
 }
 
 # ========================== 目录创建 ==========================
@@ -63,14 +63,14 @@ dl() {
 download_config() {
   [[ -f "$CONF_DIR/config.yaml" ]] && { echo -e "${YELLOW}config.yaml 已存在，跳过${PLAIN}"; return; }
   dl "https://git.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/mihomo-proxy/refs/heads/master/mihomo-docker/files/config.yaml" \
-    "$CONF_DIR/config.yaml" "Mihomo 配置"
+    "$CONF_DIR/config.yaml" "Mihomo 配置" || echo -e "${YELLOW}  ⚠ 配置下载失败，可手动放置${PLAIN}"
 }
 
 download_user_script() {
   local t="$CONF_DIR/user-script.sh"
   [[ -f "$t" ]] && { echo -e "${YELLOW}user-script.sh 已存在，跳过${PLAIN}"; return; }
   dl "https://git.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/mihomo_config.sh" "$t" "用户脚本" \
-    && chmod +x "$t"
+    && chmod +x "$t" || true
 }
 
 download_ui() {
@@ -95,9 +95,9 @@ download_geoip() {
 
 # ========================== 启动容器 ==========================
 start_container() {
-  docker stop mihomo 2>/dev/null; docker rm mihomo 2>/dev/null
-  local host_ip; host_ip=$(hostname -I | awk '{print $1}')
-  [[ -z "$host_ip" ]] && host_ip=$(ip route get 1 | awk '{print $7}' | head -1)
+  docker stop mihomo 2>/dev/null || true; docker rm mihomo 2>/dev/null || true
+  local host_ip; host_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  [[ -z "$host_ip" ]] && host_ip=$(ip route get 1 2>/dev/null | awk '{print $7}' | head -1) || true
 
   echo -e "${CYAN}尝试 host 网络...${PLAIN}"
   if docker run -d --name=mihomo --restart=unless-stopped --network=host \
@@ -150,23 +150,36 @@ setup_cron() {
 
 # ========================== 安装 ==========================
 cmd_install() {
+  echo -e "\n${CYAN}══════════ 开始完整安装 ══════════${PLAIN}"
+  if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^mihomo$"; then
+    printf "${YELLOW}已检测到 mihomo 容器，是否重新安装？[y/N]: ${PLAIN}"
+    read -r reinstall
+    if [[ "$reinstall" =~ ^[yY] ]]; then
+      echo -e "${CYAN}→ 删除旧容器...${PLAIN}"
+      docker stop mihomo 2>/dev/null || true
+      docker rm mihomo 2>/dev/null || true
+    else
+      echo -e "${YELLOW}已取消安装${PLAIN}"
+      return
+    fi
+  fi
   detect_os
-  ensure_tools
-  install_docker
-  create_dirs
-  download_config
-  download_user_script
-  download_ui
-  download_geoip
-  setup_cron
-  start_container
-  echo -e "\n${GREEN}====== 安装完成 ======${PLAIN}"
+  echo -e "${CYAN}→ 检测工具...${PLAIN}"; ensure_tools
+  echo -e "${CYAN}→ Docker...${PLAIN}"; install_docker
+  echo -e "${CYAN}→ 创建目录...${PLAIN}"; create_dirs
+  echo -e "${CYAN}→ 下载配置...${PLAIN}"; download_config
+  echo -e "${CYAN}→ 下载用户脚本...${PLAIN}"; download_user_script
+  echo -e "${CYAN}→ 下载 UI 面板...${PLAIN}"; download_ui
+  echo -e "${CYAN}→ 下载 GeoIP...${PLAIN}"; download_geoip
+  echo -e "${CYAN}→ 设置定时任务...${PLAIN}"; setup_cron
+  echo -e "${CYAN}→ 启动容器...${PLAIN}"; start_container
+  echo -e "\n${GREEN}══════════ 安装完成 ══════════${PLAIN}"
 }
 
 # ========================== 状态检查 ==========================
 check_status() {
-  local host_ip; host_ip=$(hostname -I | awk '{print $1}')
-  [[ -z "$host_ip" ]] && host_ip=$(ip route get 1 | awk '{print $7}' | head -1)
+  local host_ip; host_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  [[ -z "$host_ip" ]] && host_ip=$(ip route get 1 2>/dev/null | awk '{print $7}' | head -1) || true
   local iface; iface=$(ip route | grep default | awk '{print $5}' | head -1)
 
   echo -e "${GREEN}========== Mihomo 状态 ==========${PLAIN}"
@@ -180,17 +193,24 @@ check_status() {
     echo -e "Docker: ${RED}未安装${PLAIN}"; return
   fi
 
-  if docker ps | grep -q mihomo; then
-    local cid; cid=$(docker ps | grep mihomo | awk '{print $1}')
-    local nm; nm=$(docker inspect mihomo --format '{{.HostConfig.NetworkMode}}' 2>/dev/null)
-    local sa; sa=$(docker inspect -f '{{.State.StartedAt}}' mihomo 2>/dev/null)
-    local sec=$(( $(date +%s) - $(date -d "$sa" +%s) ))
+  local cid; cid=$(docker ps -q --filter name=mihomo 2>/dev/null) || true
+  if [[ -n "$cid" ]]; then
+    local nm; nm=$(docker inspect mihomo --format '{{.HostConfig.NetworkMode}}' 2>/dev/null) || true
+    local sa; sa=$(docker inspect -f '{{.State.StartedAt}}' mihomo 2>/dev/null) || true
+    local sec=0
+    if [[ -n "$sa" ]]; then
+      sec=$(( $(date +%s) - $(date -d "$sa" +%s) )) 2>/dev/null || true
+    fi
     echo -e "容器: ${GREEN}运行中${PLAIN} | ID: ${GREEN}$cid${PLAIN} | 网络: ${GREEN}$nm${PLAIN}"
     echo -e "运行: $((sec/86400))d $((sec%86400/3600))h $((sec%3600/60))m"
   else
-    echo -e "容器: ${RED}未运行${PLAIN}"
-    docker ps -a | grep -q mihomo && { docker start mihomo 2>/dev/null && echo -e "${GREEN}  ✓ 已启动${PLAIN}"; } || true
-    return
+    local aid; aid=$(docker ps -aq --filter name=mihomo 2>/dev/null) || true
+    if [[ -n "$aid" ]]; then
+      echo -e "容器: ${YELLOW}已停止${PLAIN}"
+      docker start mihomo &>/dev/null && echo -e "${GREEN}  ✓ 已启动${PLAIN}" || echo -e "${YELLOW}  ⚠ 启动失败${PLAIN}"
+    else
+      echo -e "容器: ${RED}不存在${PLAIN}"
+    fi
   fi
 
   curl -s -m 3 http://127.0.0.1:9090/ui &>/dev/null \
@@ -222,38 +242,58 @@ check_status() {
   echo -e "${GREEN}========== 检查完毕 ==========${PLAIN}"
 }
 
-# ========================== 配置增量更新 ==========================
-cmd_config() {
-  detect_os
-  ensure_tools
+# ========================== 重置 ==========================
+cmd_reset() {
+  rm -f "$CONF_DIR/config.yaml" "$CONF_DIR/Country.mmdb"
   download_config
-  download_user_script
   download_geoip
-  docker ps -a --format '{{.Names}}' | grep -q "^mihomo$" && {
-    echo -e "${YELLOW}重启 mihomo 容器...${PLAIN}"; docker restart mihomo
-  }
-  echo -e "${GREEN}配置更新完成${PLAIN}"
+  start_container
+  echo -e "${GREEN}配置已重置${PLAIN}"
+}
+
+# ========================== 交互菜单 ==========================
+show_menu() {
+  local W=38 hl
+  hl=$(printf '═%.0s' $(seq 1 $W) 2>/dev/null) || hl=$(printf '%*s' $W '' | tr ' ' '═')
+  while true; do
+    printf "\e[36m╔%s╗\e[0m\n" "$hl"
+    printf "\e[36m║\e[0m%*s\e[36m%s\e[0m%*s\e[36m║\e[0m\n" \
+      $(( (W-$(echo "Mihomo 管理菜单" | wc -L))/2 )) "" "Mihomo 管理菜单" \
+      $(( W - (W-$(echo "Mihomo 管理菜单" | wc -L))/2 - $(echo "Mihomo 管理菜单" | wc -L) )) ""
+    printf "\e[36m╠%s╣\e[0m\n" "$hl"
+    for i in "1. 完整安装" "2. 状态检查" "3. 重启容器" "4. 重置配置" "0. 退出"; do
+      local d; d=$(echo "$i" | wc -L)
+      printf "\e[36m║\e[0m %s%*s\e[36m║\e[0m\n" "$i" $((W-2-d)) ""
+    done
+    printf "\e[36m╚%s╝\e[0m\n" "$hl"
+    printf "${YELLOW}请选择 [0-4]: ${PLAIN}"
+    read -r choice
+    case $choice in
+      1) cmd_install ;;
+      2) check_status ;;
+      3) docker restart mihomo && echo -e "${GREEN}已重启${PLAIN}" ;;
+      4) cmd_reset ;;
+      0) exit 0 ;;
+      *) echo -e "${RED}无效选择，请重新输入${PLAIN}" ;;
+    esac
+    echo
+  done
 }
 
 # ========================== 主入口 ==========================
-case "${1:-help}" in
+case "${1:-menu}" in
   install|i)   cmd_install ;;
   status|st)   check_status ;;
   restart)     docker restart mihomo && echo -e "${GREEN}已重启${PLAIN}" ;;
-  config|c)    cmd_config ;;
-  reset)
-    rm -f "$CONF_DIR/config.yaml" "$CONF_DIR/Country.mmdb"
-    download_config
-    download_geoip
-    start_container
-    echo -e "${GREEN}配置已重置${PLAIN}"
-    ;;
-  *)
+  reset)       cmd_reset ;;
+  help|h)
     echo -e "${CYAN}用法: $0 <命令>${PLAIN}"
     echo -e "  install   完整安装（Docker + 配置 + UI + GeoIP + 定时任务）"
     echo -e "  status/st 状态检查"
     echo -e "  restart   重启容器"
-    echo -e "  config/c  增量更新配置并重启"
     echo -e "  reset     重置配置并重启"
+    echo -e "  menu      显示交互菜单"
     ;;
+  menu)      show_menu ;;
+  *)         show_menu ;;
 esac
