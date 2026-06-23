@@ -199,6 +199,22 @@ check_status() {
 
   if [[ -f "$CONF_DIR/config.yaml" ]]; then
     echo -e "配置: ${GREEN}已存在${PLAIN}"
+    if grep -q "external-controller:" "$CONF_DIR/config.yaml"; then
+      local cip; cip=$(grep "external-controller:" "$CONF_DIR/config.yaml" | awk -F':' '{print $2}' | awk -F':' '{print $1}' | tr -d ' ')
+      if [[ "$cip" == "127.0.0.1" || "$cip" == "0.0.0.0" ]]; then
+        echo -e "  控制器: ${GREEN}配置正确 ($cip)${PLAIN}"
+      else
+        echo -e "  控制器: ${YELLOW}$cip (建议 127.0.0.1/0.0.0.0)${PLAIN}"
+      fi
+    else
+      echo -e "  控制器: ${RED}未配置 external-controller${PLAIN}"
+    fi
+    if grep -q "bind-address:" "$CONF_DIR/config.yaml"; then
+      local ba; ba=$(grep "bind-address:" "$CONF_DIR/config.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
+      echo -e "  绑定地址: ${GREEN}$ba${PLAIN}"
+    else
+      echo -e "  绑定地址: ${YELLOW}未配置${PLAIN}"
+    fi
   else
     echo -e "配置: ${RED}不存在${PLAIN}"
   fi
