@@ -188,8 +188,10 @@ async function getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains) {
 // 从信息文件找文件所在节点
 async function findFileNodeFromInfo(MY_SCRIPT_BUCKET, filename, allDomains, defaultDomain) {
   for (const domain of allDomains) {
-    const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
-    if (info.files[filename]) return domain;
+    try {
+      const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
+      if (info.files && info.files[filename]) return domain;
+    } catch (e) { /* 忽略读取失败 */ }
   }
   return defaultDomain;
 }
@@ -717,9 +719,16 @@ export default {
       if (!isSafePath(filename)) return new Response('错误：文件名不合法（禁止路径遍历）。\n', { status: 400 });
 
       const nodeParam = url.searchParams.get('node');
-      const targetDomain = nodeParam
-        ? (allDomains.includes(nodeParam) ? nodeParam : allDomains[parseInt(nodeParam)])
-        : await findLightestNode(MY_SCRIPT_BUCKET, allDomains);
+      let targetDomain;
+      if (nodeParam) {
+        targetDomain = allDomains.includes(nodeParam) ? nodeParam : allDomains[parseInt(nodeParam)];
+      } else {
+        // 跨节点查找文件位置
+        targetDomain = await findFileNodeFromInfo(MY_SCRIPT_BUCKET, filename, allDomains, null);
+        if (!targetDomain) {
+          targetDomain = await findLightestNode(MY_SCRIPT_BUCKET, allDomains);
+        }
+      }
 
       if (targetDomain !== currentDomain) {
         return proxyRequest(targetDomain, path, request, requestAuthHeader, url);
@@ -731,9 +740,9 @@ export default {
 
       // 同名文件：同大小覆盖，不同大小加后缀区分
       let finalName = filename;
-      const existing = await MY_SCRIPT_BUCKET.get(filename, { type: 'stream' });
-      if (existing !== null) {
-        const existingSize = parseInt(existing.headers.get('content-length') || '0');
+      const existingText = await MY_SCRIPT_BUCKET.get(filename, { type: 'text' });
+      if (existingText !== null) {
+        const existingSize = existingText.length;
         if (existingSize !== fileSize) {
           // 大小不同，加后缀
           let i = 1;
@@ -742,7 +751,7 @@ export default {
             const base = dotIdx > 0 ? filename.substring(0, dotIdx) : filename;
             const ext = dotIdx > 0 ? filename.substring(dotIdx) : '';
             const candidate = `${base}-${i}${ext}`;
-            const check = await MY_SCRIPT_BUCKET.get(candidate, { type: 'stream' });
+            const check = await MY_SCRIPT_BUCKET.get(candidate, { type: 'text' });
             if (check === null) { finalName = candidate; break; }
             i++;
           }
