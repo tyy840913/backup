@@ -799,30 +799,10 @@ export default {
       const contentType = request.headers.get('Content-Type') || guessContentType(filename);
       const fileSize = bodyText.length;
 
-      // 同名文件：同大小覆盖，不同大小加后缀区分
-      let finalName = filename;
-      const existingText = await MY_SCRIPT_BUCKET.get(filename, { type: 'text' });
-      if (existingText !== null) {
-        const existingSize = existingText.length;
-        if (existingSize !== fileSize) {
-          // 大小不同，加后缀
-          let i = 1;
-          while (true) {
-            const dotIdx = filename.lastIndexOf('.');
-            const base = dotIdx > 0 ? filename.substring(0, dotIdx) : filename;
-            const ext = dotIdx > 0 ? filename.substring(dotIdx) : '';
-            const candidate = `${base}-${i}${ext}`;
-            const check = await MY_SCRIPT_BUCKET.get(candidate, { type: 'text' });
-            if (check === null) { finalName = candidate; break; }
-            i++;
-          }
-        }
-      }
-
-      await MY_SCRIPT_BUCKET.put(finalName, bodyText);
+      await MY_SCRIPT_BUCKET.put(filename, bodyText);
 
       // 更新本地信息文件
-      const info = await addFileToInfo(MY_SCRIPT_BUCKET, currentDomain, finalName, fileSize, contentType);
+      const info = await addFileToInfo(MY_SCRIPT_BUCKET, currentDomain, filename, fileSize, contentType);
 
       // 同步信息文件到所有其他节点
       const infoBody = JSON.stringify(info);
@@ -835,7 +815,7 @@ export default {
         )
       );
 
-      return new Response(JSON.stringify({ success: true, filename: finalName, size: fileSize, node: currentDomain }), {
+      return new Response(JSON.stringify({ success: true, filename, size: fileSize, node: currentDomain }), {
         headers: { 'Content-Type': 'application/json' }, status: 200
       });
     }
