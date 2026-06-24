@@ -530,9 +530,11 @@ const fileManagerHtml = `
       try {
         const listRes = await fetch('/list-all');
         const listData = await listRes.json();
-        const exists = listData.files && listData.files.some(f => f.filename === filename);
-        if (exists && !confirm('文件 "' + filename + '" 已存在，是否继续创建？')) return;
-      } catch (e) { /* 忽略检查失败，继续创建 */ }
+        if (listData.files && listData.files.some(f => f.filename === filename)) {
+          showStatus('文件 "' + filename + '" 已存在，请使用其他文件名', true);
+          return;
+        }
+      } catch (e) { /* 忽略检查失败 */ }
 
       document.getElementById('new-file-modal').style.display = 'none';
 
@@ -725,29 +727,28 @@ export default {
 
       const bodyText = await request.text();
       const contentType = request.headers.get('Content-Type') || guessContentType(filename);
+      const fileSize = bodyText.length;
 
-      // 同名文件：同内容覆盖，不同内容加后缀区分
+      // 同名文件：同大小覆盖，不同大小加后缀区分
       let finalName = filename;
-      const existing = await MY_SCRIPT_BUCKET.get(filename, { type: 'text' });
+      const existing = await MY_SCRIPT_BUCKET.get(filename, { type: 'stream' });
       if (existing !== null) {
-        if (existing === bodyText) {
-          // 内容相同，直接覆盖
-        } else {
-          // 内容不同，加后缀
+        const existingSize = parseInt(existing.headers.get('content-length') || '0');
+        if (existingSize !== fileSize) {
+          // 大小不同，加后缀
           let i = 1;
           while (true) {
             const dotIdx = filename.lastIndexOf('.');
             const base = dotIdx > 0 ? filename.substring(0, dotIdx) : filename;
             const ext = dotIdx > 0 ? filename.substring(dotIdx) : '';
             const candidate = `${base}-${i}${ext}`;
-            const check = await MY_SCRIPT_BUCKET.get(candidate, { type: 'text' });
-            if (check === null || check === bodyText) { finalName = candidate; break; }
+            const check = await MY_SCRIPT_BUCKET.get(candidate, { type: 'stream' });
+            if (check === null) { finalName = candidate; break; }
             i++;
           }
         }
       }
 
-      const fileSize = bodyText.length;
       await MY_SCRIPT_BUCKET.put(finalName, bodyText);
 
       // 更新本地信息文件
