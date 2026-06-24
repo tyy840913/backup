@@ -33,6 +33,42 @@ function guessContentType(filename) {
   return mimeTypes[fileExtension] || 'application/octet-stream';
 }
 
+// 检查令牌有效性（URL 参数 ?token=xxx 或请求头 X-Token）
+function checkToken(request, env) {
+  if (!env.TOKEN) return false;
+  const url = new URL(request.url);
+  const token = url.searchParams.get('token') || request.headers.get('X-Token');
+  if (!token) return false;
+  const validTokens = env.TOKEN.split(',').map(t => t.trim()).filter(Boolean);
+  return validTokens.includes(token);
+}
+
+// 防止路径遍历攻击
+function isSafePath(filename) {
+  if (!filename) return false;
+  if (filename.includes('..')) return false;
+  if (filename.startsWith('/')) return false;
+  return true;
+}
+
+// 判断是否为文件操作（Token 适用于上传/下载/更新/删除，不含列表和 UI）
+function isFileOperation(path, method) {
+  // 本地上传/更新/删除
+  if ((method === 'PUT' && path.startsWith('update/')) ||
+      (method === 'DELETE' && path.startsWith('delete/'))) return true;
+  // 本地下载（排除管理端点和 UI）
+  if (method === 'GET' && path !== 'list-keys' && path !== 'list-keys-flat' && path !== '' && !path.startsWith('proxy/')) return true;
+  // 代理路径：根据目标路径判断
+  if (path.startsWith('proxy/')) {
+    const parts = path.split('/');
+    const targetPath = parts.slice(2).join('/');
+    if ((method === 'PUT' && targetPath.startsWith('update/')) ||
+        (method === 'DELETE' && targetPath.startsWith('delete/'))) return true;
+    if (method === 'GET' && targetPath !== 'list-keys' && targetPath !== 'list-keys-flat' && targetPath !== '') return true;
+  }
+  return false;
+}
+
 // --- 文件管理器 HTML 页面 ---
 const fileManagerHtml = `
 <!DOCTYPE html>
@@ -819,15 +855,19 @@ export default {
     if (!JIANGUO_USERNAME || !JIANGUO_PASSWORD) {
       return new Response('错误：未配置用户名或密码环境变量。\n', { status: 500 });
     }
+
+    // 文件操作（上传/下载/更新/删除）：Token 或 Basic Auth 通过其一即可；管理操作（列表/UI）：必须 Basic Auth
     const authHeader = request.headers.get('Authorization');
     const credentials = decodeBasicAuth(authHeader);
-    if (!credentials || credentials.username !== JIANGUO_USERNAME || credentials.password !== JIANGUO_PASSWORD) {
+    const basicValid = credentials && credentials.username === JIANGUO_USERNAME && credentials.password === JIANGUO_PASSWORD;
+
+    if (isFileOperation(path, request.method) ? !basicValid && !checkToken(request, env) : !basicValid) {
       return new Response('未授权访问。\n', {
         status: 401,
         headers: { 'WWW-Authenticate': 'Basic realm="KV Cross-Domain File Manager"' }
       });
     }
-    
+
     const requestAuthHeader = getAuthHeader(JIANGUO_USERNAME, JIANGUO_PASSWORD);
 
     // --- 代理路由 ---
@@ -840,7 +880,7 @@ export default {
         return new Response('代理请求格式错误。\n', { status: 400 });
       }
 
-      const targetUrl = `https://${targetDomain}/${targetPath}`;
+      const targetUrl = `https://${targetDomain}/${targetPath}${url.search}`;
       const proxyHeaders = new Headers(request.headers);
       proxyHeaders.set('Authorization', requestAuthHeader);
 
@@ -861,6 +901,7 @@ export default {
     if (request.method === 'PUT' && path.startsWith('update/')) {
       const filename = path.substring('update/'.length);
       if (!filename) return new Response('错误：未指定文件名。\n', { status: 400 });
+      if (!isSafePath(filename)) return new Response('错误：文件名不合法（禁止路径遍历）。\n', { status: 400 });
       await MY_SCRIPT_BUCKET.put(filename, request.body);
       return new Response(`文件 "${filename}" 已成功更新。\n`, { status: 200 });
     }
@@ -869,6 +910,7 @@ export default {
     if (request.method === 'DELETE' && path.startsWith('delete/')) {
       const filename = path.substring('delete/'.length);
       if (!filename) return new Response('错误：未指定文件名。\n', { status: 400 });
+      if (!isSafePath(filename)) return new Response('错误：文件名不合法（禁止路径遍历）。\n', { status: 400 });
       await MY_SCRIPT_BUCKET.delete(filename);
       return new Response(`文件 "${filename}" 已成功删除。\n`, { status: 200 });
     }
