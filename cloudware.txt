@@ -295,11 +295,11 @@ const fileManagerHtml = `
       header h1 { font-size: 1.2rem; width: 100%; }
       .header-buttons { display: flex; gap: 8px; width: 100%; }
       .header-buttons .upload-btn { flex: 1; text-align: center; font-size: 13px; padding: 10px 8px; }
-      #file-list li { flex-wrap: wrap; padding: 10px 12px; }
+      #file-list li { padding: 10px 12px; }
       .item-icon { width: 20px; height: 20px; margin-right: 10px; }
-      .item-name { font-size: 14px; flex-basis: calc(100% - 30px); text-align: center; margin-bottom: 4px; }
-      .item-meta { width: auto; text-align: center; font-size: 11px; order: 1; margin-top: 4px; flex-basis: 100%; }
-      .item-actions { min-width: auto; gap: 2px; order: 2; justify-content: center; margin-top: 6px; flex-basis: 100%; }
+      .item-name { font-size: 14px; }
+      .item-meta { display: none; }
+      .item-actions { min-width: auto; gap: 2px; }
       .item-actions button { padding: 6px; margin: 0 4px; }
       .item-actions svg { width: 20px; height: 20px; }
       #status-message { left: 10px; right: 10px; transform: none; text-align: center; font-size: 14px; padding: 12px; }
@@ -315,11 +315,10 @@ const fileManagerHtml = `
     }
 
     @media (max-width: 480px) {
-      #file-list li { flex-wrap: wrap; padding: 8px 10px; }
+      #file-list li { padding: 8px 10px; }
       .item-icon { width: 18px; height: 18px; margin-right: 8px; }
-      .item-name { flex-basis: calc(100% - 26px); text-align: center; font-size: 14px; margin-bottom: 4px; }
-      .item-meta { text-align: center; font-size: 10px; order: 1; flex-basis: 100%; margin-left: 0; margin-top: 4px; }
-      .item-actions { order: 2; justify-content: center; margin-top: 6px; flex-basis: 100%; border-top: 1px solid #f0f0f0; padding-top: 6px; }
+      .item-name { font-size: 13px; }
+      .item-meta { display: none; }
       .item-actions button { padding: 5px; margin: 0 3px; }
       .item-actions svg { width: 18px; height: 18px; }
       .modal-content { width: 100%; margin: 0; border-radius: 0; min-height: 100vh; max-height: 100vh; }
