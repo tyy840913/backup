@@ -19,7 +19,6 @@ function decodeBasicAuth(authHeader) {
   }
 }
 
-// 辅助函数：根据文件名猜测 MIME 类型
 function guessContentType(filename) {
   const fileExtension = filename.split('.').pop().toLowerCase();
   const mimeTypes = {
@@ -33,7 +32,6 @@ function guessContentType(filename) {
   return mimeTypes[fileExtension] || 'application/octet-stream';
 }
 
-// 检查令牌有效性（URL 参数 ?token=xxx 或请求头 X-Token）
 function checkToken(request, env) {
   if (!env.TOKEN) return false;
   const url = new URL(request.url);
@@ -43,7 +41,6 @@ function checkToken(request, env) {
   return validTokens.includes(token);
 }
 
-// 防止路径遍历攻击
 function isSafePath(filename) {
   if (!filename) return false;
   if (filename.includes('..')) return false;
@@ -51,22 +48,177 @@ function isSafePath(filename) {
   return true;
 }
 
-// 判断是否为文件操作（Token 适用于上传/下载/更新/删除，不含列表和 UI）
 function isFileOperation(path, method) {
-  // 本地上传/更新/删除
+  const internalAPIs = ['list-keys', 'list-keys-flat', 'list-meta', 'node-stats', 'sync-all'];
+  if (method === 'GET' && (path === 'stats' || path === 'list-all')) return true;
   if ((method === 'PUT' && path.startsWith('update/')) ||
       (method === 'DELETE' && path.startsWith('delete/'))) return true;
-  // 本地下载（排除管理端点和 UI）
-  if (method === 'GET' && path !== 'list-keys' && path !== 'list-keys-flat' && path !== '' && !path.startsWith('proxy/')) return true;
-  // 代理路径：根据目标路径判断
+  if (method === 'GET' && !internalAPIs.includes(path) && path !== '' && !path.startsWith('proxy/') && !path.startsWith('__info__')) return true;
   if (path.startsWith('proxy/')) {
     const parts = path.split('/');
     const targetPath = parts.slice(2).join('/');
     if ((method === 'PUT' && targetPath.startsWith('update/')) ||
         (method === 'DELETE' && targetPath.startsWith('delete/'))) return true;
-    if (method === 'GET' && targetPath !== 'list-keys' && targetPath !== 'list-keys-flat' && targetPath !== '') return true;
+    if (method === 'GET' && !internalAPIs.includes(targetPath) && targetPath !== '') return true;
   }
   return false;
+}
+
+function hashString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function getAllDomains(env, currentDomain) {
+  const others = (env.OTHER_DOMAINS || '').split(',').map(d => d.trim()).filter(Boolean);
+  return [currentDomain, ...others.filter(d => d !== currentDomain)];
+}
+
+// 跨域代理请求
+function buildProxyUrl(targetDomain, targetPath, url) {
+  let search = url.search;
+  if (!search.includes('node=')) {
+    search = (search ? search + '&' : '?') + 'node=' + encodeURIComponent(targetDomain);
+  }
+  return `https://${targetDomain}/${targetPath}${search}`;
+}
+
+async function proxyGet(targetDomain, targetPath, requestAuthHeader, url) {
+  const targetUrl = buildProxyUrl(targetDomain, targetPath, url);
+  try {
+    const resp = await fetch(targetUrl, { headers: { 'Authorization': requestAuthHeader } });
+    return new Response(resp.body, resp);
+  } catch (e) {
+    return new Response(`代理请求失败: ${e.message}\n`, { status: 500 });
+  }
+}
+
+async function proxyPut(targetDomain, targetPath, request, requestAuthHeader, url) {
+  const targetUrl = buildProxyUrl(targetDomain, targetPath, url);
+  try {
+    const body = await request.text();
+    const resp = await fetch(targetUrl, {
+      method: 'PUT', body,
+      headers: { 'Authorization': requestAuthHeader, 'Content-Type': request.headers.get('Content-Type') || 'application/octet-stream' }
+    });
+    return new Response(resp.body, resp);
+  } catch (e) {
+    return new Response(`代理请求失败: ${e.message}\n`, { status: 500 });
+  }
+}
+
+async function proxyRequest(targetDomain, targetPath, request, requestAuthHeader, url) {
+  if (request.method === 'GET' || request.method === 'HEAD') {
+    return proxyGet(targetDomain, targetPath, requestAuthHeader, url);
+  }
+  const targetUrl = buildProxyUrl(targetDomain, targetPath, url);
+  try {
+    const body = await request.text();
+    const fetchInit = {
+      method: request.method,
+      headers: { 'Authorization': requestAuthHeader, 'Content-Type': request.headers.get('Content-Type') || 'application/octet-stream' }
+    };
+    if (body) fetchInit.body = body;
+    const resp = await fetch(targetUrl, fetchInit);
+    return new Response(resp.body, resp);
+  } catch (e) {
+    return new Response(`代理请求失败: ${e.message}\n`, { status: 500 });
+  }
+}
+
+function resolveNode(filename, allDomains, nodeParam) {
+  if (nodeParam) {
+    if (allDomains.includes(nodeParam)) return nodeParam;
+    const idx = parseInt(nodeParam);
+    if (!isNaN(idx) && idx >= 0 && idx < allDomains.length) return allDomains[idx];
+  }
+  return allDomains[hashString(filename) % allDomains.length];
+}
+
+// --- 信息文件管理（每个域名一个，记录该域名下的所有文件）---
+function getInfoKey(domain) {
+  return `__info__/${domain}`;
+}
+
+async function loadInfo(MY_SCRIPT_BUCKET, domain) {
+  const val = await MY_SCRIPT_BUCKET.get(getInfoKey(domain));
+  if (val) {
+    try { return JSON.parse(val); } catch (e) {}
+  }
+  return { updated_at: '1970-01-01T00:00:00Z', files: {} };
+}
+
+async function saveInfo(MY_SCRIPT_BUCKET, domain, info) {
+  info.updated_at = new Date().toISOString();
+  await MY_SCRIPT_BUCKET.put(getInfoKey(domain), JSON.stringify(info));
+}
+
+async function addFileToInfo(MY_SCRIPT_BUCKET, domain, filename, size, contentType) {
+  const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
+  info.files[filename] = { size, content_type: contentType };
+  await saveInfo(MY_SCRIPT_BUCKET, domain, info);
+  return info;
+}
+
+async function removeFileFromInfo(MY_SCRIPT_BUCKET, domain, filename) {
+  const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
+  delete info.files[filename];
+  await saveInfo(MY_SCRIPT_BUCKET, domain, info);
+  return info;
+}
+
+// 获取所有域名信息文件的合并列表
+async function getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains) {
+  const files = [];
+  for (const domain of allDomains) {
+    const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
+    for (const [filename, f] of Object.entries(info.files)) {
+      files.push({ filename, size: f.size, content_type: f.content_type, node: domain });
+    }
+  }
+  return files;
+}
+
+// 从信息文件找文件所在节点
+async function findFileNodeFromInfo(MY_SCRIPT_BUCKET, filename, allDomains, defaultDomain) {
+  for (const domain of allDomains) {
+    const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
+    if (info.files[filename]) return domain;
+  }
+  return defaultDomain;
+}
+
+// 从信息文件计算节点大小（负载均衡用）
+async function computeNodeSizes(MY_SCRIPT_BUCKET, allDomains) {
+  const nodeSizes = {};
+  for (const domain of allDomains) {
+    nodeSizes[domain] = 0;
+  }
+  for (const domain of allDomains) {
+    const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
+    for (const f of Object.values(info.files)) {
+      nodeSizes[domain] += f.size || 0;
+    }
+  }
+  return nodeSizes;
+}
+
+async function findLightestNode(MY_SCRIPT_BUCKET, allDomains) {
+  const nodeSizes = await computeNodeSizes(MY_SCRIPT_BUCKET, allDomains);
+  let minNode = allDomains[0];
+  let minSize = nodeSizes[minNode] || 0;
+  for (const domain of allDomains) {
+    const size = nodeSizes[domain] || 0;
+    if (size < minSize) {
+      minSize = size;
+      minNode = domain;
+    }
+  }
+  return minNode;
 }
 
 // --- 文件管理器 HTML 页面 ---
@@ -97,9 +249,10 @@ const fileManagerHtml = `
     #file-list li:last-child { border-bottom: none; }
     #file-list li:hover { background-color: var(--hover-bg-color); }
     .item-icon { width: 24px; height: 24px; margin-right: 15px; flex-shrink: 0; }
-    .item-name { flex-grow: 1; cursor: pointer; color: var(--text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item-name { flex: 1; cursor: pointer; color: var(--text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .item-name.folder { font-weight: 500; }
-    .item-actions { display: flex; align-items: center; }
+    .item-actions { display: flex; align-items: center; min-width: 90px; justify-content: flex-end; }
+    .item-meta { width: 220px; flex-shrink: 0; text-align: right; font-size: 11px; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .item-actions button { background: none; border: none; cursor: pointer; padding: 5px; margin-left: 8px; opacity: 0.7; }
     .item-actions button:hover { opacity: 1; }
     .item-actions svg { width: 18px; height: 18px; vertical-align: middle; }
@@ -107,7 +260,7 @@ const fileManagerHtml = `
     
     /* Modal styles */
     .modal { display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.4); overflow: auto; }
-    .modal-content { background-color: #fefefe; margin: 2% auto; padding: 10px; /* Reduced padding */ border: 1px solid #888; border-radius: 5px; width: 80%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
+    .modal-content { background-color: #fefefe; margin: 2% auto; padding: 10px; border: 1px solid #888; border-radius: 5px; width: 80%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
     .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
     .close:hover, .close:focus { color: black; text-decoration: none; }
     .modal input, .modal select { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
@@ -117,88 +270,25 @@ const fileManagerHtml = `
     .btn-confirm { background-color: var(--primary-color); color: white; }
     .btn-danger { background-color: var(--danger-color); color: white; }
     
-    /* Editor modal */
     #editor-modal .modal-content { 
-      width: 95%; 
-      max-width: 95%; 
-      height: 90vh;
-      max-height: 90vh; 
-      display: flex; 
-      flex-direction: column; 
+      width: 95%; max-width: 95%; height: 90vh; max-height: 90vh; display: flex; flex-direction: column; 
     }
-    .editor-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding-bottom: 2px; /* Further reduced */
-      margin-bottom: 10px;
-      border-bottom: 1px solid var(--border-color);
-    }
-    .editor-header h2 {
-      margin: 0;
-      font-size: 1.1rem;
-    }
-    .editor-header .close {
-      font-size: 1.5rem; /* Reduced close button size */
-      line-height: 1;
-    }
-    .editor-toolbar {
-      padding-bottom: 10px;
-      margin-bottom: 10px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      justify-content: space-between; /* This will separate the button groups */
-      align-items: center;
-    }
-    .editor-toolbar > div { /* Target the left and right group divs */
-      display: flex;
-      gap: 8px;
-    }
-    .editor-toolbar button {
-      padding: 5px 10px;
-      border: 1px solid var(--border-color);
-      background-color: #f8f9fa;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .editor-toolbar button:hover {
-      background-color: var(--hover-bg-color);
-    }
-    /* Re-apply specific button styles for toolbar context */
-    .editor-toolbar .btn-cancel {
-        background-color: #ccc;
-        color: black;
-    }
-    .editor-toolbar .btn-confirm {
-        background-color: var(--primary-color);
-        color: white;
-    }
-    #editor-textarea { 
-      flex-grow: 1; 
-      width: 100%; 
-      font-family: monospace; 
-      font-size: 14px; 
-      resize: none; 
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      padding: 10px;
-      box-sizing: border-box;
-    }
-    
-    /* Directory tree */
-    .directory-tree { max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
-    .directory-tree ul { list-style-type: none; padding-left: 20px; }
-    .directory-tree > ul { padding-left: 0; }
-    .directory-tree li { cursor: pointer; padding: 3px 0; }
-    .directory-tree li.folder::before { content: "📁 "; }
-    .directory-tree li.file::before { content: "📄 "; }
-    .directory-tree li.selected { background-color: #e9ecef; }
+    .editor-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 2px; margin-bottom: 10px; border-bottom: 1px solid var(--border-color); }
+    .editor-header h2 { margin: 0; font-size: 1.1rem; }
+    .editor-header .close { font-size: 1.5rem; line-height: 1; }
+    .editor-toolbar { padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+    .editor-toolbar > div { display: flex; gap: 8px; }
+    .editor-toolbar button { padding: 5px 10px; border: 1px solid var(--border-color); background-color: #f8f9fa; border-radius: 4px; cursor: pointer; }
+    .editor-toolbar button:hover { background-color: var(--hover-bg-color); }
+    .editor-toolbar .btn-cancel { background-color: #ccc; color: black; }
+    .editor-toolbar .btn-confirm { background-color: var(--primary-color); color: white; }
+    #editor-textarea { flex-grow: 1; width: 100%; font-family: monospace; font-size: 14px; resize: none; border: 1px solid var(--border-color); border-radius: 4px; padding: 10px; box-sizing: border-box; }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>KV 跨域文件管理器</h1>
+      <h1>📁 统一文件管理器</h1>
       <div class="header-buttons">
         <button type="button" id="new-file-btn" class="upload-btn" disabled>新建文件</button>
         <form id="upload-form" style="display: inline;">
@@ -211,42 +301,6 @@ const fileManagerHtml = `
     <ul id="file-list"></ul>
   </div>
   
-  <!-- 复制/移动文件模态框 -->
-  <div id="copy-move-modal" class="modal">
-    <div class="modal-content">
-      <span class="close">&times;</span>
-      <h2 id="copy-move-title">复制/移动文件</h2>
-      <p>源文件: <span id="copy-move-source"></span></p>
-      <label for="copy-move-destination">目标路径:</label>
-      <input type="text" id="copy-move-destination" placeholder="输入目标路径">
-      <div>
-        <label>选择域名:</label>
-        <div class="directory-tree" id="directory-tree"></div>
-      </div>
-      <div class="modal-buttons">
-        <button class="btn-cancel">取消</button>
-        <button class="btn-confirm" id="confirm-copy-btn">复制到</button>
-        <button class="btn-confirm" id="confirm-move-btn">移动到</button>
-      </div>
-    </div>
-  </div>
-  
-  <!-- 重命名文件模态框 -->
-  <div id="rename-modal" class="modal">
-    <div class="modal-content">
-      <span class="close">&times;</span>
-      <h2>重命名文件</h2>
-      <p>当前名称: <span id="rename-source"></span></p>
-      <label for="rename-destination">新名称:</label>
-      <input type="text" id="rename-destination" placeholder="输入新名称">
-      <div class="modal-buttons">
-        <button class="btn-cancel">取消</button>
-        <button class="btn-confirm" id="confirm-rename">重命名</button>
-      </div>
-    </div>
-  </div>
-  
-  <!-- 在线编辑模态框 -->
   <div id="editor-modal" class="modal">
     <div class="modal-content">
       <div class="editor-header">
@@ -254,11 +308,11 @@ const fileManagerHtml = `
         <span class="close">&times;</span>
       </div>
       <div class="editor-toolbar">
-        <div> <!-- Left Group -->
+        <div>
           <button id="format-json-btn" title="格式化JSON">格式化JSON</button>
           <button id="minify-json-btn" title="压缩JSON">压缩JSON</button>
         </div>
-        <div> <!-- Right Group -->
+        <div>
           <button class="btn-cancel">取消</button>
           <button class="btn-confirm" id="save-editor">保存</button>
         </div>
@@ -267,7 +321,6 @@ const fileManagerHtml = `
     </div>
   </div>
   
-  <!-- 新建文件模态框 -->
   <div id="new-file-modal" class="modal">
     <div class="modal-content">
       <span class="close">&times;</span>
@@ -289,27 +342,18 @@ const fileManagerHtml = `
       file: '<svg class="item-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="var(--file-color)"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM13 9V3.5L18.5 9H13z"/></svg>',
       download: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
       delete: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="var(--danger-color)"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>',
-      copy: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
-      move: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
-      edit: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
-      rename: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L3 22h3l1.5-4h9l1.5 4h3L12 2zm-1.38 14L12 7.67 13.38 16h-2.76z"/></svg>'
+      edit: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>'
     };
 
-    let allFilesByDomain = {};
-    let currentPath = ''; // e.g., "my-worker.dev/folder/"
-    let currentDomain = '';
-    let currentFileForOperation = null; // 用于跟踪当前操作的文件
+    let currentFileForOperation = null;
 
     document.addEventListener('DOMContentLoaded', () => {
       render();
       document.getElementById('file-input').addEventListener('change', handleFileUpload);
-      
-      // 设置模态框关闭事件
       setupModalEvents();
     });
 
     function setupModalEvents() {
-      // 新建文件模态框事件
       document.getElementById('new-file-btn').onclick = () => {
         document.getElementById('new-filename').value = '';
         document.getElementById('new-file-modal').style.display = 'block';
@@ -321,27 +365,7 @@ const fileManagerHtml = `
         document.getElementById('new-file-modal').style.display = 'none';
       };
       document.getElementById('confirm-new-file').onclick = handleNewFileConfirm;
-
-      // 复制/移动模态框事件
-      document.getElementById('copy-move-modal').querySelector('.close').onclick = () => {
-        document.getElementById('copy-move-modal').style.display = 'none';
-      };
-      document.getElementById('copy-move-modal').querySelector('.btn-cancel').onclick = () => {
-        document.getElementById('copy-move-modal').style.display = 'none';
-      };
-      document.getElementById('confirm-copy-btn').onclick = () => handleCopyMoveConfirm('copy');
-      document.getElementById('confirm-move-btn').onclick = () => handleCopyMoveConfirm('move');
       
-      // 重命名模态框事件
-      document.getElementById('rename-modal').querySelector('.close').onclick = () => {
-        document.getElementById('rename-modal').style.display = 'none';
-      };
-      document.getElementById('rename-modal').querySelector('.btn-cancel').onclick = () => {
-        document.getElementById('rename-modal').style.display = 'none';
-      };
-      document.getElementById('confirm-rename').onclick = handleRenameConfirm;
-      
-      // 编辑器模态框事件
       document.getElementById('editor-modal').querySelector('.close').onclick = () => {
         document.getElementById('editor-modal').style.display = 'none';
       };
@@ -350,11 +374,9 @@ const fileManagerHtml = `
       };
       document.getElementById('save-editor').onclick = handleSaveEditor;
 
-      // JSON 工具按钮事件
       document.getElementById('format-json-btn').onclick = () => formatJson(true);
       document.getElementById('minify-json-btn').onclick = () => formatJson(false);
       
-      // 点击模态框外部关闭
       window.onclick = function(event) {
         if (event.target.classList.contains('modal')) {
           event.target.style.display = 'none';
@@ -372,12 +394,27 @@ const fileManagerHtml = `
 
     async function render() {
       try {
-        const response = await fetch('/list-keys');
-        if (!response.ok) throw new Error('无法获取文件列表: ' + await response.text());
-        allFilesByDomain = await response.json();
-        currentDomain = allFilesByDomain.currentDomain;
-        renderFileList();
-        renderBreadcrumbs();
+        const [listResp, statsResp] = await Promise.all([
+          fetch('/list-all'),
+          fetch('/stats')
+        ]);
+        if (!listResp.ok) throw new Error('无法获取文件列表: ' + await listResp.text());
+        
+        const listData = await listResp.json();
+        const allFiles = listData.files || [];
+
+        let statsHtml = '';
+        if (statsResp.ok) {
+          const statsData = await statsResp.json();
+          statsHtml = '<div style="margin-bottom:15px;padding:12px;background:#f0f8ff;border-radius:5px;font-size:13px">';
+          statsHtml += '📊 文件总数: <b>' + statsData.total + '</b> | ';
+          statsHtml += '总大小: <b>' + formatSize(statsData.totalSize) + '</b> | ';
+          statsHtml += '桶: <b>' + statsData.bucketCount + '</b>/' + statsData.totalDomains;
+          statsHtml += '</div>';
+        }
+        
+        document.getElementById('path-breadcrumbs').innerHTML = statsHtml || '';
+        renderFileList(allFiles);
         updateUploadButtonState();
       } catch (error) {
         showStatus('错误: ' + error.message, true);
@@ -385,436 +422,138 @@ const fileManagerHtml = `
     }
     
     function updateUploadButtonState() {
-        const uploadBtn = document.getElementById('upload-btn');
-        const newFileBtn = document.getElementById('new-file-btn');
-        const canOperate = !!currentPath;
-
-        uploadBtn.disabled = !canOperate;
-        newFileBtn.disabled = !canOperate;
-
-        const title = canOperate ? '可以在当前目录操作' : '请先进入一个域名目录';
-        uploadBtn.title = title;
-        newFileBtn.title = title;
+        document.getElementById('upload-btn').disabled = false;
+        document.getElementById('new-file-btn').disabled = false;
+        document.getElementById('upload-btn').title = '上传文件（自动路由到对应节点）';
+        document.getElementById('new-file-btn').title = '新建文件（自动路由到对应节点）';
     }
 
-    function renderBreadcrumbs() {
-      const breadcrumbs = document.getElementById('path-breadcrumbs');
-      breadcrumbs.innerHTML = '';
-      const rootLink = document.createElement('a');
-      rootLink.href = '#';
-      rootLink.textContent = '所有域';
-      rootLink.onclick = (e) => { e.preventDefault(); currentPath = ''; renderFileList(); renderBreadcrumbs(); updateUploadButtonState(); };
-      breadcrumbs.appendChild(rootLink);
-
-      const parts = currentPath.split('/').filter(p => p);
-      let path = '';
-      parts.forEach(part => {
-        path += part + '/';
-        breadcrumbs.appendChild(document.createTextNode(' / '));
-        const link = document.createElement('a');
-        link.href = '#';
-        link.textContent = part;
-        const capturedPath = path;
-        link.onclick = (e) => { e.preventDefault(); currentPath = capturedPath; renderFileList(); renderBreadcrumbs(); updateUploadButtonState(); };
-        breadcrumbs.appendChild(link);
-      });
+    function formatSize(bytes) {
+      if (!bytes) return '0B';
+      if (bytes > 1048576) return (bytes/1048576).toFixed(1)+'MB';
+      if (bytes > 1024) return (bytes/1024).toFixed(1)+'KB';
+      return bytes+'B';
     }
 
-    function renderFileList() {
+    function renderFileList(files) {
       const fileListEl = document.getElementById('file-list');
       fileListEl.innerHTML = '';
-      const pathDomain = currentPath.split('/')[0];
-      const keys = allFilesByDomain[pathDomain] || [];
 
-      // Root view: show domains as folders
-      if (!currentPath) {
-        Object.keys(allFilesByDomain).filter(k => k !== 'currentDomain').forEach(domain => {
-          const li = document.createElement('li');
-          li.innerHTML = icons.folder + '<span class="item-name folder">' + domain + '</span>';
-          li.onclick = () => { currentPath = domain + '/'; renderFileList(); renderBreadcrumbs(); updateUploadButtonState(); };
-          fileListEl.appendChild(li);
-        });
-        if (fileListEl.children.length === 0) {
-             const li = document.createElement('li');
-             li.textContent = '未配置其他域名或获取失败';
-             li.style.justifyContent = 'center';
-             fileListEl.appendChild(li);
-        }
-        return;
-      }
-
-      const items = new Map();
-      const pathWithinDomain = currentPath.substring(pathDomain.length + 1); // e.g., "folder/" or ""
-      const pathPrefixLength = pathWithinDomain.length;
-      keys.forEach(key => {
-        if (key.startsWith(pathWithinDomain)) {
-           const remaining = key.substring(pathPrefixLength);
-           const name = remaining.split('/')[0];
-           if (name) {
-             const isFolder = remaining.includes('/') && remaining !== name;
-             items.set(name, { type: isFolder ? 'folder' : 'file', name });
-           }
-        }
-      });
-
-      if (items.size === 0) {
+      if (!files || files.length === 0) {
         const li = document.createElement('li');
-        li.textContent = '此目录为空';
+        li.textContent = '暂无文件，点击"上传文件"开始使用';
         li.style.justifyContent = 'center';
         fileListEl.appendChild(li);
         return;
       }
 
-      const sortedItems = Array.from(items.values()).sort((a, b) => {
-        if (a.type === b.type) return a.name.localeCompare(b.name);
-        return a.type === 'folder' ? -1 : 1;
-      });
+      files.sort((a, b) => a.filename.localeCompare(b.filename));
 
-      sortedItems.forEach(item => {
+      files.forEach(item => {
         const li = document.createElement('li');
-        const fullPath = currentPath + item.name;
-        const fullKey = pathWithinDomain + item.name;
-        li.innerHTML = item.type === 'folder' ? icons.folder : icons.file;
-        
+        li.innerHTML = icons.file;
+
         const nameSpan = document.createElement('span');
-        nameSpan.className = 'item-name' + (item.type === 'folder' ? ' folder' : '');
-        nameSpan.textContent = item.name;
+        nameSpan.className = 'item-name';
+        nameSpan.textContent = item.filename;
+        nameSpan.title = item.filename;
+        nameSpan.onclick = (e) => {
+          e.stopPropagation();
+          if (isTextFile(item.filename)) {
+            editFile(item.node, item.filename);
+          } else {
+            downloadFile(item.node, item.filename);
+          }
+        };
         li.appendChild(nameSpan);
 
-        if (item.type === 'folder') {
-          li.onclick = () => { currentPath = fullPath + '/'; renderFileList(); renderBreadcrumbs(); };
+        const metaSpan = document.createElement('span');
+        metaSpan.className = 'item-meta';
+        metaSpan.textContent = formatSize(item.size) + ' @ ' + item.node;
+        metaSpan.title = '节点: ' + item.node + ' | 大小: ' + formatSize(item.size);
+        li.appendChild(metaSpan);
+
+        const actions = document.createElement('div');
+        actions.className = 'item-actions';
+        
+        if (isTextFile(item.filename)) {
+          const editBtn = document.createElement('button');
+          editBtn.title = '编辑';
+          editBtn.innerHTML = icons.edit;
+          editBtn.onclick = (e) => { e.stopPropagation(); editFile(item.node, item.filename); };
+          actions.appendChild(editBtn);
         } else {
-          // 点击文件名打开编辑器
-          nameSpan.onclick = (e) => {
-            e.stopPropagation(); // 阻止事件冒泡到父级li
-            if (isTextFile(item.name)) {
-              editFile(pathDomain, fullKey);
-            } else {
-              // 如果不是文本文件，可以考虑下载或者其他操作，目前保持不变
-              downloadFile(pathDomain, fullKey);
-            }
-          };
-
-          const actions = document.createElement('div');
-          actions.className = 'item-actions';
-          
-          // 编辑按钮（仅对文本文件）
-          if (isTextFile(item.name)) {
-            const editBtn = document.createElement('button');
-            editBtn.title = '编辑';
-            editBtn.innerHTML = icons.edit;
-            editBtn.onclick = (e) => { e.stopPropagation(); editFile(pathDomain, fullKey); };
-            actions.appendChild(editBtn);
-          }
-          
-          // 复制/移动按钮
-          const copyMoveBtn = document.createElement('button');
-          copyMoveBtn.title = '复制/移动';
-          copyMoveBtn.innerHTML = icons.copy;
-          copyMoveBtn.onclick = (e) => { e.stopPropagation(); showCopyMoveModal(pathDomain, fullKey); };
-          actions.appendChild(copyMoveBtn);
-          
-          // 重命名按钮
-          const renameBtn = document.createElement('button');
-          renameBtn.title = '重命名';
-          renameBtn.innerHTML = icons.rename;
-          renameBtn.onclick = (e) => { e.stopPropagation(); showRenameModal(pathDomain, fullKey); };
-          actions.appendChild(renameBtn);
-          
-          // 下载按钮
-          const downloadBtn = document.createElement('button');
-          downloadBtn.title = '下载';
-          downloadBtn.innerHTML = icons.download;
-          downloadBtn.onclick = (e) => { e.stopPropagation(); downloadFile(pathDomain, fullKey); };
-          actions.appendChild(downloadBtn);
-
-          // 删除按钮
-          const deleteBtn = document.createElement('button');
-          deleteBtn.title = '删除';
-          deleteBtn.innerHTML = icons.delete;
-          deleteBtn.onclick = (e) => { e.stopPropagation(); deleteFile(pathDomain, fullKey); };
-          actions.appendChild(deleteBtn);
-          li.appendChild(actions);
+          const blankBtn = document.createElement('button');
+          blankBtn.style.visibility = 'hidden';
+          blankBtn.innerHTML = icons.edit;
+          blankBtn.disabled = true;
+          actions.appendChild(blankBtn);
         }
+        
+        const downloadBtn = document.createElement('button');
+        downloadBtn.title = '下载';
+        downloadBtn.innerHTML = icons.download;
+        downloadBtn.onclick = (e) => { e.stopPropagation(); downloadFile(item.node, item.filename); };
+        actions.appendChild(downloadBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.title = '删除';
+        deleteBtn.innerHTML = icons.delete;
+        deleteBtn.onclick = (e) => { e.stopPropagation(); deleteFile(item.node, item.filename); };
+        actions.appendChild(deleteBtn);
+
+        li.appendChild(actions);
         fileListEl.appendChild(li);
       });
     }
     
-    // 判断是否为文本文件
     function isTextFile(filename) {
       const textExtensions = ['txt', 'js', 'json', 'html', 'css', 'md', 'xml', 'yml', 'yaml', 'csv', 'log', 'sh', 'conf'];
       const extension = filename.split('.').pop().toLowerCase();
       return textExtensions.includes(extension);
     }
     
-    // 显示复制/移动模态框
-    function showCopyMoveModal(domain, filePath) {
-      currentFileForOperation = { domain, filePath };
-      document.getElementById('copy-move-source').textContent = filePath;
-      document.getElementById('copy-move-destination').value = filePath;
-      document.getElementById('copy-move-modal').style.display = 'block';
-      
-      // 构建目录树
-      buildDirectoryTree(domain, filePath);
-    }
-    
-    // 构建目录树
-    function buildDirectoryTree(domain, filePath) {
-      const treeContainer = document.getElementById('directory-tree');
-      treeContainer.innerHTML = '';
-      
-      // 获取所有域名
-      const domains = Object.keys(allFilesByDomain).filter(k => k !== 'currentDomain');
-      
-      // 只显示域名目录
-      const ul = document.createElement('ul');
-      domains.forEach(domainName => {
-        const li = document.createElement('li');
-        li.className = 'folder';
-        li.textContent = domainName;
-        li.dataset.domain = domainName;
-        
-        li.onclick = (e) => {
-          e.stopPropagation();
-          
-          // 构造目标路径：域名 + 原文件名
-          const fileName = filePath.split('/').pop();
-          const destinationPath = domainName + '/' + fileName;
-          
-          document.getElementById('copy-move-destination').value = destinationPath;
-          
-          // 高亮选中项
-          document.querySelectorAll('.directory-tree li').forEach(item => {
-            item.classList.remove('selected');
-          });
-          li.classList.add('selected');
-        };
-        
-        ul.appendChild(li);
-      });
-      treeContainer.appendChild(ul);
-    }
-    
-    // 显示重命名模态框
-    function showRenameModal(domain, filePath) {
-      currentFileForOperation = { domain, filePath };
-      document.getElementById('rename-source').textContent = filePath;
-      document.getElementById('rename-destination').value = filePath.split('/').pop(); // 只显示文件名
-      document.getElementById('rename-modal').style.display = 'block';
-    }
-
-    // 处理新建文件确认
     async function handleNewFileConfirm() {
       const filename = document.getElementById('new-filename').value.trim();
-      if (!filename) {
-        showStatus('请输入文件名', true);
-        return;
-      }
+      if (!filename) { showStatus('请输入文件名', true); return; }
 
       document.getElementById('new-file-modal').style.display = 'none';
 
-      const pathDomain = currentPath.split('/')[0];
-      const pathWithinDomain = currentPath.substring(pathDomain.length + 1);
-      const remoteKey = pathWithinDomain + filename;
-      const isRemote = pathDomain !== currentDomain;
-      const apiPath = isRemote ? 'proxy/' + pathDomain + '/update/' + remoteKey : 'update/' + remoteKey;
-
       try {
-        // 创建一个空文件
-        const response = await fetch('/' + apiPath, { 
-          method: 'PUT', 
-          body: new Blob([], {type: 'text/plain'})
+        const response = await fetch('/update/' + filename, { 
+          method: 'PUT', body: new Blob([], {type: 'text/plain'})
         });
         if (!response.ok) throw new Error(await response.text());
-        
         showStatus('文件 "' + filename + '" 创建成功');
-        render(); // 刷新文件列表
+        render();
       } catch (error) {
         showStatus('创建文件时出错: ' + error.message, true);
       }
     }
     
-    // 处理复制/移动确认
-    async function handleCopyMoveConfirm(operation) {
-      const destination = document.getElementById('copy-move-destination').value.trim();
-      
-      if (!destination) {
-        showStatus('请输入目标路径', true);
-        return;
-      }
-      
-      const { domain, filePath } = currentFileForOperation;
-      document.getElementById('copy-move-modal').style.display = 'none';
-      
-      try {
-        // 下载源文件
-        const downloadPath = (domain === currentDomain) ? filePath : 'proxy/' + domain + '/' + filePath;
-        const response = await fetch('/' + downloadPath);
-        if (!response.ok) throw new Error('无法下载源文件: ' + response.status + ' ' + response.statusText);
-        
-        const fileContent = await response.blob();
-        
-        // 上传到新位置 - 需要确定目标域名
-        const targetDomain = Object.keys(allFilesByDomain)
-          .filter(k => k !== 'currentDomain')
-          .find(domainName => destination.startsWith(domainName + '/')) || currentDomain;
-          
-        // 从目标路径中移除域名部分，得到在KV中实际存储的key
-        const destinationKey = destination.startsWith(targetDomain + '/')
-          ? destination.substring(targetDomain.length + 1)
-          : destination;
-
-        // 如果目标是其他域名，使用proxy路径
-        const isRemoteTarget = targetDomain !== currentDomain;
-        const uploadPath = isRemoteTarget 
-          ? 'proxy/' + targetDomain + '/update/' + destinationKey
-          : 'update/' + destinationKey;
-        
-        const uploadResponse = await fetch('/' + uploadPath, { method: 'PUT', body: fileContent });
-        if (!uploadResponse.ok) throw new Error('上传失败: ' + uploadResponse.status + ' ' + await uploadResponse.text());
-        
-        // 如果是移动操作，删除源文件
-        if (operation === 'move') {
-          const deletePath = (domain === currentDomain) ? 'delete/' + filePath : 'proxy/' + domain + '/delete/' + filePath;
-          const deleteResponse = await fetch('/' + deletePath, { method: 'DELETE' });
-          if (!deleteResponse.ok) throw new Error('删除源文件失败: ' + await deleteResponse.text());
-          showStatus('文件移动成功');
-        } else {
-          showStatus('文件复制成功');
-        }
-        
-        render();
-      } catch (error) {
-        showStatus((operation === 'move' ? '移动' : '复制') + '文件时出错: ' + error.message, true);
-      }
-    }
-    
-    // 处理重命名确认
-    async function handleRenameConfirm() {
-      const newName = document.getElementById('rename-destination').value.trim();
-      if (!newName) {
-        showStatus('请输入新名称', true);
-        return;
-      }
-      
-      const { domain, filePath } = currentFileForOperation;
-      const pathParts = filePath.split('/');
-      pathParts[pathParts.length - 1] = newName;
-      const newPath = pathParts.join('/');
-      
-      document.getElementById('rename-modal').style.display = 'none';
-      
-      try {
-        // 下载源文件
-        const downloadPath = (domain === currentDomain) ? filePath : 'proxy/' + domain + '/' + filePath;
-        const response = await fetch('/' + downloadPath);
-        if (!response.ok) throw new Error('无法下载源文件');
-        
-        const fileContent = await response.blob();
-        
-        // 上传到新名称
-        const isRemote = domain !== currentDomain;
-        const uploadPath = isRemote ? 'proxy/' + domain + '/update/' + newPath : 'update/' + newPath;
-        
-        const uploadResponse = await fetch('/' + uploadPath, { method: 'PUT', body: fileContent });
-        if (!uploadResponse.ok) throw new Error(await uploadResponse.text());
-        
-        // 删除源文件
-        const deletePath = isRemote ? 'proxy/' + domain + '/delete/' + filePath : 'delete/' + filePath;
-        const deleteResponse = await fetch('/' + deletePath, { method: 'DELETE' });
-        if (!deleteResponse.ok) throw new Error(await deleteResponse.text());
-        
-        showStatus('文件重命名成功');
-        render();
-      } catch (error) {
-        showStatus('重命名文件时出错: ' + error.message, true);
-      }
-    }
-    
-    // 编辑文件
-    async function editFile(domain, filePath) {
-      try {
-        const downloadPath = (domain === currentDomain) ? filePath : 'proxy/' + domain + '/' + filePath;
-        const response = await fetch('/' + downloadPath);
-        if (!response.ok) throw new Error('无法下载文件');
-        
-        const content = await response.text();
-        
-        document.getElementById('editor-filename').textContent = filePath;
-        document.getElementById('editor-textarea').value = content;
-        currentFileForOperation = { domain, filePath };
-        document.getElementById('editor-modal').style.display = 'block';
-      } catch (error) {
-        showStatus('打开文件编辑器时出错: ' + error.message, true);
-      }
-    }
-
-    // JSON 格式化/压缩
     function formatJson(beautify) {
       const textarea = document.getElementById('editor-textarea');
       try {
         const jsonObj = JSON.parse(textarea.value);
-        if (beautify) {
-          textarea.value = JSON.stringify(jsonObj, null, 2); // 格式化，2个空格缩进
-        } else {
-          textarea.value = JSON.stringify(jsonObj); // 压缩
-        }
+        textarea.value = beautify ? JSON.stringify(jsonObj, null, 2) : JSON.stringify(jsonObj);
         showStatus(beautify ? 'JSON 格式化成功' : 'JSON 压缩成功');
       } catch (error) {
         showStatus('错误: 无效的 JSON 内容。 ' + error.message, true);
       }
     }
     
-    // 保存编辑后的文件
-    async function handleSaveEditor() {
-      const { domain, filePath } = currentFileForOperation;
-      const content = document.getElementById('editor-textarea').value;
-      
-      try {
-        const isRemote = domain !== currentDomain;
-        const uploadPath = isRemote ? 'proxy/' + domain + '/update/' + filePath : 'update/' + filePath;
-        
-        const response = await fetch('/' + uploadPath, {
-          method: 'PUT',
-          body: content,
-          headers: { 'Content-Type': 'text/plain' }
-        });
-        
-        if (!response.ok) throw new Error(await response.text());
-        
-        document.getElementById('editor-modal').style.display = 'none';
-        showStatus('文件保存成功');
-        render();
-      } catch (error) {
-        showStatus('保存文件时出错: ' + error.message, true);
-      }
-    }
-    
     function downloadFile(domain, filePath) {
-        const path = (domain === currentDomain) ? filePath : 'proxy/' + domain + '/' + filePath;
-        window.location.href = '/' + path;
+        window.location.href = '/' + filePath + '?node=' + encodeURIComponent(domain);
     }
 
     async function handleFileUpload(event) {
       const files = event.target.files;
       if (files.length === 0) return;
-      
-      const pathDomain = currentPath.split('/')[0];
-      if (!pathDomain) {
-          showStatus('不能在根目录上传文件，请先进入一个域名目录。', true);
-          return;
-      }
-      
-      const pathWithinDomain = currentPath.substring(pathDomain.length + 1);
 
       showStatus('开始上传 ' + files.length + ' 个文件...');
       for (const file of files) {
-        const remoteKey = pathWithinDomain + file.name;
-        const isRemote = pathDomain !== currentDomain;
-        const apiPath = isRemote ? 'proxy/' + pathDomain + '/update/' + remoteKey : 'update/' + remoteKey;
-        
         try {
-          const response = await fetch('/' + apiPath, { method: 'PUT', body: file });
+          const response = await fetch('/update/' + file.name, { method: 'PUT', body: file });
           if (!response.ok) throw new Error(await response.text());
           showStatus('文件 "' + file.name + '" 上传成功!');
         } catch (error) {
@@ -827,17 +566,45 @@ const fileManagerHtml = `
 
     async function deleteFile(domain, filePath) {
       if (!confirm('确定要删除文件 "' + filePath + '" 吗？此操作无法撤销。')) return;
-      
-      const isRemote = domain !== currentDomain;
-      const apiPath = isRemote ? 'proxy/' + domain + '/delete/' + filePath : 'delete/' + filePath;
 
       try {
-        const response = await fetch('/' + apiPath, { method: 'DELETE' });
+        const response = await fetch('/delete/' + filePath + '?node=' + encodeURIComponent(domain), { method: 'DELETE' });
         if (!response.ok) throw new Error(await response.text());
         showStatus('文件 "' + filePath + '" 已删除。');
         render();
       } catch (error) {
         showStatus('删除文件时出错: ' + error.message, true);
+      }
+    }
+
+    async function handleSaveEditor() {
+      const { domain, filePath } = currentFileForOperation;
+      const content = document.getElementById('editor-textarea').value;
+      
+      try {
+        const response = await fetch('/update/' + filePath + '?node=' + encodeURIComponent(domain), {
+          method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' }
+        });
+        if (!response.ok) throw new Error(await response.text());
+        document.getElementById('editor-modal').style.display = 'none';
+        showStatus('文件保存成功');
+        render();
+      } catch (error) {
+        showStatus('保存文件时出错: ' + error.message, true);
+      }
+    }
+
+    async function editFile(domain, filePath) {
+      try {
+        const response = await fetch('/' + filePath + '?node=' + encodeURIComponent(domain));
+        if (!response.ok) throw new Error('无法下载文件');
+        const content = await response.text();
+        document.getElementById('editor-filename').textContent = filePath;
+        document.getElementById('editor-textarea').value = content;
+        currentFileForOperation = { domain, filePath };
+        document.getElementById('editor-modal').style.display = 'block';
+      } catch (error) {
+        showStatus('打开文件编辑器时出错: ' + error.message, true);
       }
     }
   </script>
@@ -850,13 +617,11 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.substring(1);
 
-    // --- 统一身份验证 ---
     const { JIANGUO_USERNAME, JIANGUO_PASSWORD, MY_SCRIPT_BUCKET, OTHER_DOMAINS } = env;
     if (!JIANGUO_USERNAME || !JIANGUO_PASSWORD) {
       return new Response('错误：未配置用户名或密码环境变量。\n', { status: 500 });
     }
 
-    // 文件操作（上传/下载/更新/删除）：Token 或 Basic Auth 通过其一即可；管理操作（列表/UI）：必须 Basic Auth
     const authHeader = request.headers.get('Authorization');
     const credentials = decodeBasicAuth(authHeader);
     const basicValid = credentials && credentials.username === JIANGUO_USERNAME && credentials.password === JIANGUO_PASSWORD;
@@ -869,31 +634,42 @@ export default {
     }
 
     const requestAuthHeader = getAuthHeader(JIANGUO_USERNAME, JIANGUO_PASSWORD);
+    const currentDomain = url.hostname;
+    const allDomains = getAllDomains(env, currentDomain);
 
     // --- 代理路由 ---
     if (path.startsWith('proxy/')) {
       const parts = path.split('/');
       const targetDomain = parts[1];
       const targetPath = parts.slice(2).join('/');
-      
       if (!targetDomain || !targetPath) {
         return new Response('代理请求格式错误。\n', { status: 400 });
       }
+      return proxyRequest(targetDomain, targetPath, request, requestAuthHeader, url);
+    }
 
-      const targetUrl = `https://${targetDomain}/${targetPath}${url.search}`;
-      const proxyHeaders = new Headers(request.headers);
-      proxyHeaders.set('Authorization', requestAuthHeader);
+    // --- GET /__info__ 返回当前域名自己的信息文件 ---
+    if (request.method === 'GET' && path === '__info__') {
+      const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+      return new Response(JSON.stringify(info), {
+        headers: { 'Content-Type': 'application/json;charset=UTF-8' }
+      });
+    }
 
-      try {
-        const response = await fetch(targetUrl, {
-          method: request.method,
-          headers: proxyHeaders,
-          body: request.body,
-        });
-        return new Response(response.body, response);
-      } catch (e) {
-        return new Response(`代理请求失败: ${e.message}\n`, { status: 500 });
+    // --- PUT /__info__/<domain> 接收其他域名同步的信息文件（按时间戳更新）---
+    if (request.method === 'PUT' && path.startsWith('__info__/')) {
+      const domain = path.substring('__info__/'.length);
+      if (!domain) return new Response('错误：未指定域名。\n', { status: 400 });
+      const body = await request.text();
+      let remoteInfo;
+      try { remoteInfo = JSON.parse(body); } catch (e) {
+        return new Response('错误：无效的 JSON。\n', { status: 400 });
       }
+      const localInfo = await loadInfo(MY_SCRIPT_BUCKET, domain);
+      if (remoteInfo.updated_at > localInfo.updated_at) {
+        await MY_SCRIPT_BUCKET.put(getInfoKey(domain), body);
+      }
+      return new Response('ok\n', { status: 200 });
     }
 
     // --- API 路由 ---
@@ -902,8 +678,38 @@ export default {
       const filename = path.substring('update/'.length);
       if (!filename) return new Response('错误：未指定文件名。\n', { status: 400 });
       if (!isSafePath(filename)) return new Response('错误：文件名不合法（禁止路径遍历）。\n', { status: 400 });
-      await MY_SCRIPT_BUCKET.put(filename, request.body);
-      return new Response(`文件 "${filename}" 已成功更新。\n`, { status: 200 });
+
+      const nodeParam = url.searchParams.get('node');
+      const targetDomain = nodeParam
+        ? (allDomains.includes(nodeParam) ? nodeParam : allDomains[parseInt(nodeParam)])
+        : await findLightestNode(MY_SCRIPT_BUCKET, allDomains);
+
+      if (targetDomain !== currentDomain) {
+        return proxyRequest(targetDomain, path, request, requestAuthHeader, url);
+      }
+
+      const bodyText = await request.text();
+      const fileSize = bodyText.length;
+      const contentType = request.headers.get('Content-Type') || guessContentType(filename);
+      await MY_SCRIPT_BUCKET.put(filename, bodyText);
+
+      // 更新本地信息文件
+      const info = await addFileToInfo(MY_SCRIPT_BUCKET, currentDomain, filename, fileSize, contentType);
+
+      // 同步信息文件到所有其他节点
+      const infoBody = JSON.stringify(info);
+      await Promise.allSettled(
+        allDomains.filter(d => d !== currentDomain).map(d =>
+          fetch(`https://${d}/__info__/${currentDomain}`, {
+            method: 'PUT', body: infoBody,
+            headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+          }).catch(() => {})
+        )
+      );
+
+      return new Response(JSON.stringify({ success: true, filename, size: fileSize, node: currentDomain }), {
+        headers: { 'Content-Type': 'application/json' }, status: 200
+      });
     }
 
     // 删除
@@ -911,60 +717,168 @@ export default {
       const filename = path.substring('delete/'.length);
       if (!filename) return new Response('错误：未指定文件名。\n', { status: 400 });
       if (!isSafePath(filename)) return new Response('错误：文件名不合法（禁止路径遍历）。\n', { status: 400 });
+
+      const nodeParam = url.searchParams.get('node');
+      const targetDomain = resolveNode(filename, allDomains, nodeParam);
+
+      if (targetDomain !== currentDomain) {
+        return proxyRequest(targetDomain, path, request, requestAuthHeader, url);
+      }
+
       await MY_SCRIPT_BUCKET.delete(filename);
-      return new Response(`文件 "${filename}" 已成功删除。\n`, { status: 200 });
+
+      // 更新本地信息文件
+      const info = await removeFileFromInfo(MY_SCRIPT_BUCKET, currentDomain, filename);
+
+      // 同步信息文件到所有其他节点
+      const infoBody = JSON.stringify(info);
+      await Promise.allSettled(
+        allDomains.filter(d => d !== currentDomain).map(d =>
+          fetch(`https://${d}/__info__/${currentDomain}`, {
+            method: 'PUT', body: infoBody,
+            headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+          }).catch(() => {})
+        )
+      );
+
+      return new Response(JSON.stringify({ success: true, filename, node: currentDomain }), {
+        headers: { 'Content-Type': 'application/json' }, status: 200
+      });
     }
 
-    // 列出所有键 (核心多域名逻辑)
-    if (request.method === 'GET' && path === 'list-keys') {
-      const currentDomain = url.hostname;
-      let allFilesByDomain = { currentDomain };
-
-      // 1. 获取本地文件
-      const localList = await MY_SCRIPT_BUCKET.list();
-      const localKeys = localList.keys.map(k => k.name);
-      allFilesByDomain[currentDomain] = localKeys;
-
-      // 2. 获取远程文件
-      const otherDomains = (OTHER_DOMAINS || '').split(',').map(d => d.trim()).filter(Boolean);
-      const remoteFetchPromises = otherDomains.map(domain => 
-        fetch(`https://${domain}/list-keys-flat`, { headers: { 'Authorization': requestAuthHeader } })
-          .then(res => {
-              if (!res.ok) return Promise.reject(new Error(`Failed to fetch from ${domain}: ${res.statusText}`));
-              return res.json();
-          })
-          .then(data => ({ domain, keys: data.keys })) // 假设远程返回 {keys: [...]}
-          .catch(err => ({ domain, error: err.message, keys: [] }))
-      );
-      
-      const results = await Promise.all(remoteFetchPromises);
-      results.forEach(result => {
-        allFilesByDomain[result.domain] = result.keys;
+    // 返回本地节点统计（内部端点）
+    if (request.method === 'GET' && path === 'node-stats') {
+      const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+      let totalSize = 0;
+      const fileList = [];
+      for (const [filename, f] of Object.entries(info.files)) {
+        totalSize += f.size || 0;
+        fileList.push({ filename, size: f.size, content_type: f.content_type });
+      }
+      return new Response(JSON.stringify({ domain: currentDomain, fileCount: fileList.length, totalSize, files: fileList }), {
+        headers: { 'Content-Type': 'application/json;charset=UTF-8' }
       });
+    }
+
+    // 列出所有键（仅文件内容，不含 __info__）
+    if (request.method === 'GET' && path === 'list-keys') {
+      const localList = await MY_SCRIPT_BUCKET.list();
+      const localKeys = localList.keys.filter(k => !k.name.startsWith('__info__/')).map(k => k.name);
+      const allFilesByDomain = { [currentDomain]: localKeys };
+
+      const otherDomains = (OTHER_DOMAINS || '').split(',').map(d => d.trim()).filter(Boolean);
+      const results = await Promise.allSettled(
+        otherDomains.map(domain => 
+          fetch(`https://${domain}/list-keys-flat`, { headers: { 'Authorization': requestAuthHeader } })
+            .then(res => res.ok ? res.json() : Promise.reject())
+            .then(data => ({ domain, keys: data.keys }))
+            .catch(() => ({ domain, keys: [] }))
+        )
+      );
+      results.forEach(r => { if (r.status === 'fulfilled') allFilesByDomain[r.value.domain] = r.value.keys; });
 
       return new Response(JSON.stringify(allFilesByDomain), {
         headers: { 'Content-Type': 'application/json;charset=UTF-8' }
       });
     }
     
-    // 新增一个只返回本地域名键的内部端点
+    // 只返回本地文件键（不含 __info__）
     if (request.method === 'GET' && path === 'list-keys-flat') {
         const localList = await MY_SCRIPT_BUCKET.list();
-        const localKeys = localList.keys.map(k => k.name);
+        const localKeys = localList.keys.filter(k => !k.name.startsWith('__info__/')).map(k => k.name);
         return new Response(JSON.stringify({ keys: localKeys }), {
             headers: { 'Content-Type': 'application/json;charset=UTF-8' }
         });
     }
 
+    // 统一文件列表（从所有 domain 的信息文件读取）
+    if (request.method === 'GET' && path === 'list-all') {
+      const files = await getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains);
+      return new Response(JSON.stringify({ files }), {
+        headers: { 'Content-Type': 'application/json;charset=UTF-8' }
+      });
+    }
 
-    // --- UI 和文件下载 ---
+    // 节点统计（从所有 domain 的信息文件读取）
+    if (request.method === 'GET' && path === 'stats') {
+      let totalSize = 0;
+      let totalFiles = 0;
+      const nodeMap = {};
+      for (const domain of allDomains) {
+        const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
+        const fileCount = Object.keys(info.files).length;
+        if (fileCount > 0) {
+          let domainSize = 0;
+          for (const f of Object.values(info.files)) domainSize += f.size || 0;
+          nodeMap[domain] = { fileCount, totalSize: domainSize };
+          totalSize += domainSize;
+          totalFiles += fileCount;
+        }
+      }
+      const nodes = Object.entries(nodeMap).map(([domain, data]) => ({ domain, ...data }));
+      return new Response(JSON.stringify({
+        nodes, total: totalFiles, totalSize,
+        bucketCount: nodes.length, totalDomains: allDomains.length
+      }), {
+        headers: { 'Content-Type': 'application/json;charset=UTF-8' }
+      });
+    }
+
+    // 全量同步：按时间戳拉取所有节点的信息文件
+    if (request.method === 'GET' && path === 'sync-all') {
+      let updated = 0, skipped = 0, failed = 0;
+      const results = await Promise.allSettled(
+        allDomains.filter(d => d !== currentDomain).map(async (domain) => {
+          try {
+            const resp = await fetch(`https://${domain}/__info__`, {
+              headers: { 'Authorization': requestAuthHeader }
+            });
+            if (!resp.ok) { failed++; return; }
+            const remoteInfo = await resp.json();
+            const localInfo = await loadInfo(MY_SCRIPT_BUCKET, domain);
+            if (remoteInfo.updated_at > localInfo.updated_at) {
+              await MY_SCRIPT_BUCKET.put(getInfoKey(domain), JSON.stringify(remoteInfo));
+              updated++;
+            } else {
+              skipped++;
+            }
+          } catch (e) { failed++; }
+        })
+      );
+      return new Response(JSON.stringify({ updated, skipped, failed, total: allDomains.length }), {
+        headers: { 'Content-Type': 'application/json;charset=UTF-8' }
+      });
+    }
+
+    // 保留向后兼容：list-meta 从信息文件读取
+    if (request.method === 'GET' && path === 'list-meta') {
+      const files = await getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains);
+      return new Response(JSON.stringify({ files }), {
+        headers: { 'Content-Type': 'application/json;charset=UTF-8' }
+      });
+    }
+
+    // --- UI 页面 ---
     if (path === '') {
       return new Response(fileManagerHtml, {
         headers: { 'Content-Type': 'text/html;charset=UTF-8' }
       });
     }
 
-    // 其他路径视为文件下载
+    // --- 文件下载（从信息文件找所在节点）---
+    const nodeParam = url.searchParams.get('node');
+    if (nodeParam) {
+      const targetDomain = allDomains.includes(nodeParam) ? nodeParam : null;
+      if (targetDomain && targetDomain !== currentDomain) {
+        return proxyGet(targetDomain, path, requestAuthHeader, url);
+      }
+    } else {
+      const fileNode = await findFileNodeFromInfo(MY_SCRIPT_BUCKET, path, allDomains, currentDomain);
+      if (fileNode !== currentDomain) {
+        return proxyGet(fileNode, path, requestAuthHeader, url);
+      }
+    }
+
     const file = await MY_SCRIPT_BUCKET.get(path, { type: 'stream' });
     if (file === null) {
       return new Response(`未找到文件: ${path}\n`, { status: 404 });
@@ -976,4 +890,28 @@ export default {
       }
     });
   },
+
+  // 定时任务：同步各节点信息文件
+  async scheduled(event, env, ctx) {
+    const { JIANGUO_USERNAME, JIANGUO_PASSWORD, MY_SCRIPT_BUCKET } = env;
+    if (!JIANGUO_USERNAME || !JIANGUO_PASSWORD || !MY_SCRIPT_BUCKET) return;
+    const requestAuthHeader = getAuthHeader(JIANGUO_USERNAME, JIANGUO_PASSWORD);
+    const allDomains = getAllDomains(env, 'localhost');
+    
+    await Promise.allSettled(
+      allDomains.filter(d => d !== 'localhost').map(async (domain) => {
+        try {
+          const resp = await fetch(`https://${domain}/__info__`, {
+            headers: { 'Authorization': requestAuthHeader }
+          });
+          if (!resp.ok) return;
+          const remoteInfo = await resp.json();
+          const localInfo = await loadInfo(MY_SCRIPT_BUCKET, domain);
+          if (remoteInfo.updated_at > localInfo.updated_at) {
+            await MY_SCRIPT_BUCKET.put(getInfoKey(domain), JSON.stringify(remoteInfo));
+          }
+        } catch (e) {}
+      })
+    );
+  }
 };
