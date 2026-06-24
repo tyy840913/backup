@@ -526,6 +526,14 @@ const fileManagerHtml = `
       const filename = document.getElementById('new-filename').value.trim();
       if (!filename) { showStatus('请输入文件名', true); return; }
 
+      // 检查同名文件是否存在
+      try {
+        const listRes = await fetch('/list-all');
+        const listData = await listRes.json();
+        const exists = listData.files && listData.files.some(f => f.filename === filename);
+        if (exists && !confirm('文件 "' + filename + '" 已存在，是否继续创建？')) return;
+      } catch (e) { /* 忽略检查失败，继续创建 */ }
+
       document.getElementById('new-file-modal').style.display = 'none';
 
       try {
@@ -716,12 +724,34 @@ export default {
       }
 
       const bodyText = await request.text();
-      const fileSize = bodyText.length;
       const contentType = request.headers.get('Content-Type') || guessContentType(filename);
-      await MY_SCRIPT_BUCKET.put(filename, bodyText);
+
+      // 同名文件：同内容覆盖，不同内容加后缀区分
+      let finalName = filename;
+      const existing = await MY_SCRIPT_BUCKET.get(filename, { type: 'text' });
+      if (existing !== null) {
+        if (existing === bodyText) {
+          // 内容相同，直接覆盖
+        } else {
+          // 内容不同，加后缀
+          let i = 1;
+          while (true) {
+            const dotIdx = filename.lastIndexOf('.');
+            const base = dotIdx > 0 ? filename.substring(0, dotIdx) : filename;
+            const ext = dotIdx > 0 ? filename.substring(dotIdx) : '';
+            const candidate = `${base}-${i}${ext}`;
+            const check = await MY_SCRIPT_BUCKET.get(candidate, { type: 'text' });
+            if (check === null || check === bodyText) { finalName = candidate; break; }
+            i++;
+          }
+        }
+      }
+
+      const fileSize = bodyText.length;
+      await MY_SCRIPT_BUCKET.put(finalName, bodyText);
 
       // 更新本地信息文件
-      const info = await addFileToInfo(MY_SCRIPT_BUCKET, currentDomain, filename, fileSize, contentType);
+      const info = await addFileToInfo(MY_SCRIPT_BUCKET, currentDomain, finalName, fileSize, contentType);
 
       // 同步信息文件到所有其他节点
       const infoBody = JSON.stringify(info);
@@ -734,7 +764,7 @@ export default {
         )
       );
 
-      return new Response(JSON.stringify({ success: true, filename, size: fileSize, node: currentDomain }), {
+      return new Response(JSON.stringify({ success: true, filename: finalName, size: fileSize, node: currentDomain }), {
         headers: { 'Content-Type': 'application/json' }, status: 200
       });
     }
