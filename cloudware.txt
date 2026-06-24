@@ -774,7 +774,7 @@ export default {
     // --- API 路由 ---
     // 上传/更新
     if (request.method === 'PUT' && path.startsWith('update/')) {
-      const filename = path.substring('update/'.length);
+      const filename = decodeURIComponent(path.substring('update/'.length));
       if (!filename) return new Response('错误：未指定文件名。\n', { status: 400 });
       if (!isSafePath(filename)) return new Response('错误：文件名不合法（禁止路径遍历）。\n', { status: 400 });
 
@@ -821,7 +821,7 @@ export default {
 
     // 删除
     if (request.method === 'DELETE' && path.startsWith('delete/')) {
-      const filename = path.substring('delete/'.length);
+      const filename = decodeURIComponent(path.substring('delete/'.length));
       if (!filename) return new Response('错误：未指定文件名。\n', { status: 400 });
       if (!isSafePath(filename)) return new Response('错误：文件名不合法（禁止路径遍历）。\n', { status: 400 });
 
@@ -855,7 +855,7 @@ export default {
 
     // 重命名
     if (request.method === 'POST' && path.startsWith('rename/')) {
-      const oldName = path.substring('rename/'.length);
+      const oldName = decodeURIComponent(path.substring('rename/'.length));
       if (!oldName) return new Response('错误：未指定文件名。\n', { status: 400 });
       if (!isSafePath(oldName)) return new Response('错误：文件名不合法。\n', { status: 400 });
 
@@ -1041,26 +1041,27 @@ export default {
 
     // --- 文件下载（从信息文件找所在节点）---
     const nodeParam = url.searchParams.get('node');
+    const decodedPath = decodeURIComponent(path);
     if (nodeParam) {
       const targetDomain = allDomains.includes(nodeParam) ? nodeParam : null;
       if (targetDomain && targetDomain !== currentDomain) {
-        return proxyGet(targetDomain, path, requestAuthHeader, url);
+        return proxyGet(targetDomain, decodedPath, requestAuthHeader, url);
       }
     } else {
-      const fileNode = await findFileNodeFromInfo(MY_SCRIPT_BUCKET, path, allDomains, currentDomain);
+      const fileNode = await findFileNodeFromInfo(MY_SCRIPT_BUCKET, decodedPath, allDomains, currentDomain);
       if (fileNode !== currentDomain) {
-        return proxyGet(fileNode, path, requestAuthHeader, url);
+        return proxyGet(fileNode, decodedPath, requestAuthHeader, url);
       }
     }
 
-    const file = await MY_SCRIPT_BUCKET.get(path, { type: 'stream' });
+    const file = await MY_SCRIPT_BUCKET.get(decodedPath, { type: 'stream' });
     if (file === null) {
-      return new Response(`未找到文件: ${path}\n`, { status: 404 });
+      return new Response(`未找到文件: ${decodedPath}\n`, { status: 404 });
     }
     return new Response(file, {
       headers: {
-        'Content-Type': guessContentType(path),
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.split('/').pop())}`
+        'Content-Type': guessContentType(decodedPath),
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(decodedPath.split('/').pop())}`
       }
     });
   },
