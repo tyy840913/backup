@@ -264,7 +264,7 @@ const fileManagerHtml = `
     
     /* Modal styles */
     .modal { display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.4); overflow: auto; }
-    .modal-content { background-color: #fefefe; margin: 2% auto; padding: 10px; border: 1px solid #888; border-radius: 5px; width: 80%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
+    .modal-content { background-color: #fefefe; margin: 2% auto; padding: 10px; border: 1px solid #888; border-radius: 5px; width: 80%; max-width: 500px; max-height: 80vh; overflow-y: auto; box-sizing: border-box; }
     .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
     .close:hover, .close:focus { color: black; text-decoration: none; }
     .modal input, .modal select { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
@@ -286,7 +286,48 @@ const fileManagerHtml = `
     .editor-toolbar button:hover { background-color: var(--hover-bg-color); }
     .editor-toolbar .btn-cancel { background-color: #ccc; color: black; }
     .editor-toolbar .btn-confirm { background-color: var(--primary-color); color: white; }
-    #editor-textarea { flex-grow: 1; width: 100%; font-family: monospace; font-size: 14px; resize: none; border: 1px solid var(--border-color); border-radius: 4px; padding: 10px; box-sizing: border-box; }
+    #editor-textarea { flex-grow: 1; width: 100%; font-family: monospace; font-size: 14px; resize: none; border: 1px solid var(--border-color); border-radius: 4px; padding: 10px; box-sizing: border-box; white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+    #editor-textarea.wrap { white-space: pre-wrap; overflow-wrap: break-word; overflow-x: hidden; }
+
+    @media (max-width: 768px) {
+      .container { padding: 10px; border-radius: 0; box-shadow: none; }
+      header { flex-wrap: wrap; gap: 10px; }
+      header h1 { font-size: 1.2rem; width: 100%; }
+      .header-buttons { display: flex; gap: 8px; width: 100%; }
+      .header-buttons .upload-btn { flex: 1; text-align: center; font-size: 13px; padding: 10px 8px; }
+      #file-list li { flex-wrap: wrap; padding: 10px 12px; }
+      .item-icon { width: 20px; height: 20px; margin-right: 10px; }
+      .item-name { font-size: 14px; flex-basis: calc(100% - 30px); text-align: center; margin-bottom: 4px; }
+      .item-meta { width: auto; text-align: center; font-size: 11px; order: 1; margin-top: 4px; flex-basis: 100%; }
+      .item-actions { min-width: auto; gap: 2px; order: 2; justify-content: center; margin-top: 6px; flex-basis: 100%; }
+      .item-actions button { padding: 6px; margin: 0 4px; }
+      .item-actions svg { width: 20px; height: 20px; }
+      #status-message { left: 10px; right: 10px; transform: none; text-align: center; font-size: 14px; padding: 12px; }
+      .modal-content { width: 95%; margin: 5% auto; max-height: 85vh; }
+      #editor-modal .modal-content { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; border-radius: 0; overflow-x: hidden; }
+      .editor-header h2 { font-size: 0.95rem; }
+      .editor-header h2 span { max-width: 200px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+      .editor-toolbar { flex-wrap: wrap; gap: 6px; }
+      .editor-toolbar > div { flex-wrap: wrap; }
+      .editor-toolbar button { font-size: 12px; padding: 6px 8px; }
+      #editor-textarea { font-size: 13px; }
+      #path-breadcrumbs { font-size: 0.85rem; }
+    }
+
+    @media (max-width: 480px) {
+      #file-list li { flex-wrap: wrap; padding: 8px 10px; }
+      .item-icon { width: 18px; height: 18px; margin-right: 8px; }
+      .item-name { flex-basis: calc(100% - 26px); text-align: center; font-size: 14px; margin-bottom: 4px; }
+      .item-meta { text-align: center; font-size: 10px; order: 1; flex-basis: 100%; margin-left: 0; margin-top: 4px; }
+      .item-actions { order: 2; justify-content: center; margin-top: 6px; flex-basis: 100%; border-top: 1px solid #f0f0f0; padding-top: 6px; }
+      .item-actions button { padding: 5px; margin: 0 3px; }
+      .item-actions svg { width: 18px; height: 18px; }
+      .modal-content { width: 100%; margin: 0; border-radius: 0; min-height: 100vh; max-height: 100vh; }
+      #editor-modal .modal-content { overflow-x: hidden; }
+      .close { font-size: 32px; padding: 4px 8px; }
+      .modal input, .modal select { padding: 12px 8px; font-size: 16px; }
+      .modal-buttons button { padding: 12px 20px; font-size: 15px; }
+    }
   </style>
 </head>
 <body>
@@ -313,6 +354,7 @@ const fileManagerHtml = `
       </div>
       <div class="editor-toolbar">
         <div>
+          <button id="wrap-toggle-btn" title="切换自动换行">换行</button>
           <button id="format-json-btn" title="格式化JSON">格式化JSON</button>
           <button id="minify-json-btn" title="压缩JSON">压缩JSON</button>
         </div>
@@ -381,6 +423,8 @@ const fileManagerHtml = `
 
       document.getElementById('format-json-btn').onclick = () => formatJson(true);
       document.getElementById('minify-json-btn').onclick = () => formatJson(false);
+
+      document.getElementById('wrap-toggle-btn').onclick = toggleWrap;
       
       window.onclick = function(event) {
         if (event.target.classList.contains('modal')) {
@@ -519,7 +563,17 @@ const fileManagerHtml = `
     }
     
     function isTextFile(filename) {
-      const textExtensions = ['txt', 'js', 'json', 'html', 'css', 'md', 'xml', 'yml', 'yaml', 'csv', 'log', 'sh', 'conf'];
+      const textExtensions = [
+        'txt', 'js', 'json', 'html', 'css', 'md', 'xml', 'yml', 'yaml', 'csv', 'log', 'sh', 'conf',
+        'py', 'ts', 'tsx', 'mts', 'cts', 'jsx', 'vue', 'svelte', 'astro',
+        'java', 'go', 'rs', 'rb', 'php', 'pl', 'lua',
+        'c', 'cpp', 'cc', 'h', 'hpp', 'cs',
+        'toml', 'ini', 'cfg', 'env', 'sql',
+        'bat', 'ps1', 'bash', 'zsh',
+        'mjs', 'cjs',
+        'swift', 'kt', 'dart', 'tex', 'r', 'dockerfile', 'graphql',
+        'gradle', 'makefile'
+      ];
       const extension = filename.split('.').pop().toLowerCase();
       return textExtensions.includes(extension);
     }
@@ -552,6 +606,13 @@ const fileManagerHtml = `
       }
     }
     
+    function toggleWrap() {
+      const textarea = document.getElementById('editor-textarea');
+      const btn = document.getElementById('wrap-toggle-btn');
+      textarea.classList.toggle('wrap');
+      btn.textContent = textarea.classList.contains('wrap') ? '不换行' : '换行';
+    }
+
     function formatJson(beautify) {
       const textarea = document.getElementById('editor-textarea');
       try {
