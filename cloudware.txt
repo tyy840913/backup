@@ -455,8 +455,8 @@ const fileManagerHtml = `
         if (statsResp.ok) {
           const statsData = await statsResp.json();
           statsHtml = '<div style="margin-bottom:15px;padding:12px;background:#f0f8ff;border-radius:5px;font-size:13px">';
-          statsHtml += '📊 文件总数: <b>' + statsData.total + '</b> | ';
-          statsHtml += '总大小: <b>' + formatSize(statsData.totalSize) + '</b> | ';
+          statsHtml += '📊 文件总数: <b>' + statsData.total + '</b>&emsp;|&emsp;';
+          statsHtml += '总大小: <b>' + formatSize(statsData.totalSize) + '</b>&emsp;|&emsp;';
           statsHtml += '桶: <b>' + statsData.bucketCount + '</b>/' + statsData.totalDomains;
           statsHtml += '</div>';
         }
