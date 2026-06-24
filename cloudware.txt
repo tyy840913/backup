@@ -32,13 +32,32 @@ function guessContentType(filename) {
   return mimeTypes[fileExtension] || 'application/octet-stream';
 }
 
-function checkToken(request, env) {
-  if (!env.TOKEN) return false;
+function generateToken() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < 24; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+  return result;
+}
+
+async function checkToken(request, env, kv) {
   const url = new URL(request.url);
   const token = url.searchParams.get('token') || request.headers.get('X-Token');
-  if (!token) return false;
-  const validTokens = env.TOKEN.split(',').map(t => t.trim()).filter(Boolean);
-  return validTokens.includes(token);
+  if (!token) return null;
+  if (env.TOKEN) {
+    const tokens = env.TOKEN.split(',').map(t => t.trim()).filter(Boolean);
+    if (tokens.includes(token)) return { permissions: { download: true, upload: true, delete: true }, fromEnv: true };
+  }
+  if (kv) {
+    try {
+      const val = await kv.get('__tokens__/list');
+      if (val) {
+        const list = JSON.parse(val);
+        const found = list.find(t => t.token === token);
+        if (found) return found;
+      }
+    } catch (e) {}
+  }
+  return null;
 }
 
 function isSafePath(filename) {
@@ -75,9 +94,57 @@ function hashString(str) {
   return Math.abs(hash);
 }
 
-function getAllDomains(env, currentDomain) {
-  const others = (env.OTHER_DOMAINS || '').split(',').map(d => d.trim()).filter(Boolean);
-  return [currentDomain, ...others.filter(d => d !== currentDomain)];
+async function getAllDomains(env, currentDomain, kv) {
+  let all = [currentDomain];
+  if (kv) {
+    try {
+      const val = await kv.get('__settings__/domains');
+      if (val) all = [...new Set([currentDomain, ...JSON.parse(val)])];
+    } catch (e) {}
+  }
+  if (all.length === 1 && env.OTHER_DOMAINS) {
+    const envDoms = env.OTHER_DOMAINS.split(',').map(d => d.trim()).filter(Boolean);
+    if (envDoms.length) {
+      all = [...all, ...envDoms];
+      try { await kv.put('__settings__/domains', JSON.stringify(all.filter(d => d !== currentDomain))); } catch (e) {}
+    }
+  }
+  return all;
+}
+
+async function loadKVCredentials(kv) {
+  try {
+    const val = await kv.get('__settings__/credentials');
+    if (val) return JSON.parse(val);
+  } catch (e) {}
+  return null;
+}
+
+async function checkCredentials(authHeader, env, kv) {
+  const creds = decodeBasicAuth(authHeader);
+  if (!creds) return false;
+  const kvCreds = await loadKVCredentials(kv);
+  if (kvCreds) return kvCreds.username === creds.username && kvCreds.password === creds.password;
+  if (env.JIANGUO_USERNAME && env.JIANGUO_PASSWORD) {
+    const match = env.JIANGUO_USERNAME === creds.username && env.JIANGUO_PASSWORD === creds.password;
+    if (match) {
+      try { await kv.put('__settings__/credentials', JSON.stringify({ username: creds.username, password: creds.password })); } catch (e) {}
+    }
+    return match;
+  }
+  return false;
+}
+
+async function syncSettingsToAll(key, data, allDomains, currentDomain, authHeader) {
+  const body = JSON.stringify(data);
+  await Promise.allSettled(
+    allDomains.filter(d => d !== currentDomain).map(d =>
+      fetch(`https://${d}/__settings__/${key}`, {
+        method: 'PUT', body,
+        headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' }
+      }).catch(() => {})
+    )
+  );
 }
 
 // 跨域代理请求
@@ -314,22 +381,46 @@ const fileManagerHtml = `
       #path-breadcrumbs { font-size: 0.85rem; }
     }
 
-    @media (max-width: 480px) {
-      #file-list li { padding: 8px 10px; }
-      .item-icon { width: 18px; height: 18px; margin-right: 8px; }
-      .item-name { font-size: 13px; }
-      .item-meta { display: none; }
-      .item-actions button { padding: 5px; margin: 0; }
-      .item-actions svg { width: 18px; height: 18px; }
-      .modal-content { width: 100%; margin: 0; border-radius: 0; min-height: 100vh; max-height: 100vh; }
-      #editor-modal .modal-content { overflow-x: hidden; }
-      .close { font-size: 32px; padding: 4px 8px; }
-      .modal input, .modal select { padding: 12px 8px; font-size: 16px; }
-      .modal-buttons button { padding: 12px 20px; font-size: 15px; }
-    }
+    /* Login page */
+    #login-page { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f0f2f5; }
+    .login-box { background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 100%; max-width: 360px; }
+    .login-box h2 { text-align: center; margin-bottom: 24px; color: #333; }
+    .login-box input { width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
+    .login-box button { width: 100%; padding: 12px; background: var(--primary-color); color: #fff; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
+    .login-box button:hover { background: #0056b3; }
+    .login-box .login-error { color: var(--danger-color); margin-top: 12px; text-align: center; display: none; }
+
+    .settings-dropdown { position: absolute; top: 100%; right: 0; background: #fff; border: 1px solid var(--border-color); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); min-width: 180px; display: none; z-index: 1000; }
+    .settings-dropdown.show { display: block; }
+    .settings-dropdown .menu-item { padding: 10px 16px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-color); }
+    .settings-dropdown .menu-item:hover { background: var(--hover-bg-color); }
+    .settings-dropdown .menu-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .settings-dropdown .divider { height: 1px; background: var(--border-color); margin: 4px 0; }
+    .settings-btn-wrap { position: relative; display: inline-flex; }
+    .settings-btn { background: none; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; padding: 6px 8px; font-size: 18px; line-height: 1; }
+    .settings-btn:hover { background: var(--hover-bg-color); }
+    .perm-checkboxes { display: flex; gap: 16px; margin: 8px 0; }
+    .perm-checkboxes label { display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
+    .perm-checkboxes input { width: auto; margin: 0; }
+    .token-value { background: #f5f5f5; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 13px; word-break: break-all; margin: 8px 0; user-select: all; }
+    .domain-item, .token-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+    .domain-item:last-child, .token-item:last-child { border-bottom: none; }
+    .domain-item .badge, .token-item .badge { font-size: 11px; padding: 2px 6px; border-radius: 3px; background: #e8f4fd; color: #007bff; margin-left: 8px; }
+    .header-buttons { display: flex; align-items: center; gap: 8px; }
   </style>
 </head>
 <body>
+  <div id="login-page">
+    <div class="login-box">
+      <h2>文件管理器登录</h2>
+      <input type="text" id="login-username" placeholder="用户名" autocomplete="username">
+      <input type="password" id="login-password" placeholder="密码" autocomplete="current-password">
+      <button id="login-btn">登 录</button>
+      <div class="login-error" id="login-error"></div>
+    </div>
+  </div>
+
+  <div id="app" style="display:none">
   <div class="container">
     <header>
       <h1>📁 统一文件管理器</h1>
@@ -339,6 +430,16 @@ const fileManagerHtml = `
           <input type="file" id="file-input" multiple>
           <button type="button" id="upload-btn" class="upload-btn" onclick="document.getElementById('file-input').click();" disabled>上传文件</button>
         </form>
+        <div class="settings-btn-wrap">
+          <button class="settings-btn" id="settings-btn" title="设置">⚙️</button>
+          <div class="settings-dropdown" id="settings-dropdown">
+            <div class="menu-item" data-action="user"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>用户中心</div>
+            <div class="menu-item" data-action="domains"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>域名列表</div>
+            <div class="menu-item" data-action="tokens"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>API 令牌</div>
+            <div class="divider"></div>
+            <div class="menu-item" data-action="logout"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>退出</div>
+          </div>
+        </div>
       </div>
     </header>
     <div id="path-breadcrumbs"></div>
@@ -379,6 +480,14 @@ const fileManagerHtml = `
     </div>
   </div>
 
+  <div id="settings-modal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2 id="settings-modal-title"></h2>
+      <div id="settings-modal-body"></div>
+    </div>
+  </div>
+
   <div id="status-message"></div>
 
   <script>
@@ -392,12 +501,328 @@ const fileManagerHtml = `
     };
 
     let currentFileForOperation = null;
+    let bootstrapped = false;
+
+    // Patch fetch to include auth header
+    const origFetch = window.fetch;
+    window.fetch = function(url, opts) {
+      const creds = sessionStorage.getItem('auth');
+      if (creds) {
+        opts = opts || {};
+        opts.headers = opts.headers || {};
+        if (!opts.headers['Authorization']) opts.headers['Authorization'] = 'Basic ' + creds;
+      }
+      return origFetch.call(window, url, opts);
+    };
 
     document.addEventListener('DOMContentLoaded', () => {
+      const creds = sessionStorage.getItem('auth');
+      if (creds) {
+        checkAuth().then(authd => {
+          if (authd) {
+            showApp();
+          } else {
+            sessionStorage.removeItem('auth');
+            showLogin();
+          }
+        });
+      } else {
+        showLogin();
+      }
+      setupLogin();
+      setupSettings();
+    });
+
+    function showLogin() {
+      document.getElementById('login-page').style.display = 'flex';
+      document.getElementById('app').style.display = 'none';
+    }
+
+    function showApp() {
+      document.getElementById('login-page').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
       render();
       document.getElementById('file-input').addEventListener('change', handleFileUpload);
       setupModalEvents();
-    });
+      checkBootstrap();
+    }
+
+    function setupLogin() {
+      document.getElementById('login-btn').onclick = async () => {
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value;
+        if (!username || !password) {
+          document.getElementById('login-error').textContent = '请输入用户名和密码';
+          document.getElementById('login-error').style.display = 'block';
+          return;
+        }
+        const encoded = btoa(username + ':' + password);
+        sessionStorage.setItem('auth', encoded);
+        const authd = await checkAuth();
+        if (authd) {
+          document.getElementById('login-error').style.display = 'none';
+          showApp();
+        } else {
+          sessionStorage.removeItem('auth');
+          document.getElementById('login-error').textContent = '用户名或密码错误';
+          document.getElementById('login-error').style.display = 'block';
+        }
+      };
+      document.getElementById('login-username').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('login-btn').click(); });
+      document.getElementById('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('login-btn').click(); });
+    }
+
+    async function checkAuth() {
+      try {
+        const resp = await fetch('/auth/check');
+        const data = await resp.json();
+        return data.authenticated;
+      } catch { return false; }
+    }
+
+    async function checkBootstrap() {
+      try {
+        const resp = await fetch('/domains');
+        const data = await resp.json();
+        bootstrapped = data.bootstrapped;
+        if (!bootstrapped && data.domains.length <= 1) {
+          const domain = prompt('请输入已绑定的域名地址（留空表示本节点为首个节点）：\n例如: backup.example.com');
+          if (domain !== null && domain.trim()) {
+            const syncResp = await fetch('/sync/pull-from', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ domain: domain.trim() })
+            });
+            if (syncResp.ok) {
+              showStatus('数据同步成功');
+              render();
+            } else {
+              const err = await syncResp.text();
+              showStatus('同步失败: ' + err, true);
+            }
+          } else {
+            // First node, initialize empty domain list
+            await fetch('/domains', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ domain: '' })
+            });
+            showStatus('已初始化为首个节点');
+          }
+        }
+      } catch (e) { /* 忽略 */ }
+    }
+
+    function setupSettings() {
+      const settingsBtn = document.getElementById('settings-btn');
+      const dropdown = document.getElementById('settings-dropdown');
+      settingsBtn.onclick = (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle('show');
+      };
+      document.addEventListener('click', () => dropdown.classList.remove('show'));
+
+      dropdown.querySelectorAll('.menu-item[data-action]').forEach(item => {
+        item.onclick = (e) => {
+          e.stopPropagation();
+          dropdown.classList.remove('show');
+          const action = item.dataset.action;
+          if (action === 'logout') {
+            sessionStorage.removeItem('auth');
+            location.reload();
+          } else if (action === 'user') {
+            showUserCenter();
+          } else if (action === 'domains') {
+            showDomainList();
+          } else if (action === 'tokens') {
+            showTokenList();
+          }
+        };
+      });
+    }
+
+    function showUserCenter() {
+      const modal = document.getElementById('settings-modal');
+      const title = document.getElementById('settings-modal-title');
+      const body = document.getElementById('settings-modal-body');
+      title.textContent = '用户中心';
+      body.innerHTML = `
+        <div style="margin-bottom:16px;padding:8px 0;border-bottom:1px solid #f0f0f0"><strong>修改管理员密码</strong></div>
+        <label>新用户名</label>
+        <input type="text" id="sc-username" placeholder="新用户名">
+        <label>新密码</label>
+        <input type="password" id="sc-password" placeholder="新密码">
+        <label>确认密码</label>
+        <input type="password" id="sc-password2" placeholder="再次输入新密码">
+        <div class="modal-buttons">
+          <button class="btn-cancel">取消</button>
+          <button class="btn-confirm" id="sc-save">保存</button>
+        </div>
+      `;
+      modal.style.display = 'block';
+      modal.querySelector('.close').onclick = () => modal.style.display = 'none';
+      modal.querySelector('.btn-cancel').onclick = () => modal.style.display = 'none';
+      document.getElementById('sc-save').onclick = async () => {
+        const username = document.getElementById('sc-username').value.trim();
+        const password = document.getElementById('sc-password').value;
+        const password2 = document.getElementById('sc-password2').value;
+        if (!username || !password) { showStatus('请填写用户名和密码', true); return; }
+        if (password !== password2) { showStatus('两次密码不一致', true); return; }
+        const resp = await fetch('/auth/credentials', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        if (resp.ok) {
+          const encoded = btoa(username + ':' + password);
+          sessionStorage.setItem('auth', encoded);
+          showStatus('密码修改成功');
+          modal.style.display = 'none';
+        } else {
+          showStatus('修改失败', true);
+        }
+      };
+    }
+
+    async function showDomainList() {
+      const modal = document.getElementById('settings-modal');
+      const title = document.getElementById('settings-modal-title');
+      const body = document.getElementById('settings-modal-body');
+      title.textContent = '域名列表';
+      body.innerHTML = '<div style="text-align:center;padding:20px">加载中...</div>';
+      modal.style.display = 'block';
+      modal.querySelector('.close').onclick = () => modal.style.display = 'none';
+      try {
+        const resp = await fetch('/domains');
+        const data = await resp.json();
+        let html = '<div style="margin-bottom:12px">已绑定的域名（仅查看）</div>';
+        data.domains.forEach(d => {
+          const isKv = data.kvDomains.includes(d);
+          html += '<div class="domain-item"><span>' + d + (isKv ? '<span class="badge">KV</span>' : '') + '</span></div>';
+        });
+        if (data.domains.length === 0) html += '<div style="color:#888;padding:8px">暂无域名</div>';
+        body.innerHTML = html;
+      } catch (e) {
+        body.innerHTML = '<div style="color:var(--danger-color)">加载失败</div>';
+      }
+    }
+
+    async function showTokenList() {
+      const modal = document.getElementById('settings-modal');
+      const title = document.getElementById('settings-modal-title');
+      const body = document.getElementById('settings-modal-body');
+      title.textContent = 'API 令牌管理';
+      body.innerHTML = '<div style="text-align:center;padding:20px">加载中...</div>';
+      modal.style.display = 'block';
+      modal.querySelector('.close').onclick = () => modal.style.display = 'none';
+      try {
+        const resp = await fetch('/tokens');
+        const tokens = await resp.json();
+        let html = '';
+        tokens.forEach((t, i) => {
+          const perms = [];
+          if (t.permissions.download) perms.push('下载');
+          if (t.permissions.upload) perms.push('上传');
+          if (t.permissions.delete) perms.push('删除');
+          html += '<div class="token-item">';
+          html += '<div><strong>' + t.name + '</strong><br><span style="font-size:12px;color:#888;font-family:monospace">' + t.token + '</span><br><span style="font-size:11px;color:#666">' + perms.join(' / ') + '</span></div>';
+          html += '<div style="display:flex;gap:4px">';
+          html += '<button class="btn-confirm" style="padding:4px 8px;font-size:12px" onclick="editToken(' + i + ')">编辑</button>';
+          html += '<button class="btn-danger" style="padding:4px 8px;font-size:12px" onclick="deleteToken(' + i + ')">删除</button>';
+          html += '</div></div>';
+        });
+        if (tokens.length === 0) html += '<div style="color:#888;padding:8px">暂无令牌</div>';
+        html += '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-color)">';
+        html += '<div style="margin-bottom:8px"><strong>生成新令牌</strong></div>';
+        html += '<input type="text" id="nt-name" placeholder="令牌名称">';
+        html += '<div class="perm-checkboxes">';
+        html += '<label><input type="checkbox" id="nt-download" checked> 下载</label>';
+        html += '<label><input type="checkbox" id="nt-upload"> 上传</label>';
+        html += '<label><input type="checkbox" id="nt-delete"> 删除</label>';
+        html += '</div>';
+        html += '<div class="modal-buttons"><button class="btn-confirm" id="nt-create">生成</button></div></div>';
+        html += '<div id="nt-result" style="display:none"><div class="token-value" id="nt-token-value"></div><div class="modal-buttons"><button class="btn-cancel" onclick="document.getElementById(\'nt-result\').style.display=\'none\'">关闭</button></div></div>';
+        body.innerHTML = html;
+        document.getElementById('nt-create').onclick = createToken;
+      } catch (e) {
+        body.innerHTML = '<div style="color:var(--danger-color)">加载失败</div>';
+      }
+    }
+
+    async function createToken() {
+      const name = document.getElementById('nt-name').value.trim() || '未命名';
+      const permissions = {
+        download: document.getElementById('nt-download').checked,
+        upload: document.getElementById('nt-upload').checked,
+        delete: document.getElementById('nt-delete').checked
+      };
+      const resp = await fetch('/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, permissions })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        document.getElementById('nt-result').style.display = 'block';
+        document.getElementById('nt-token-value').textContent = data.token.token;
+        document.getElementById('nt-name').value = '';
+        showTokenList();
+      } else {
+        showStatus('生成失败', true);
+      }
+    }
+
+    function editToken(index) {
+      const body = document.getElementById('settings-modal-body');
+      const origHtml = body.innerHTML;
+      body.innerHTML = `
+        <div style="margin-bottom:8px"><strong>编辑令牌 #${index + 1}</strong></div>
+        <label>令牌名称</label>
+        <input type="text" id="et-name" placeholder="名称">
+        <div class="perm-checkboxes">
+          <label><input type="checkbox" id="et-download"> 下载</label>
+          <label><input type="checkbox" id="et-upload"> 上传</label>
+          <label><input type="checkbox" id="et-delete"> 删除</label>
+        </div>
+        <div class="modal-buttons">
+          <button class="btn-cancel" onclick="showTokenList()">取消</button>
+          <button class="btn-confirm" id="et-save">保存</button>
+        </div>
+      `;
+      fetch('/tokens').then(r => r.json()).then(tokens => {
+        const t = tokens[index];
+        document.getElementById('et-name').value = t.name;
+        document.getElementById('et-download').checked = t.permissions.download;
+        document.getElementById('et-upload').checked = t.permissions.upload;
+        document.getElementById('et-delete').checked = t.permissions.delete;
+      });
+      document.getElementById('et-save').onclick = async () => {
+        const name = document.getElementById('et-name').value.trim();
+        const permissions = {
+          download: document.getElementById('et-download').checked,
+          upload: document.getElementById('et-upload').checked,
+          delete: document.getElementById('et-delete').checked
+        };
+        const resp = await fetch('/tokens/' + index, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, permissions })
+        });
+        if (resp.ok) {
+          showStatus('修改成功');
+          showTokenList();
+        } else {
+          showStatus('修改失败', true);
+        }
+      };
+    }
+
+    async function deleteToken(index) {
+      if (!confirm('确定删除该令牌？')) return;
+      const resp = await fetch('/tokens/' + index, { method: 'DELETE' });
+      if (resp.ok) { showStatus('已删除'); showTokenList(); }
+      else showStatus('删除失败', true);
+    }
 
     function setupModalEvents() {
       document.getElementById('new-file-btn').onclick = () => {
@@ -419,10 +844,8 @@ const fileManagerHtml = `
         document.getElementById('editor-modal').style.display = 'none';
       };
       document.getElementById('save-editor').onclick = handleSaveEditor;
-
       document.getElementById('format-json-btn').onclick = () => formatJson(true);
       document.getElementById('minify-json-btn').onclick = () => formatJson(false);
-
       document.getElementById('wrap-toggle-btn').onclick = toggleWrap;
       
       window.onclick = function(event) {
@@ -581,7 +1004,6 @@ const fileManagerHtml = `
       const filename = document.getElementById('new-filename').value.trim();
       if (!filename) { showStatus('请输入文件名', true); return; }
 
-      // 检查同名文件是否存在
       try {
         const listRes = await fetch('/list-all');
         const listData = await listRes.json();
@@ -589,7 +1011,7 @@ const fileManagerHtml = `
           showStatus('文件 "' + filename + '" 已存在，请使用其他文件名', true);
           return;
         }
-      } catch (e) { /* 忽略检查失败 */ }
+      } catch (e) {}
 
       document.getElementById('new-file-modal').style.display = 'none';
 
@@ -623,8 +1045,16 @@ const fileManagerHtml = `
       }
     }
     
-    function downloadFile(domain, filePath) {
-        window.location.href = '/' + encodeURIComponent(filePath) + '?node=' + encodeURIComponent(domain);
+    async function downloadFile(domain, filePath) {
+      const resp = await fetch('/' + encodeURIComponent(filePath) + '?node=' + encodeURIComponent(domain));
+      if (!resp.ok) { showStatus('下载失败', true); return; }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filePath;
+      a.click();
+      URL.revokeObjectURL(url);
     }
 
     async function renameFile(domain, oldName) {
@@ -716,25 +1146,23 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.substring(1);
 
-    const { JIANGUO_USERNAME, JIANGUO_PASSWORD, MY_SCRIPT_BUCKET, OTHER_DOMAINS } = env;
-    if (!JIANGUO_USERNAME || !JIANGUO_PASSWORD) {
-      return new Response('错误：未配置用户名或密码环境变量。\n', { status: 500 });
-    }
+    const { MY_SCRIPT_BUCKET } = env;
 
     const authHeader = request.headers.get('Authorization');
-    const credentials = decodeBasicAuth(authHeader);
-    const basicValid = credentials && credentials.username === JIANGUO_USERNAME && credentials.password === JIANGUO_PASSWORD;
+    const basicValid = await checkCredentials(authHeader, env, MY_SCRIPT_BUCKET);
+    const tokenInfo = !basicValid ? await checkToken(request, env, MY_SCRIPT_BUCKET) : null;
+    const isAdmin = basicValid;
 
-    if (isFileOperation(path, request.method) ? !basicValid && !checkToken(request, env) : !basicValid) {
-      return new Response('未授权访问。\n', {
-        status: 401,
-        headers: { 'WWW-Authenticate': 'Basic realm="KV Cross-Domain File Manager"' }
-      });
+    if (path !== '' && (isFileOperation(path, request.method) ? !isAdmin && !tokenInfo : !isAdmin)) {
+      return new Response('未授权访问。\n', { status: 401 });
     }
 
-    const requestAuthHeader = getAuthHeader(JIANGUO_USERNAME, JIANGUO_PASSWORD);
+    const requestAuthHeader = isAdmin ? authHeader : getAuthHeader(
+      (await loadKVCredentials(MY_SCRIPT_BUCKET) || { username: env.JIANGUO_USERNAME, password: env.JIANGUO_PASSWORD }).username,
+      (await loadKVCredentials(MY_SCRIPT_BUCKET) || { username: env.JIANGUO_USERNAME, password: env.JIANGUO_PASSWORD }).password
+    );
     const currentDomain = url.hostname;
-    const allDomains = getAllDomains(env, currentDomain);
+    const allDomains = await getAllDomains(env, currentDomain, MY_SCRIPT_BUCKET);
 
     // --- 代理路由 ---
     if (path.startsWith('proxy/')) {
@@ -777,6 +1205,7 @@ export default {
       const filename = decodeURIComponent(path.substring('update/'.length));
       if (!filename) return new Response('错误：未指定文件名。\n', { status: 400 });
       if (!isSafePath(filename)) return new Response('错误：文件名不合法（禁止路径遍历）。\n', { status: 400 });
+      if (!isAdmin && tokenInfo && !tokenInfo.permissions.upload) return new Response('无上传权限。\n', { status: 403 });
 
       const nodeParam = url.searchParams.get('node');
       let targetDomain;
@@ -824,6 +1253,7 @@ export default {
       const filename = decodeURIComponent(path.substring('delete/'.length));
       if (!filename) return new Response('错误：未指定文件名。\n', { status: 400 });
       if (!isSafePath(filename)) return new Response('错误：文件名不合法（禁止路径遍历）。\n', { status: 400 });
+      if (!isAdmin && tokenInfo && !tokenInfo.permissions.delete) return new Response('无删除权限。\n', { status: 403 });
 
       const nodeParam = url.searchParams.get('node');
       const targetDomain = resolveNode(filename, allDomains, nodeParam);
@@ -858,6 +1288,7 @@ export default {
       const oldName = decodeURIComponent(path.substring('rename/'.length));
       if (!oldName) return new Response('错误：未指定文件名。\n', { status: 400 });
       if (!isSafePath(oldName)) return new Response('错误：文件名不合法。\n', { status: 400 });
+      if (!isAdmin && tokenInfo && !tokenInfo.permissions.delete) return new Response('无删除权限。\n', { status: 403 });
 
       const bodyText = await request.text();
       let newName;
@@ -922,6 +1353,7 @@ export default {
 
     // 返回本地节点统计（内部端点）
     if (request.method === 'GET' && path === 'node-stats') {
+      if (!isAdmin && tokenInfo && !tokenInfo.permissions.download) return new Response('无下载权限。\n', { status: 403 });
       const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
       let totalSize = 0;
       const fileList = [];
@@ -940,9 +1372,8 @@ export default {
       const localKeys = localList.keys.filter(k => !k.name.startsWith('__info__/')).map(k => k.name);
       const allFilesByDomain = { [currentDomain]: localKeys };
 
-      const otherDomains = (OTHER_DOMAINS || '').split(',').map(d => d.trim()).filter(Boolean);
       const results = await Promise.allSettled(
-        otherDomains.map(domain => 
+        allDomains.filter(d => d !== currentDomain).map(domain => 
           fetch(`https://${domain}/list-keys-flat`, { headers: { 'Authorization': requestAuthHeader } })
             .then(res => res.ok ? res.json() : Promise.reject())
             .then(data => ({ domain, keys: data.keys }))
@@ -967,6 +1398,7 @@ export default {
 
     // 统一文件列表（从所有 domain 的信息文件读取）
     if (request.method === 'GET' && path === 'list-all') {
+      if (!isAdmin && tokenInfo && !tokenInfo.permissions.download) return new Response('无下载权限。\n', { status: 403 });
       const files = await getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains);
       return new Response(JSON.stringify({ files }), {
         headers: { 'Content-Type': 'application/json;charset=UTF-8' }
@@ -975,6 +1407,7 @@ export default {
 
     // 节点统计（从所有 domain 的信息文件读取）
     if (request.method === 'GET' && path === 'stats') {
+      if (!isAdmin && tokenInfo && !tokenInfo.permissions.download) return new Response('无下载权限。\n', { status: 403 });
       let totalSize = 0;
       let totalFiles = 0;
       const nodeMap = {};
@@ -1026,10 +1459,203 @@ export default {
 
     // 保留向后兼容：list-meta 从信息文件读取
     if (request.method === 'GET' && path === 'list-meta') {
+      if (!isAdmin && tokenInfo && !tokenInfo.permissions.download) return new Response('无下载权限。\n', { status: 403 });
       const files = await getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains);
       return new Response(JSON.stringify({ files }), {
         headers: { 'Content-Type': 'application/json;charset=UTF-8' }
       });
+    }
+
+    // --- 设置管理端点（仅管理员 Basic Auth）---
+    if (!isAdmin && (path.startsWith('auth/') || path.startsWith('domains') || path.startsWith('tokens') || path.startsWith('sync/'))) {
+      return new Response('未授权访问。\n', { status: 401 });
+    }
+
+    // GET /auth/check — 检查认证状态
+    if (request.method === 'GET' && path === 'auth/check') {
+      return new Response(JSON.stringify({ authenticated: isAdmin || !!tokenInfo, isAdmin }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // PUT /auth/credentials — 修改管理员密码
+    if (request.method === 'PUT' && path === 'auth/credentials') {
+      const body = JSON.parse(await request.text() || '{}');
+      if (!body.username || !body.password) return new Response('需要用户名和密码。\n', { status: 400 });
+      const creds = { username: body.username, password: body.password };
+      await MY_SCRIPT_BUCKET.put('__settings__/credentials', JSON.stringify(creds));
+      await syncSettingsToAll('credentials', creds, allDomains, currentDomain, requestAuthHeader);
+      return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // GET /domains — 域名列表
+    if (request.method === 'GET' && path === 'domains') {
+      const kvVal = await MY_SCRIPT_BUCKET.get('__settings__/domains');
+      const kvDoms = kvVal ? JSON.parse(kvVal) : [];
+      return new Response(JSON.stringify({ domains: allDomains, kvDomains: kvDoms, bootstrapped: !!kvVal }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // POST /domains — 添加域名（仅首次）
+    if (request.method === 'POST' && path === 'domains') {
+      const existing = await MY_SCRIPT_BUCKET.get('__settings__/domains');
+      if (existing) return new Response('域名列表已锁定，不可手动添加。\n', { status: 400 });
+      const body = JSON.parse(await request.text() || '{}');
+      const newDomain = body.domain || currentDomain;
+      const newDoms = [newDomain];
+      await MY_SCRIPT_BUCKET.put('__settings__/domains', JSON.stringify(newDoms));
+      const updatedDoms = await getAllDomains(env, currentDomain, MY_SCRIPT_BUCKET);
+      await syncSettingsToAll('domains', newDoms, updatedDoms, currentDomain, requestAuthHeader);
+      return new Response(JSON.stringify({ success: true, domains: updatedDoms }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // DELETE /domains/<domain> — 删除域名（仅下次自动清理，不可手动）
+    if (request.method === 'DELETE' && path.startsWith('domains/')) {
+      return new Response('域名不可手动删除。\n', { status: 400 });
+    }
+
+    // GET /tokens — 令牌列表
+    if (request.method === 'GET' && path === 'tokens') {
+      const val = await MY_SCRIPT_BUCKET.get('__tokens__/list');
+      const list = val ? JSON.parse(val) : [];
+      return new Response(JSON.stringify(list.map((t, i) => ({ ...t, index: i, token: t.token.slice(0, 4) + '***' + t.token.slice(-4) }))), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // POST /tokens — 创建令牌
+    if (request.method === 'POST' && path === 'tokens') {
+      const body = JSON.parse(await request.text() || '{}');
+      const permissions = body.permissions || { download: false, upload: false, delete: false };
+      const newToken = {
+        token: generateToken(),
+        name: body.name || '',
+        permissions,
+        created_at: new Date().toISOString()
+      };
+      const val = await MY_SCRIPT_BUCKET.get('__tokens__/list');
+      const list = val ? JSON.parse(val) : [];
+      list.push(newToken);
+      await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(list));
+      await syncSettingsToAll('tokens', list, allDomains, currentDomain, requestAuthHeader);
+      return new Response(JSON.stringify({ success: true, token: newToken }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // PUT /tokens/<index> — 修改令牌
+    if (request.method === 'PUT' && path.startsWith('tokens/')) {
+      const idx = parseInt(path.substring('tokens/'.length));
+      const body = JSON.parse(await request.text() || '{}');
+      const val = await MY_SCRIPT_BUCKET.get('__tokens__/list');
+      const list = val ? JSON.parse(val) : [];
+      if (idx < 0 || idx >= list.length) return new Response('令牌不存在。\n', { status: 404 });
+      if (body.name !== undefined) list[idx].name = body.name;
+      if (body.permissions) list[idx].permissions = body.permissions;
+      await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(list));
+      await syncSettingsToAll('tokens', list, allDomains, currentDomain, requestAuthHeader);
+      return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // DELETE /tokens/<index> — 删除令牌
+    if (request.method === 'DELETE' && path.startsWith('tokens/')) {
+      const idx = parseInt(path.substring('tokens/'.length));
+      const val = await MY_SCRIPT_BUCKET.get('__tokens__/list');
+      const list = val ? JSON.parse(val) : [];
+      if (idx < 0 || idx >= list.length) return new Response('令牌不存在。\n', { status: 404 });
+      list.splice(idx, 1);
+      await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(list));
+      await syncSettingsToAll('tokens', list, allDomains, currentDomain, requestAuthHeader);
+      return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // POST /sync/pull-from — 从已有域名拉取全量数据
+    if (request.method === 'POST' && path === 'sync/pull-from') {
+      const body = JSON.parse(await request.text() || '{}');
+      if (!body.domain) return new Response('需要域名。\n', { status: 400 });
+      try {
+        const resp = await fetch(`https://${body.domain}/__settings__/all`, {
+          headers: { 'Authorization': requestAuthHeader }
+        });
+        if (!resp.ok) return new Response('同步失败：目标节点拒绝访问。\n', { status: 502 });
+        const data = await resp.json();
+        if (data.credentials) await MY_SCRIPT_BUCKET.put('__settings__/credentials', JSON.stringify(data.credentials));
+        if (data.tokens) await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(data.tokens));
+        if (data.domains) {
+          const existing = await MY_SCRIPT_BUCKET.get('__settings__/domains');
+          const merged = [...new Set([...(existing ? JSON.parse(existing) : []), ...data.domains])];
+          await MY_SCRIPT_BUCKET.put('__settings__/domains', JSON.stringify(merged));
+        }
+        if (data.info) {
+          for (const [key, val] of Object.entries(data.info)) {
+            await MY_SCRIPT_BUCKET.put(key, val);
+          }
+        }
+        const newDomains = await getAllDomains(env, currentDomain, MY_SCRIPT_BUCKET);
+        await Promise.allSettled(
+          newDomains.filter(d => d !== currentDomain).map(d =>
+            fetch(`https://${d}/__settings__/domains`, {
+              method: 'PUT',
+              body: JSON.stringify([currentDomain]),
+              headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+            }).catch(() => {})
+          )
+        );
+        return new Response(JSON.stringify({ success: true, domains: newDomains }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (e) {
+        return new Response(`同步失败: ${e.message}\n`, { status: 502 });
+      }
+    }
+
+    // GET /__settings__/all — 导出全量设置（用于同步）
+    if (request.method === 'GET' && path === '__settings__/all') {
+      const infoKeys = await MY_SCRIPT_BUCKET.list({ prefix: '__info__/' });
+      const info = {};
+      for (const key of infoKeys.keys) {
+        const val = await MY_SCRIPT_BUCKET.get(key.name);
+        if (val) info[key.name] = val;
+      }
+      const credentials = await loadKVCredentials(MY_SCRIPT_BUCKET);
+      const tokensVal = await MY_SCRIPT_BUCKET.get('__tokens__/list');
+      const domainsVal = await MY_SCRIPT_BUCKET.get('__settings__/domains');
+      return new Response(JSON.stringify({
+        credentials,
+        tokens: tokensVal ? JSON.parse(tokensVal) : [],
+        domains: domainsVal ? JSON.parse(domainsVal) : [],
+        info
+      }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // PUT /__settings__/<type> — 接收同步（内部使用）
+    if (request.method === 'PUT' && path.startsWith('__settings__/')) {
+      const key = path.substring('__settings__/'.length);
+      const body = await request.text();
+      if (['credentials', 'tokens', 'domains'].includes(key)) {
+        if (key === 'domains') {
+          const existing = await MY_SCRIPT_BUCKET.get('__settings__/domains');
+          const newDoms = JSON.parse(body);
+          const merged = [...new Set([...(existing ? JSON.parse(existing) : []), ...newDoms])];
+          await MY_SCRIPT_BUCKET.put('__settings__/domains', JSON.stringify(merged));
+        } else if (key === 'tokens') {
+          const existing = await MY_SCRIPT_BUCKET.get('__tokens__/list');
+          const remote = JSON.parse(body);
+          const local = existing ? JSON.parse(existing) : [];
+          for (const rt of remote) {
+            const found = local.findIndex(l => l.token === rt.token);
+            if (found >= 0) local[found] = rt;
+            else local.push(rt);
+          }
+          await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(local));
+        } else {
+          await MY_SCRIPT_BUCKET.put(`__settings__/${key}`, body);
+        }
+      }
+      return new Response('ok\n', { status: 200 });
     }
 
     // --- UI 页面 ---
@@ -1042,6 +1668,10 @@ export default {
     // --- 文件下载（从信息文件找所在节点）---
     const nodeParam = url.searchParams.get('node');
     const decodedPath = decodeURIComponent(path);
+    if (!isAdmin && tokenInfo && !tokenInfo.permissions.download) {
+      // Allow access to settings page HTML and auth check without download permission
+      if (decodedPath !== 'auth/check') return new Response('无下载权限。\n', { status: 403 });
+    }
     if (nodeParam) {
       const targetDomain = allDomains.includes(nodeParam) ? nodeParam : null;
       if (targetDomain && targetDomain !== currentDomain) {
@@ -1068,10 +1698,14 @@ export default {
 
   // 定时任务：同步各节点信息文件
   async scheduled(event, env, ctx) {
-    const { JIANGUO_USERNAME, JIANGUO_PASSWORD, MY_SCRIPT_BUCKET } = env;
-    if (!JIANGUO_USERNAME || !JIANGUO_PASSWORD || !MY_SCRIPT_BUCKET) return;
-    const requestAuthHeader = getAuthHeader(JIANGUO_USERNAME, JIANGUO_PASSWORD);
-    const allDomains = getAllDomains(env, 'localhost');
+    const { MY_SCRIPT_BUCKET } = env;
+    if (!MY_SCRIPT_BUCKET) return;
+    const kvCreds = await loadKVCredentials(MY_SCRIPT_BUCKET);
+    const username = (kvCreds && kvCreds.username) || env.JIANGUO_USERNAME;
+    const password = (kvCreds && kvCreds.password) || env.JIANGUO_PASSWORD;
+    if (!username || !password) return;
+    const requestAuthHeader = getAuthHeader(username, password);
+    const allDomains = await getAllDomains(env, 'localhost', MY_SCRIPT_BUCKET);
     
     await Promise.allSettled(
       allDomains.filter(d => d !== 'localhost').map(async (domain) => {
