@@ -300,7 +300,7 @@ const fileManagerHtml = `
       .item-name { font-size: 14px; }
       .item-meta { display: none; }
       .item-actions { min-width: auto; gap: 2px; }
-      .item-actions button { padding: 6px; margin: 0 3px; }
+      .item-actions button { padding: 6px; margin: 0 2px; }
       .item-actions svg { width: 20px; height: 20px; }
       #status-message { left: 10px; right: 10px; transform: none; text-align: center; font-size: 14px; padding: 12px; }
       .modal-content { width: 95%; margin: 5% auto; max-height: 85vh; }
@@ -319,7 +319,7 @@ const fileManagerHtml = `
       .item-icon { width: 18px; height: 18px; margin-right: 8px; }
       .item-name { font-size: 13px; }
       .item-meta { display: none; }
-      .item-actions button { padding: 5px; margin: 0 2px; }
+      .item-actions button { padding: 5px; margin: 0 1px; }
       .item-actions svg { width: 18px; height: 18px; }
       .modal-content { width: 100%; margin: 0; border-radius: 0; min-height: 100vh; max-height: 100vh; }
       #editor-modal .modal-content { overflow-x: hidden; }
