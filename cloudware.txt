@@ -52,12 +52,14 @@ function isFileOperation(path, method) {
   const internalAPIs = ['list-keys', 'list-keys-flat', 'list-meta', 'node-stats', 'sync-all'];
   if (method === 'GET' && (path === 'stats' || path === 'list-all')) return true;
   if ((method === 'PUT' && path.startsWith('update/')) ||
+      (method === 'POST' && path.startsWith('rename/')) ||
       (method === 'DELETE' && path.startsWith('delete/'))) return true;
   if (method === 'GET' && !internalAPIs.includes(path) && path !== '' && !path.startsWith('proxy/') && !path.startsWith('__info__')) return true;
   if (path.startsWith('proxy/')) {
     const parts = path.split('/');
     const targetPath = parts.slice(2).join('/');
     if ((method === 'PUT' && targetPath.startsWith('update/')) ||
+        (method === 'POST' && targetPath.startsWith('rename/')) ||
         (method === 'DELETE' && targetPath.startsWith('delete/'))) return true;
     if (method === 'GET' && !internalAPIs.includes(targetPath) && targetPath !== '') return true;
   }
@@ -340,9 +342,10 @@ const fileManagerHtml = `
     const icons = {
       folder: '<svg class="item-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="var(--folder-color)"><path d="M10 4H4c-1.1 0-2 .89-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>',
       file: '<svg class="item-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="var(--file-color)"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM13 9V3.5L18.5 9H13z"/></svg>',
+      edit: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/><rect x="8" y="12" width="8" height="1.2" rx="0.6"/><rect x="8" y="14.5" width="6" height="1.2" rx="0.6"/><rect x="8" y="17" width="5" height="1.2" rx="0.6"/></svg>',
       download: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
       delete: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="var(--danger-color)"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>',
-      edit: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>'
+      rename: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
     };
 
     let currentFileForOperation = null;
@@ -489,6 +492,12 @@ const fileManagerHtml = `
           blankBtn.disabled = true;
           actions.appendChild(blankBtn);
         }
+
+        const renameBtn = document.createElement('button');
+        renameBtn.title = '重命名';
+        renameBtn.innerHTML = icons.rename;
+        renameBtn.onclick = (e) => { e.stopPropagation(); renameFile(item.node, item.filename); };
+        actions.appendChild(renameBtn);
         
         const downloadBtn = document.createElement('button');
         downloadBtn.title = '下载';
@@ -544,6 +553,24 @@ const fileManagerHtml = `
     
     function downloadFile(domain, filePath) {
         window.location.href = '/' + filePath + '?node=' + encodeURIComponent(domain);
+    }
+
+    async function renameFile(domain, oldName) {
+      const newName = prompt('请输入新文件名：', oldName);
+      if (!newName || newName === oldName) return;
+
+      try {
+        const response = await fetch('/rename/' + oldName + '?node=' + encodeURIComponent(domain), {
+          method: 'POST',
+          body: JSON.stringify({ newname: newName }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (!response.ok) throw new Error(await response.text());
+        showStatus('已重命名为 "' + newName + '"');
+        render();
+      } catch (error) {
+        showStatus('重命名失败: ' + error.message, true);
+      }
     }
 
     async function handleFileUpload(event) {
@@ -742,6 +769,73 @@ export default {
       );
 
       return new Response(JSON.stringify({ success: true, filename, node: currentDomain }), {
+        headers: { 'Content-Type': 'application/json' }, status: 200
+      });
+    }
+
+    // 重命名
+    if (request.method === 'POST' && path.startsWith('rename/')) {
+      const oldName = path.substring('rename/'.length);
+      if (!oldName) return new Response('错误：未指定文件名。\n', { status: 400 });
+      if (!isSafePath(oldName)) return new Response('错误：文件名不合法。\n', { status: 400 });
+
+      const bodyText = await request.text();
+      let newName;
+      try {
+        newName = JSON.parse(bodyText).newname;
+      } catch (e) {
+        return new Response('错误：请求体需要 JSON {newname: "..."}\n', { status: 400 });
+      }
+      if (!newName || !isSafePath(newName)) {
+        return new Response('错误：新文件名不合法。\n', { status: 400 });
+      }
+
+      const nodeParam = url.searchParams.get('node');
+      const targetDomain = resolveNode(oldName, allDomains, nodeParam);
+
+      if (targetDomain !== currentDomain) {
+        const targetUrl = `https://${targetDomain}/rename/${oldName}${url.search}`;
+        try {
+          const resp = await fetch(targetUrl, {
+            method: 'POST', body: bodyText,
+            headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+          });
+          return new Response(resp.body, resp);
+        } catch (e) {
+          return new Response(`代理请求失败: ${e.message}\n`, { status: 500 });
+        }
+      }
+      if (!newName || !isSafePath(newName)) {
+        return new Response('错误：新文件名不合法。\n', { status: 400 });
+      }
+
+      const content = await MY_SCRIPT_BUCKET.get(oldName, { type: 'text' });
+      if (content === null) {
+        return new Response(`未找到文件: ${oldName}\n`, { status: 404 });
+      }
+
+      await MY_SCRIPT_BUCKET.put(newName, content);
+      await MY_SCRIPT_BUCKET.delete(oldName);
+
+      const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+      const oldEntry = info.files[oldName];
+      if (oldEntry) {
+        delete info.files[oldName];
+        info.files[newName] = oldEntry;
+      }
+      await saveInfo(MY_SCRIPT_BUCKET, currentDomain, info);
+
+      const infoBody = JSON.stringify(info);
+      await Promise.allSettled(
+        allDomains.filter(d => d !== currentDomain).map(d =>
+          fetch(`https://${d}/__info__/${currentDomain}`, {
+            method: 'PUT', body: infoBody,
+            headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+          }).catch(() => {})
+        )
+      );
+
+      return new Response(JSON.stringify({ success: true, old_name: oldName, new_name: newName }), {
         headers: { 'Content-Type': 'application/json' }, status: 200
       });
     }
