@@ -68,7 +68,7 @@ function isSafePath(filename) {
 }
 
 function isFileOperation(path, method) {
-  const internalAPIs = ['list-keys', 'list-keys-flat', 'list-meta', 'node-stats', 'sync-all'];
+  const internalAPIs = ['list-keys', 'list-keys-flat', 'list-meta', 'node-stats', 'sync-all', 'page-data'];
   if (method === 'GET' && (path === 'stats' || path === 'list-all')) return true;
   if ((method === 'PUT' && path.startsWith('update/')) ||
       (method === 'POST' && path.startsWith('rename/')) ||
@@ -166,10 +166,10 @@ async function proxyGet(targetDomain, targetPath, requestAuthHeader, url) {
   }
 }
 
-async function proxyPut(targetDomain, targetPath, request, requestAuthHeader, url) {
+async function proxyPut(targetDomain, targetPath, request, requestAuthHeader, url, bodyText) {
   const targetUrl = buildProxyUrl(targetDomain, targetPath, url);
   try {
-    const body = await request.text();
+    const body = bodyText !== undefined ? bodyText : await request.text();
     const resp = await fetch(targetUrl, {
       method: 'PUT', body,
       headers: { 'Authorization': requestAuthHeader, 'Content-Type': request.headers.get('Content-Type') || 'application/octet-stream' }
@@ -180,13 +180,13 @@ async function proxyPut(targetDomain, targetPath, request, requestAuthHeader, ur
   }
 }
 
-async function proxyRequest(targetDomain, targetPath, request, requestAuthHeader, url) {
+async function proxyRequest(targetDomain, targetPath, request, requestAuthHeader, url, bodyText) {
   if (request.method === 'GET' || request.method === 'HEAD') {
     return proxyGet(targetDomain, targetPath, requestAuthHeader, url);
   }
   const targetUrl = buildProxyUrl(targetDomain, targetPath, url);
   try {
-    const body = await request.text();
+    const body = bodyText !== undefined ? bodyText : await request.text();
     const fetchInit = {
       method: request.method,
       headers: { 'Authorization': requestAuthHeader, 'Content-Type': request.headers.get('Content-Type') || 'application/octet-stream' }
@@ -240,13 +240,13 @@ async function removeFileFromInfo(MY_SCRIPT_BUCKET, domain, filename) {
   return info;
 }
 
-// 获取所有域名信息文件的合并列表
+// 获取所有域名信息文件的合并列表（并行读取）
 async function getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains) {
+  const infos = await Promise.all(allDomains.map(d => loadInfo(MY_SCRIPT_BUCKET, d)));
   const files = [];
-  for (const domain of allDomains) {
-    const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
-    for (const [filename, f] of Object.entries(info.files)) {
-      files.push({ filename, size: f.size, content_type: f.content_type, node: domain });
+  for (let i = 0; i < allDomains.length; i++) {
+    for (const [filename, f] of Object.entries(infos[i].files)) {
+      files.push({ filename, size: f.size, content_type: f.content_type, node: allDomains[i] });
     }
   }
   return files;
@@ -308,10 +308,12 @@ const fileManagerHtml = `
     }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background-color: #f8f9fa; }
     .container { max-width: 960px; margin: 0 auto; padding: 20px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-    header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); margin-bottom: 20px; }
-    h1 { font-size: 1.75rem; margin: 0; }
+    header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); margin-bottom: 20px; gap: 8px; }
+    h1 { font-size: 1.75rem; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex-shrink: 1; }
     #file-input { display: none; }
-    .upload-btn { background-color: var(--primary-color); color: white; padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
+    .upload-btn { background-color: var(--primary-color); color: white; padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; white-space: nowrap; }
+    .header-buttons { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+    .settings-btn { background: none; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; padding: 8px 10px; font-size: 14px; line-height: 1; }
     .upload-btn:hover { background-color: #0056b3; }
     .upload-btn:disabled { background-color: #a0a0a0; cursor: not-allowed; }
     #path-breadcrumbs { font-size: 1rem; margin-bottom: 20px; color: #6c757d; white-space: nowrap; overflow-x: auto; }
@@ -322,11 +324,42 @@ const fileManagerHtml = `
     .item-icon { width: 24px; height: 24px; margin-right: 15px; flex-shrink: 0; }
     .item-name { flex: 1; cursor: pointer; color: var(--text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .item-name.folder { font-weight: 500; }
+    /* 多选相关 */
+    .file-checkbox { margin: 0 10px 0 4px; width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; }
+    #file-list li.selected { background-color: #e8f0fe; }
+    #selection-bar { display: none; align-items: center; gap: 8px; margin-bottom: 10px; padding: 8px 12px; background: #f0f8ff; border-radius: 5px; font-size: 13px; }
+    #selection-bar.show { display: flex; flex-wrap: wrap; }
+    #selection-bar label { display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; white-space: nowrap; }
+    #selection-bar label input { width: auto; margin: 0; }
+    #select-count { color: #666; white-space: nowrap; }
+    #delete-selected-btn { padding: 6px 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+    #delete-selected-btn:disabled { background: #ccc; cursor: not-allowed; }
+    /* 选择栏中的概览（桌面端） */
+    .bar-stats { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #555; white-space: nowrap; }
+    /* 桌面端：path-breadcrumbs隐藏，概览在选择栏内 */
+    @media (min-width: 769px) {
+      #path-breadcrumbs { display: none; }
+      #selection-bar.show { flex-wrap: nowrap; }
+      .bar-spacer { flex: 1; }
+    }
+    /* 手机端：概览在上，选择栏在下 */
+    @media (max-width: 768px) {
+      #path-breadcrumbs { display: block; margin-bottom: 2px; padding: 6px 8px; font-size: 12px; }
+      #selection-bar.show { display: flex; margin-top: 0; padding: 6px 2px 6px 8px; }
+      .bar-stats { display: none; }
+      #delete-selected-btn { margin-left: auto; margin-right: 0; }
+      .file-checkbox { margin-left: -4px; }
+    }
     .item-actions { display: flex; align-items: center; min-width: 90px; justify-content: flex-end; }
     .item-meta { width: 220px; flex-shrink: 0; text-align: right; font-size: 11px; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .item-actions button { background: none; border: none; cursor: pointer; padding: 5px; margin-left: 8px; opacity: 0.7; }
     .item-actions button:hover { opacity: 1; }
     .item-actions svg { width: 18px; height: 18px; vertical-align: middle; }
+
+    /* 令牌管理弹窗中的操作按钮（复制/编辑/删除） */
+    .token-item .item-actions button { padding: 7px; margin-left: 8px; }
+    .token-item .item-actions svg { width: 22px; height: 22px; }
+
     #status-message { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.75); color: white; padding: 10px 20px; border-radius: 5px; display: none; z-index: 1002; }
     
     /* Modal styles */
@@ -358,17 +391,21 @@ const fileManagerHtml = `
 
     @media (max-width: 768px) {
       .container { padding: 10px; border-radius: 0; box-shadow: none; }
-      header { flex-wrap: wrap; gap: 10px; }
+      header { flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
       header h1 { font-size: 1.2rem; width: 100%; }
-      .header-buttons { display: flex; gap: 8px; width: 100%; }
+      .header-buttons { display: flex; gap: 10px; width: 100%; }
       .header-buttons .upload-btn { flex: 1; text-align: center; font-size: 13px; padding: 10px 8px; }
-      #file-list li { padding: 10px 12px; }
+      #upload-form { flex: 1; display: flex; }
+      #upload-form .upload-btn { width: 100%; }
+      #file-list li { padding: 10px 2px 10px 12px; }
       .item-icon { width: 20px; height: 20px; margin-right: 10px; }
       .item-name { font-size: 14px; }
       .item-meta { display: none; }
       .item-actions { min-width: auto; }
-      .item-actions button { padding: 6px; margin: 0 1px; }
-      .item-actions svg { width: 20px; height: 20px; }
+      .item-actions button { padding: 4px; margin: 0; }
+      .item-actions svg { width: 18px; height: 18px; }
+      .token-item .item-actions button { padding: 8px; margin: 0 1px; }
+      .token-item .item-actions svg { width: 24px; height: 24px; }
       #status-message { left: 10px; right: 10px; transform: none; text-align: center; font-size: 14px; padding: 12px; }
       .modal-content { width: 95%; margin: 5% auto; max-height: 85vh; }
       #editor-modal .modal-content { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; border-radius: 0; overflow-x: hidden; }
@@ -381,15 +418,40 @@ const fileManagerHtml = `
       #path-breadcrumbs { font-size: 0.85rem; }
     }
 
-    /* Login page */
-    #login-page { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f0f2f5; }
-    .login-box { background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 100%; max-width: 360px; }
+    /* Login page - 默认隐藏，防止刷新时白框闪烁 */
+    #login-page { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; display: none; justify-content: center; align-items: center; background: #f0f2f5; }
+    .login-box { background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 100%; max-width: 360px; box-sizing: border-box; }
     .login-box h2 { text-align: center; margin-bottom: 24px; color: #333; }
     .login-box input { width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
     .login-box button { width: 100%; padding: 12px; background: var(--primary-color); color: #fff; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
     .login-box button:hover { background: #0056b3; }
     .login-box .login-error { color: var(--danger-color); margin-top: 12px; text-align: center; display: none; }
 
+    @media (max-width: 768px) {
+      #login-page { padding: 10px; align-items: flex-start; padding-top: 15vh; }
+      .login-box { padding: 24px 20px; max-width: 100%; border-radius: 12px; box-sizing: border-box; }
+      .login-box h2 { font-size: 1.2rem; margin-bottom: 20px; }
+      .login-box input { padding: 14px 12px; font-size: 16px; }
+      .login-box button { padding: 14px; font-size: 16px; }
+      .container { padding: 10px; border-radius: 0; box-shadow: none; }
+      header { flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+      header h1 { font-size: 1.2rem; width: 100%; }
+      .header-buttons { display: flex; gap: 10px; width: 100%; }
+      .header-buttons .upload-btn { flex: 1; text-align: center; font-size: 13px; padding: 10px 8px; }
+      #upload-form { flex: 1; display: flex; }
+      #upload-form .upload-btn { width: 100%; }
+      .settings-btn { font-size: 16px; padding: 10px 12px; }
+    }
+    @media (max-width: 480px) {
+      #login-page { padding-top: 10vh; }
+      .login-box { padding: 20px 16px; box-sizing: border-box; }
+      .login-box h2 { font-size: 1.05rem; margin-bottom: 16px; }
+      .login-box input { padding: 12px 10px; margin-bottom: 12px; }
+      .login-box button { padding: 12px; }
+    }
+
+    /* 默认隐藏APP，JS渲染完毕后显示，防止刷新时白框闪烁 */
+    #app { display: none; }
     .settings-dropdown { position: absolute; top: 100%; right: 0; background: #fff; border: 1px solid var(--border-color); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); min-width: 180px; display: none; z-index: 1000; }
     .settings-dropdown.show { display: block; }
     .settings-dropdown .menu-item { padding: 10px 16px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-color); }
@@ -397,7 +459,6 @@ const fileManagerHtml = `
     .settings-dropdown .menu-item svg { width: 18px; height: 18px; flex-shrink: 0; }
     .settings-dropdown .divider { height: 1px; background: var(--border-color); margin: 4px 0; }
     .settings-btn-wrap { position: relative; display: inline-flex; }
-    .settings-btn { background: none; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; padding: 6px 8px; font-size: 18px; line-height: 1; }
     .settings-btn:hover { background: var(--hover-bg-color); }
     .perm-checkboxes { display: flex; gap: 16px; margin: 8px 0; }
     .perm-checkboxes label { display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
@@ -406,43 +467,43 @@ const fileManagerHtml = `
     .domain-item, .token-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
     .domain-item:last-child, .token-item:last-child { border-bottom: none; }
     .domain-item .badge, .token-item .badge { font-size: 11px; padding: 2px 6px; border-radius: 3px; background: #e8f4fd; color: #007bff; margin-left: 8px; }
-    .header-buttons { display: flex; align-items: center; gap: 8px; }
   </style>
 </head>
 <body>
   <div id="login-page">
-    <div class="login-box">
-      <h2>文件管理器登录</h2>
-      <input type="text" id="login-username" placeholder="用户名" autocomplete="username">
-      <input type="password" id="login-password" placeholder="密码" autocomplete="current-password">
-      <button id="login-btn">登 录</button>
-      <div class="login-error" id="login-error"></div>
-    </div>
+    <div class="login-box" id="login-content"></div>
   </div>
 
-  <div id="app" style="display:none">
+  <div id="app">
   <div class="container">
     <header>
       <h1>📁 统一文件管理器</h1>
       <div class="header-buttons">
-        <button type="button" id="new-file-btn" class="upload-btn" disabled>新建文件</button>
+        <button type="button" id="new-file-btn" class="upload-btn" onclick="showNewFileModal()">新建文件</button>
         <form id="upload-form" style="display: inline;">
-          <input type="file" id="file-input" multiple>
-          <button type="button" id="upload-btn" class="upload-btn" onclick="document.getElementById('file-input').click();" disabled>上传文件</button>
+          <input type="file" id="file-input" multiple onchange="handleUpload(event)">
+          <button type="button" id="upload-btn" class="upload-btn" onclick="document.getElementById('file-input').click();">上传文件</button>
         </form>
         <div class="settings-btn-wrap">
-          <button class="settings-btn" id="settings-btn" title="设置">⚙️</button>
+          <button class="settings-btn" id="settings-btn" title="设置" onclick="toggleSettings(event)">⚙️</button>
           <div class="settings-dropdown" id="settings-dropdown">
-            <div class="menu-item" data-action="user"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>用户中心</div>
-            <div class="menu-item" data-action="domains"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>域名列表</div>
-            <div class="menu-item" data-action="tokens"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>API 令牌</div>
+            <div class="menu-item" onclick="menuAction('user')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>修改密码</div>
+            <div class="menu-item" onclick="menuAction('domains')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>域名列表</div>
+            <div class="menu-item" onclick="menuAction('tokens')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>API 令牌</div>
             <div class="divider"></div>
-            <div class="menu-item" data-action="logout"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>退出</div>
+            <div class="menu-item" onclick="menuAction('logout')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>退出</div>
           </div>
         </div>
       </div>
     </header>
     <div id="path-breadcrumbs"></div>
+    <div id="selection-bar">
+      <label><input type="checkbox" id="select-all" onchange="toggleSelectAll()"> 全选</label>
+      <span id="select-count">已选 0 个</span>
+      <button id="delete-selected-btn" disabled onclick="deleteSelected()">🗑 删除选中</button>
+      <span class="bar-spacer"></span>
+      <span class="bar-stats" id="bar-stats"></span>
+    </div>
     <ul id="file-list"></ul>
   </div>
   
@@ -488,8 +549,80 @@ const fileManagerHtml = `
     </div>
   </div>
 
+  <div id="create-token-modal" class="modal">
+    <div class="modal-content" style="max-width:400px">
+      <span class="close">&times;</span>
+      <h2>创建 API 令牌</h2>
+      <label>令牌名称</label>
+      <input type="text" id="ct-name" placeholder="令牌名称">
+      <div style="margin:12px 0 8px;font-size:13px;color:#666">权限</div>
+      <div class="perm-checkboxes">
+        <label><input type="checkbox" id="ct-upload" checked> 上传</label>
+        <label><input type="checkbox" id="ct-download" checked> 下载</label>
+        <label><input type="checkbox" id="ct-delete"> 删除</label>
+      </div>
+      <div class="modal-buttons">
+        <button class="btn-cancel">取消</button>
+        <button class="btn-confirm" id="ct-create">确定</button>
+      </div>
+    </div>
+  </div>
+
   <div id="status-message"></div>
 
+  <script>
+  // 初始化：默认登录页可见、APP隐藏（由CSS控制）
+  // 核心按钮函数（自包含，不依赖其他JS）
+  function toggleSettings(e) {
+    e.stopPropagation();
+    var d = document.getElementById('settings-dropdown');
+    if (d) d.classList.toggle('show');
+  }
+  function showNewFileModal() {
+    var el = document.getElementById('new-filename');
+    if (el) el.value = '';
+    var m = document.getElementById('new-file-modal');
+    if (m) m.style.display = 'block';
+  }
+  function handleUpload(e) {
+    var files = e.target.files;
+    if (!files || !files.length) return;
+    for (var i = 0; i < files.length; i++) {
+      (function(file) {
+        var fd = new FormData();
+        var xhr = new XMLHttpRequest();
+        xhr.open('PUT', '/update/' + encodeURIComponent(file.name), true);
+        xhr.onload = function() { location.reload(); };
+        xhr.send(file);
+      })(files[i]);
+    }
+    e.target.value = '';
+  }
+  function menuAction(action) {
+    var d = document.getElementById('settings-dropdown');
+    if (d) d.classList.remove('show');
+    if (action === 'logout') { sessionStorage.removeItem('auth'); location.href = '/'; }
+    else if (action === 'user') { var m = document.getElementById('settings-modal'); if (m) { document.getElementById('settings-modal-title').textContent = '修改密码'; document.getElementById('settings-modal-body').innerHTML = '加载中...'; m.style.display = 'block'; } }
+    else if (action === 'domains') { var m = document.getElementById('settings-modal'); if (m) { document.getElementById('settings-modal-title').textContent = '域名列表'; document.getElementById('settings-modal-body').innerHTML = '加载中...'; m.style.display = 'block'; } }
+    else if (action === 'tokens') { var m = document.getElementById('settings-modal'); if (m) { document.getElementById('settings-modal-title').textContent = 'API 令牌管理'; document.getElementById('settings-modal-body').innerHTML = '加载中...'; m.style.display = 'block'; } }
+  }
+  // 从令牌列表复制完整令牌
+  function copyFullToken(index) {
+    fetch('/tokens').then(function(r) { return r.json(); }).then(function(list) {
+      var t = list[index];
+      if (!t || !t.token_full) { alert('未找到令牌'); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(t.token_full).then(function() { alert('已复制令牌: ' + t.token_full.slice(0,8) + '...'); });
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = t.token_full; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+        alert('已复制令牌: ' + t.token_full.slice(0,8) + '...');
+      }
+    }).catch(function() { alert('获取令牌失败'); });
+  }
+  </script>
   <script>
     const icons = {
       folder: '<svg class="item-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="var(--folder-color)"><path d="M10 4H4c-1.1 0-2 .89-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>',
@@ -498,10 +631,40 @@ const fileManagerHtml = `
       download: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
       delete: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="var(--danger-color)"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>',
       rename: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
+      copy: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
     };
 
     let currentFileForOperation = null;
     let bootstrapped = false;
+
+    // 全局函数（支持内联 onclick 调用）
+    function toggleSettings(e) {
+      e.stopPropagation();
+      const d = document.getElementById('settings-dropdown');
+      if (d) d.classList.toggle('show');
+    }
+    document.addEventListener('click', function() {
+      const d = document.getElementById('settings-dropdown');
+      if (d) d.classList.remove('show');
+    });
+    function showNewFileModal() {
+      const el = document.getElementById('new-filename');
+      if (el) el.value = '';
+      const m = document.getElementById('new-file-modal');
+      if (m) m.style.display = 'block';
+    }
+    function handleUpload(e) {
+      // 转发到 handleFileUpload
+      handleFileUpload(e);
+    }
+    function menuAction(action) {
+      const d = document.getElementById('settings-dropdown');
+      if (d) d.classList.remove('show');
+      if (action === 'logout') { sessionStorage.removeItem('auth'); location.href = '/'; }
+      else if (action === 'user') showUserCenter();
+      else if (action === 'domains') showDomainList();
+      else if (action === 'tokens') showTokenList();
+    }
 
     // Patch fetch to include auth header
     const origFetch = window.fetch;
@@ -516,60 +679,68 @@ const fileManagerHtml = `
     };
 
     document.addEventListener('DOMContentLoaded', () => {
-      const creds = sessionStorage.getItem('auth');
-      if (creds) {
-        checkAuth().then(authd => {
-          if (authd) {
-            showApp();
-          } else {
-            sessionStorage.removeItem('auth');
-            showLogin();
-          }
-        });
-      } else {
-        showLogin();
-      }
-      setupLogin();
       setupSettings();
+      // 查询服务端认证状态，实时判断（支持HTML边缘缓存）
+      fetch('/auth/status').then(r => r.json()).then(status => {
+        if (!status.configured) {
+          // 未设置管理员密码：直接进入APP，弹窗提示设置
+          showApp();
+          setTimeout(() => showUserCenter(), 300);
+        } else if (sessionStorage.getItem('auth')) {
+          checkAuth().then(ok => ok ? showApp() : (sessionStorage.removeItem('auth'), showLogin()));
+        } else {
+          showLogin();
+        }
+      }).catch(() => {
+        // 请求失败时保守处理：显示登录页
+        showLogin();
+      });
     });
 
-    function showLogin() {
+    function showLoginPage() {
       document.getElementById('login-page').style.display = 'flex';
-      document.getElementById('app').style.display = 'none';
+    }
+
+    function showLogin() {
+      const box = document.getElementById('login-content');
+      box.innerHTML =
+        '<h2>文件管理器登录</h2>' +
+        '<input type="text" id="li-user" placeholder="用户名" autocomplete="username">' +
+        '<input type="password" id="li-pass" placeholder="密码" autocomplete="current-password">' +
+        '<button id="li-btn">登 录</button>' +
+        '<div class="login-error" id="li-err" style="display:none"></div>';
+      document.getElementById('li-btn').onclick = doLogin;
+      document.getElementById('li-user').onkeydown = e => { if (e.key === 'Enter') doLogin(); };
+      document.getElementById('li-pass').onkeydown = e => { if (e.key === 'Enter') doLogin(); };
+      document.getElementById('li-user').focus();
+      showLoginPage();
+    }
+
+    async function doLogin() {
+      const user = document.getElementById('li-user').value.trim();
+      const pass = document.getElementById('li-pass').value;
+      const err = document.getElementById('li-err');
+      if (!user || !pass) { err.textContent = '请输入用户名和密码'; err.style.display = 'block'; return; }
+      const encoded = btoa(user + ':' + pass);
+      sessionStorage.setItem('auth', encoded);
+      if (await checkAuth()) {
+        err.style.display = 'none';
+        document.getElementById('login-page').style.display = 'none';
+        showApp();
+      } else {
+        sessionStorage.removeItem('auth');
+        err.textContent = '用户名或密码错误';
+        err.style.display = 'block';
+      }
     }
 
     function showApp() {
-      document.getElementById('login-page').style.display = 'none';
       document.getElementById('app').style.display = 'block';
+      document.getElementById('login-page').style.display = 'none';
+      // 加载页面数据（文件列表 + 统计 + 域名引导，一步到位）
       render();
       document.getElementById('file-input').addEventListener('change', handleFileUpload);
       setupModalEvents();
-      checkBootstrap();
-    }
-
-    function setupLogin() {
-      document.getElementById('login-btn').onclick = async () => {
-        const username = document.getElementById('login-username').value.trim();
-        const password = document.getElementById('login-password').value;
-        if (!username || !password) {
-          document.getElementById('login-error').textContent = '请输入用户名和密码';
-          document.getElementById('login-error').style.display = 'block';
-          return;
-        }
-        const encoded = btoa(username + ':' + password);
-        sessionStorage.setItem('auth', encoded);
-        const authd = await checkAuth();
-        if (authd) {
-          document.getElementById('login-error').style.display = 'none';
-          showApp();
-        } else {
-          sessionStorage.removeItem('auth');
-          document.getElementById('login-error').textContent = '用户名或密码错误';
-          document.getElementById('login-error').style.display = 'block';
-        }
-      };
-      document.getElementById('login-username').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('login-btn').click(); });
-      document.getElementById('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('login-btn').click(); });
     }
 
     async function checkAuth() {
@@ -578,39 +749,6 @@ const fileManagerHtml = `
         const data = await resp.json();
         return data.authenticated;
       } catch { return false; }
-    }
-
-    async function checkBootstrap() {
-      try {
-        const resp = await fetch('/domains');
-        const data = await resp.json();
-        bootstrapped = data.bootstrapped;
-        if (!bootstrapped && data.domains.length <= 1) {
-          const domain = prompt('请输入已绑定的域名地址（留空表示本节点为首个节点）：\n例如: backup.example.com');
-          if (domain !== null && domain.trim()) {
-            const syncResp = await fetch('/sync/pull-from', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ domain: domain.trim() })
-            });
-            if (syncResp.ok) {
-              showStatus('数据同步成功');
-              render();
-            } else {
-              const err = await syncResp.text();
-              showStatus('同步失败: ' + err, true);
-            }
-          } else {
-            // First node, initialize empty domain list
-            await fetch('/domains', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ domain: '' })
-            });
-            showStatus('已初始化为首个节点');
-          }
-        }
-      } catch (e) { /* 忽略 */ }
     }
 
     function setupSettings() {
@@ -645,20 +783,18 @@ const fileManagerHtml = `
       const modal = document.getElementById('settings-modal');
       const title = document.getElementById('settings-modal-title');
       const body = document.getElementById('settings-modal-body');
-      title.textContent = '用户中心';
-      body.innerHTML = `
-        <div style="margin-bottom:16px;padding:8px 0;border-bottom:1px solid #f0f0f0"><strong>修改管理员密码</strong></div>
-        <label>新用户名</label>
-        <input type="text" id="sc-username" placeholder="新用户名">
-        <label>新密码</label>
-        <input type="password" id="sc-password" placeholder="新密码">
-        <label>确认密码</label>
-        <input type="password" id="sc-password2" placeholder="再次输入新密码">
-        <div class="modal-buttons">
-          <button class="btn-cancel">取消</button>
-          <button class="btn-confirm" id="sc-save">保存</button>
-        </div>
-      `;
+      title.textContent = '修改密码';
+      body.innerHTML = '<div style="margin-bottom:16px;padding:8px 0;border-bottom:1px solid #f0f0f0"><strong>修改管理员密码</strong></div>' +
+        '<label>新用户名</label>' +
+        '<input type="text" id="sc-username" placeholder="新用户名">' +
+        '<label>新密码</label>' +
+        '<input type="password" id="sc-password" placeholder="新密码">' +
+        '<label>确认密码</label>' +
+        '<input type="password" id="sc-password2" placeholder="再次输入新密码">' +
+        '<div class="modal-buttons">' +
+        '<button class="btn-cancel">取消</button>' +
+        '<button class="btn-confirm" id="sc-save">保存</button>' +
+        '</div>';
       modal.style.display = 'block';
       modal.querySelector('.close').onclick = () => modal.style.display = 'none';
       modal.querySelector('.btn-cancel').onclick = () => modal.style.display = 'none';
@@ -668,18 +804,25 @@ const fileManagerHtml = `
         const password2 = document.getElementById('sc-password2').value;
         if (!username || !password) { showStatus('请填写用户名和密码', true); return; }
         if (password !== password2) { showStatus('两次密码不一致', true); return; }
-        const resp = await fetch('/auth/credentials', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+        let resp = await fetch('/auth/setup', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })
         });
+        // 如果已设过密码，改用 /auth/credentials
+        if (resp.status === 400) {
+          resp = await fetch('/auth/credentials', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+        }
         if (resp.ok) {
           const encoded = btoa(username + ':' + password);
           sessionStorage.setItem('auth', encoded);
-          showStatus('密码修改成功');
+          showStatus('密码设置成功');
           modal.style.display = 'none';
         } else {
-          showStatus('修改失败', true);
+          const txt = await resp.text();
+          showStatus(txt.trim() || '设置失败', true);
         }
       };
     }
@@ -726,35 +869,29 @@ const fileManagerHtml = `
           if (t.permissions.delete) perms.push('删除');
           html += '<div class="token-item">';
           html += '<div><strong>' + t.name + '</strong><br><span style="font-size:12px;color:#888;font-family:monospace">' + t.token + '</span><br><span style="font-size:11px;color:#666">' + perms.join(' / ') + '</span></div>';
-          html += '<div style="display:flex;gap:4px">';
-          html += '<button class="btn-confirm" style="padding:4px 8px;font-size:12px" onclick="editToken(' + i + ')">编辑</button>';
-          html += '<button class="btn-danger" style="padding:4px 8px;font-size:12px" onclick="deleteToken(' + i + ')">删除</button>';
+          html += '<div class="item-actions">';
+          html += '<button title="复制" onclick="copyFullToken(' + i + ')">' + icons.copy + '</button>';
+          html += '<button title="编辑" onclick="editToken(' + i + ')">' + icons.edit + '</button>';
+          html += '<button title="删除" onclick="deleteToken(' + i + ')">' + icons.delete + '</button>';
           html += '</div></div>';
         });
         if (tokens.length === 0) html += '<div style="color:#888;padding:8px">暂无令牌</div>';
-        html += '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-color)">';
-        html += '<div style="margin-bottom:8px"><strong>生成新令牌</strong></div>';
-        html += '<input type="text" id="nt-name" placeholder="令牌名称">';
-        html += '<div class="perm-checkboxes">';
-        html += '<label><input type="checkbox" id="nt-download" checked> 下载</label>';
-        html += '<label><input type="checkbox" id="nt-upload"> 上传</label>';
-        html += '<label><input type="checkbox" id="nt-delete"> 删除</label>';
-        html += '</div>';
-        html += '<div class="modal-buttons"><button class="btn-confirm" id="nt-create">生成</button></div></div>';
-        html += '<div id="nt-result" style="display:none"><div class="token-value" id="nt-token-value"></div><div class="modal-buttons"><button class="btn-cancel" onclick="document.getElementById(\'nt-result\').style.display=\'none\'">关闭</button></div></div>';
+        // 分割线
+        html += '<div class="divider"></div>';
+        // 仅一个创建按钮
+        html += '<div style="margin-top:8px"><button class="btn-confirm" style="width:100%;padding:10px;font-size:14px" onclick="showCreateTokenModal()">+ 创建 API 令牌</button></div>';
         body.innerHTML = html;
-        document.getElementById('nt-create').onclick = createToken;
       } catch (e) {
         body.innerHTML = '<div style="color:var(--danger-color)">加载失败</div>';
       }
     }
 
-    async function createToken() {
-      const name = document.getElementById('nt-name').value.trim() || '未命名';
+    async function createTokenFromModal() {
+      const name = document.getElementById('ct-name').value.trim() || '未命名';
       const permissions = {
-        download: document.getElementById('nt-download').checked,
-        upload: document.getElementById('nt-upload').checked,
-        delete: document.getElementById('nt-delete').checked
+        upload: document.getElementById('ct-upload').checked,
+        download: document.getElementById('ct-download').checked,
+        delete: document.getElementById('ct-delete').checked
       };
       const resp = await fetch('/tokens', {
         method: 'POST',
@@ -763,32 +900,40 @@ const fileManagerHtml = `
       });
       if (resp.ok) {
         const data = await resp.json();
-        document.getElementById('nt-result').style.display = 'block';
-        document.getElementById('nt-token-value').textContent = data.token.token;
-        document.getElementById('nt-name').value = '';
-        showTokenList();
+        document.getElementById('ct-name').value = '';
+        document.getElementById('create-token-modal').style.display = 'none';
+        // 先刷新令牌列表，再显示生成的令牌
+        await showTokenList();
+        showStatus('令牌创建成功: ' + data.token.token.slice(0,8) + '...（请立即复制保存）');
       } else {
         showStatus('生成失败', true);
       }
     }
 
+    function showCreateTokenModal() {
+      const modal = document.getElementById('create-token-modal');
+      document.getElementById('ct-name').value = '';
+      document.getElementById('ct-upload').checked = true;
+      document.getElementById('ct-download').checked = true;
+      document.getElementById('ct-delete').checked = false;
+      modal.style.display = 'block';
+    }
+
     function editToken(index) {
       const body = document.getElementById('settings-modal-body');
       const origHtml = body.innerHTML;
-      body.innerHTML = `
-        <div style="margin-bottom:8px"><strong>编辑令牌 #${index + 1}</strong></div>
-        <label>令牌名称</label>
-        <input type="text" id="et-name" placeholder="名称">
-        <div class="perm-checkboxes">
-          <label><input type="checkbox" id="et-download"> 下载</label>
-          <label><input type="checkbox" id="et-upload"> 上传</label>
-          <label><input type="checkbox" id="et-delete"> 删除</label>
-        </div>
-        <div class="modal-buttons">
-          <button class="btn-cancel" onclick="showTokenList()">取消</button>
-          <button class="btn-confirm" id="et-save">保存</button>
-        </div>
-      `;
+      body.innerHTML = '<div style="margin-bottom:8px"><strong>编辑令牌 #' + (index + 1) + '</strong></div>' +
+        '<label>令牌名称</label>' +
+        '<input type="text" id="et-name" placeholder="名称">' +
+        '<div class="perm-checkboxes">' +
+        '<label><input type="checkbox" id="et-download"> 下载</label>' +
+        '<label><input type="checkbox" id="et-upload"> 上传</label>' +
+        '<label><input type="checkbox" id="et-delete"> 删除</label>' +
+        '</div>' +
+        '<div class="modal-buttons">' +
+        '<button class="btn-cancel" onclick="showTokenList()">取消</button>' +
+        '<button class="btn-confirm" id="et-save">保存</button>' +
+        '</div>';
       fetch('/tokens').then(r => r.json()).then(tokens => {
         const t = tokens[index];
         document.getElementById('et-name').value = t.name;
@@ -853,6 +998,12 @@ const fileManagerHtml = `
           event.target.style.display = 'none';
         }
       };
+
+      // 创建令牌弹窗事件
+      const ctModal = document.getElementById('create-token-modal');
+      ctModal.querySelector('.close').onclick = () => { ctModal.style.display = 'none'; };
+      ctModal.querySelector('.btn-cancel').onclick = () => { ctModal.style.display = 'none'; };
+      document.getElementById('ct-create').onclick = createTokenFromModal;
     }
 
     function showStatus(message, isError = false, duration = 3000) {
@@ -865,28 +1016,61 @@ const fileManagerHtml = `
 
     async function render() {
       try {
-        const [listResp, statsResp] = await Promise.all([
-          fetch('/list-all'),
-          fetch('/stats')
-        ]);
-        if (!listResp.ok) throw new Error('无法获取文件列表: ' + await listResp.text());
-        
-        const listData = await listResp.json();
-        const allFiles = listData.files || [];
+        const resp = await fetch('/page-data');
+        if (!resp.ok) throw new Error('无法获取页面数据: ' + await resp.text());
+        const data = await resp.json();
 
-        let statsHtml = '';
-        if (statsResp.ok) {
-          const statsData = await statsResp.json();
-          statsHtml = '<div style="margin-bottom:15px;padding:12px;background:#f0f8ff;border-radius:5px;font-size:13px">';
-          statsHtml += '📊 文件总数: <b>' + statsData.total + '</b>&emsp;|&emsp;';
-          statsHtml += '总大小: <b>' + formatSize(statsData.totalSize) + '</b>&emsp;|&emsp;';
-          statsHtml += '桶: <b>' + statsData.bucketCount + '</b>/' + statsData.totalDomains;
-          statsHtml += '</div>';
+        // 统计信息 — 同时放入概览区（手机）和选择栏（桌面）
+        const s = data.stats;
+        if (s) {
+          const statsH = '<b>' + s.total + '</b> 文件 &emsp;|&emsp; <b>' + formatSize(s.totalSize) + '</b> &emsp;|&emsp; <b>' + s.bucketCount + '</b>/<b>' + s.totalDomains + '</b> 桶';
+          document.getElementById('path-breadcrumbs').innerHTML = '📊 ' + statsH;
+          document.getElementById('bar-stats').innerHTML = '📊 ' + statsH;
         }
-        
-        document.getElementById('path-breadcrumbs').innerHTML = statsHtml || '';
-        renderFileList(allFiles);
+
+        // 渲染选择栏
+        const sb = document.getElementById('selection-bar');
+        if (data.files && data.files.length > 0) {
+          sb.classList.add('show');
+        } else {
+          sb.classList.remove('show');
+        }
+        // 清空已选
+        window.__selectedFiles = new Set();
+        document.getElementById('select-all').checked = false;
+        updateSelectionBar();
+
+        // 渲染文件列表
+        renderFileList(data.files || []);
         updateUploadButtonState();
+
+        // 域名引导（首次使用）
+        if (!bootstrapped && data.bootstrapped !== true && data.domains.length <= 1) {
+          const domain = prompt('请输入已绑定的域名地址（留空表示本节点为首个节点），例如: backup.example.com');
+          if (domain !== null && domain.trim()) {
+            const syncResp = await fetch('/sync/pull-from', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ domain: domain.trim() })
+            });
+            if (syncResp.ok) {
+              showStatus('数据同步成功');
+              render();
+            } else {
+              const err = await syncResp.text();
+              showStatus('同步失败: ' + err, true);
+            }
+          } else {
+            await fetch('/domains', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ domain: '' })});
+            showStatus('已初始化为首个节点');
+          }
+          bootstrapped = true;
+        } else if (data.bootstrapped) {
+          bootstrapped = true;
+        }
       } catch (error) {
         showStatus('错误: ' + error.message, true);
       }
@@ -922,7 +1106,20 @@ const fileManagerHtml = `
 
       files.forEach(item => {
         const li = document.createElement('li');
-        li.innerHTML = icons.file;
+        li.dataset.filename = item.filename;
+        li.dataset.node = item.node;
+
+        // 多选框
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'file-checkbox';
+        cb.onchange = function(e) {
+          e.stopPropagation();
+          updateSelection(this, li);
+        };
+        li.appendChild(cb);
+
+        li.innerHTML += icons.file;
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'item-name';
@@ -999,7 +1196,63 @@ const fileManagerHtml = `
       const extension = filename.split('.').pop().toLowerCase();
       return textExtensions.includes(extension);
     }
-    
+
+    // 多选功能
+    function updateSelectionBar() {
+      const count = window.__selectedFiles ? window.__selectedFiles.size : 0;
+      const el = document.getElementById('select-count');
+      const btn = document.getElementById('delete-selected-btn');
+      if (el) el.textContent = '已选 ' + count + ' 个';
+      if (btn) btn.disabled = count === 0;
+    }
+
+    function updateSelection(cb, li) {
+      window.__selectedFiles = window.__selectedFiles || new Set();
+      const fn = li.dataset.filename;
+      if (cb.checked) {
+        window.__selectedFiles.add(fn);
+        li.classList.add('selected');
+      } else {
+        window.__selectedFiles.delete(fn);
+        li.classList.remove('selected');
+        document.getElementById('select-all').checked = false;
+      }
+      updateSelectionBar();
+    }
+
+    function toggleSelectAll() {
+      const checked = document.getElementById('select-all').checked;
+      window.__selectedFiles = window.__selectedFiles || new Set();
+      const cbs = document.querySelectorAll('#file-list .file-checkbox');
+      cbs.forEach(cb => {
+        cb.checked = checked;
+        const li = cb.closest('li');
+        const fn = li.dataset.filename;
+        if (checked) { window.__selectedFiles.add(fn); li.classList.add('selected'); }
+        else { window.__selectedFiles.delete(fn); li.classList.remove('selected'); }
+      });
+      updateSelectionBar();
+    }
+
+    async function deleteSelected() {
+      const count = window.__selectedFiles ? window.__selectedFiles.size : 0;
+      if (count === 0) return;
+      if (!confirm('确定删除选中的 ' + count + ' 个文件？此操作无法撤销。')) return;
+      showStatus('正在删除 ' + count + ' 个文件...');
+      let success = 0, fail = 0;
+      const items = document.querySelectorAll('#file-list li.selected');
+      for (const li of items) {
+        const domain = li.dataset.node;
+        const filename = li.dataset.filename;
+        try {
+          const resp = await fetch('/delete/' + encodeURIComponent(filename) + '?node=' + encodeURIComponent(domain), { method: 'DELETE' });
+          if (resp.ok) success++; else fail++;
+        } catch { fail++; }
+      }
+      showStatus('删除完成: ' + success + ' 成功, ' + fail + ' 失败');
+      render();
+    }
+
     async function handleNewFileConfirm() {
       const filename = document.getElementById('new-filename').value.trim();
       if (!filename) { showStatus('请输入文件名', true); return; }
@@ -1152,15 +1405,20 @@ export default {
     const basicValid = await checkCredentials(authHeader, env, MY_SCRIPT_BUCKET);
     const tokenInfo = !basicValid ? await checkToken(request, env, MY_SCRIPT_BUCKET) : null;
     const isAdmin = basicValid;
+    const hasCredentials = !!(await loadKVCredentials(MY_SCRIPT_BUCKET));
 
-    if (path !== '' && (isFileOperation(path, request.method) ? !isAdmin && !tokenInfo : !isAdmin)) {
+    // 无凭据时跳过认证检查（允许空账号直接使用）
+    if (hasCredentials && path !== '' && path !== 'auth/status' && path !== 'auth/setup' && (isFileOperation(path, request.method) ? !isAdmin && !tokenInfo : !isAdmin)) {
       return new Response('未授权访问。\n', { status: 401 });
     }
 
-    const requestAuthHeader = isAdmin ? authHeader : getAuthHeader(
-      (await loadKVCredentials(MY_SCRIPT_BUCKET) || { username: env.JIANGUO_USERNAME, password: env.JIANGUO_PASSWORD }).username,
-      (await loadKVCredentials(MY_SCRIPT_BUCKET) || { username: env.JIANGUO_USERNAME, password: env.JIANGUO_PASSWORD }).password
-    );
+    let requestAuthHeader = '';
+    if (isAdmin) {
+      requestAuthHeader = authHeader;
+    } else if (hasCredentials) {
+      const creds = await loadKVCredentials(MY_SCRIPT_BUCKET);
+      if (creds) requestAuthHeader = getAuthHeader(creds.username, creds.password);
+    }
     const currentDomain = url.hostname;
     const allDomains = await getAllDomains(env, currentDomain, MY_SCRIPT_BUCKET);
 
@@ -1219,11 +1477,12 @@ export default {
         }
       }
 
+      const bodyText = await request.text();
+
       if (targetDomain !== currentDomain) {
-        return proxyRequest(targetDomain, path, request, requestAuthHeader, url);
+        return proxyRequest(targetDomain, path, request, requestAuthHeader, url, bodyText);
       }
 
-      const bodyText = await request.text();
       const contentType = request.headers.get('Content-Type') || guessContentType(filename);
       const fileSize = bodyText.length;
 
@@ -1408,11 +1667,13 @@ export default {
     // 节点统计（从所有 domain 的信息文件读取）
     if (request.method === 'GET' && path === 'stats') {
       if (!isAdmin && tokenInfo && !tokenInfo.permissions.download) return new Response('无下载权限。\n', { status: 403 });
+      const allInfos = await Promise.all(allDomains.map(d => loadInfo(MY_SCRIPT_BUCKET, d)));
       let totalSize = 0;
       let totalFiles = 0;
       const nodeMap = {};
-      for (const domain of allDomains) {
-        const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
+      for (let i = 0; i < allDomains.length; i++) {
+        const domain = allDomains[i];
+        const info = allInfos[i];
         const fileCount = Object.keys(info.files).length;
         if (fileCount > 0) {
           let domainSize = 0;
@@ -1426,6 +1687,44 @@ export default {
       return new Response(JSON.stringify({
         nodes, total: totalFiles, totalSize,
         bucketCount: nodes.length, totalDomains: allDomains.length
+      }), {
+        headers: { 'Content-Type': 'application/json;charset=UTF-8' }
+      });
+    }
+
+    // 统一页面数据：合并文件列表 + 统计 + 域名（一个请求替代三个）
+    if (request.method === 'GET' && path === 'page-data') {
+      if (!isAdmin && tokenInfo && !tokenInfo.permissions.download) return new Response('无下载权限。\n', { status: 403 });
+      const [files, allInfos, kvVal] = await Promise.all([
+        getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains),
+        Promise.all(allDomains.map(d => loadInfo(MY_SCRIPT_BUCKET, d))),
+        MY_SCRIPT_BUCKET.get('__settings__/domains')
+      ]);
+      let totalSize = 0, totalFiles = 0;
+      const nodeMap = {};
+      for (let i = 0; i < allDomains.length; i++) {
+        const domain = allDomains[i];
+        const info = allInfos[i];
+        const fileCount = Object.keys(info.files).length;
+        if (fileCount > 0) {
+          let domainSize = 0;
+          for (const f of Object.values(info.files)) domainSize += f.size || 0;
+          nodeMap[domain] = { fileCount, totalSize: domainSize };
+          totalSize += domainSize;
+          totalFiles += fileCount;
+        }
+      }
+      const kvDoms = kvVal ? JSON.parse(kvVal) : [];
+      return new Response(JSON.stringify({
+        files,
+        stats: {
+          nodes: Object.entries(nodeMap).map(([d, data]) => ({ domain: d, ...data })),
+          total: totalFiles, totalSize,
+          bucketCount: Object.keys(nodeMap).length, totalDomains: allDomains.length
+        },
+        domains: allDomains,
+        kvDomains: kvDoms,
+        bootstrapped: !!kvVal
       }), {
         headers: { 'Content-Type': 'application/json;charset=UTF-8' }
       });
@@ -1466,8 +1765,30 @@ export default {
       });
     }
 
+    // --- 首次设置端点（无需认证）---
+    // GET /auth/status — 检查是否已设置管理员账号
+    if (request.method === 'GET' && path === 'auth/status') {
+      const configured = !!(await loadKVCredentials(MY_SCRIPT_BUCKET));
+      return new Response(JSON.stringify({ configured }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // POST /auth/setup — 首次设置管理员账号密码（仅一次）
+    if (request.method === 'POST' && path === 'auth/setup') {
+      const existing = await loadKVCredentials(MY_SCRIPT_BUCKET);
+      if (existing) return new Response('管理员账号已设置，不可重复初始化。\n', { status: 400 });
+      const body = JSON.parse(await request.text() || '{}');
+      if (!body.username || !body.password) return new Response('需要用户名和密码。\n', { status: 400 });
+      const creds = { username: body.username, password: body.password };
+      await MY_SCRIPT_BUCKET.put('__settings__/credentials', JSON.stringify(creds));
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     // --- 设置管理端点（仅管理员 Basic Auth）---
-    if (!isAdmin && (path.startsWith('auth/') || path.startsWith('domains') || path.startsWith('tokens') || path.startsWith('sync/'))) {
+    if (hasCredentials && !isAdmin && (path.startsWith('auth/') || path.startsWith('domains') || path.startsWith('tokens') || path.startsWith('sync/'))) {
       return new Response('未授权访问。\n', { status: 401 });
     }
 
@@ -1521,7 +1842,7 @@ export default {
     if (request.method === 'GET' && path === 'tokens') {
       const val = await MY_SCRIPT_BUCKET.get('__tokens__/list');
       const list = val ? JSON.parse(val) : [];
-      return new Response(JSON.stringify(list.map((t, i) => ({ ...t, index: i, token: t.token.slice(0, 4) + '***' + t.token.slice(-4) }))), {
+      return new Response(JSON.stringify(list.map((t, i) => ({ ...t, index: i, token: t.token.slice(0, 4) + '***' + t.token.slice(-4), token_full: t.token }))), {
         headers: { 'Content-Type': 'application/json' }
       });
     }
@@ -1661,7 +1982,7 @@ export default {
     // --- UI 页面 ---
     if (path === '') {
       return new Response(fileManagerHtml, {
-        headers: { 'Content-Type': 'text/html;charset=UTF-8' }
+        headers: { 'Content-Type': 'text/html;charset=UTF-8', 'Cache-Control': 'public, max-age=600' }
       });
     }
 
