@@ -203,16 +203,24 @@ function getInfoKey(domain) {
 }
 
 async function loadInfo(MY_SCRIPT_BUCKET, domain) {
-  const val = await MY_SCRIPT_BUCKET.get(getInfoKey(domain));
-  if (val) {
-    try { return JSON.parse(val); } catch (e) {}
+  try {
+    const val = await MY_SCRIPT_BUCKET.get(getInfoKey(domain));
+    if (val) {
+      try { return JSON.parse(val); } catch (e) {}
+    }
+  } catch (e) {
+    console.error('loadInfo error for', domain, e);
   }
   return { updated_at: '1970-01-01T00:00:00Z', files: {} };
 }
 
 async function saveInfo(MY_SCRIPT_BUCKET, domain, info) {
   info.updated_at = new Date().toISOString();
-  await MY_SCRIPT_BUCKET.put(getInfoKey(domain), JSON.stringify(info));
+  try {
+    await MY_SCRIPT_BUCKET.put(getInfoKey(domain), JSON.stringify(info));
+  } catch (e) {
+    console.error('saveInfo error for', domain, e);
+  }
 }
 
 async function addFileToInfo(MY_SCRIPT_BUCKET, domain, filename, size, contentType) {
@@ -1378,6 +1386,7 @@ const fileManagerHtml = `
 
 export default {
   async fetch(request, env, ctx) {
+    try {
     const url = new URL(request.url);
     const path = url.pathname.substring(1);
 
@@ -1677,41 +1686,49 @@ export default {
     // 统一页面数据：合并文件列表 + 统计 + 域名（一个请求替代三个）
     if (request.method === 'GET' && path === 'page-data') {
       if (!isAdmin && tokenInfo && !tokenInfo.permissions.download) return new Response('无下载权限。\n', { status: 403 });
-      const [files, allInfos, kvVal, firstNodeVal] = await Promise.all([
-        getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains),
-        Promise.all(allDomains.map(d => loadInfo(MY_SCRIPT_BUCKET, d))),
-        MY_SCRIPT_BUCKET.get('__settings__/domains'),
-        MY_SCRIPT_BUCKET.get('__settings__/first_node')
-      ]);
-      let totalSize = 0, totalFiles = 0;
-      const nodeMap = {};
-      for (let i = 0; i < allDomains.length; i++) {
-        const domain = allDomains[i];
-        const info = allInfos[i];
-        const fileCount = Object.keys(info.files).length;
-        if (fileCount > 0) {
-          let domainSize = 0;
-          for (const f of Object.values(info.files)) domainSize += f.size || 0;
-          nodeMap[domain] = { fileCount, totalSize: domainSize };
-          totalSize += domainSize;
-          totalFiles += fileCount;
+      try {
+        const [files, allInfos, kvVal, firstNodeVal] = await Promise.all([
+          getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains),
+          Promise.all(allDomains.map(d => loadInfo(MY_SCRIPT_BUCKET, d))),
+          MY_SCRIPT_BUCKET.get('__settings__/domains'),
+          MY_SCRIPT_BUCKET.get('__settings__/first_node')
+        ]);
+        let totalSize = 0, totalFiles = 0;
+        const nodeMap = {};
+        for (let i = 0; i < allDomains.length; i++) {
+          const domain = allDomains[i];
+          const info = allInfos[i];
+          const fileCount = Object.keys(info.files).length;
+          if (fileCount > 0) {
+            let domainSize = 0;
+            for (const f of Object.values(info.files)) domainSize += f.size || 0;
+            nodeMap[domain] = { fileCount, totalSize: domainSize };
+            totalSize += domainSize;
+            totalFiles += fileCount;
+          }
         }
+        let kvDoms = [];
+        try { kvDoms = kvVal ? JSON.parse(kvVal) : []; } catch (e) {}
+        return new Response(JSON.stringify({
+          files,
+          stats: {
+            nodes: Object.entries(nodeMap).map(([d, data]) => ({ domain: d, ...data })),
+            total: totalFiles, totalSize,
+            bucketCount: Object.keys(nodeMap).length, totalDomains: allDomains.length
+          },
+          domains: allDomains,
+          kvDomains: kvDoms,
+          bootstrapped: !!kvVal,
+          firstNode: !!firstNodeVal
+        }), {
+          headers: { 'Content-Type': 'application/json;charset=UTF-8' }
+        });
+      } catch (e) {
+        console.error('page-data error:', e);
+        return new Response(JSON.stringify({ files: [], stats: { nodes: [], total: 0, totalSize: 0, bucketCount: 0, totalDomains: allDomains.length }, domains: allDomains, kvDomains: [], bootstrapped: false, firstNode: false }), {
+          headers: { 'Content-Type': 'application/json;charset=UTF-8' }, status: 200
+        });
       }
-      const kvDoms = kvVal ? JSON.parse(kvVal) : [];
-      return new Response(JSON.stringify({
-        files,
-        stats: {
-          nodes: Object.entries(nodeMap).map(([d, data]) => ({ domain: d, ...data })),
-          total: totalFiles, totalSize,
-          bucketCount: Object.keys(nodeMap).length, totalDomains: allDomains.length
-        },
-        domains: allDomains,
-        kvDomains: kvDoms,
-        bootstrapped: !!kvVal,
-        firstNode: !!firstNodeVal
-      }), {
-        headers: { 'Content-Type': 'application/json;charset=UTF-8' }
-      });
     }
 
     // 全量同步：按时间戳拉取所有节点的信息文件
@@ -2001,6 +2018,10 @@ export default {
         'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(decodedPath.split('/').pop())}`
       }
     });
+  } catch (e) {
+    console.error('fetch handler error:', e);
+    return new Response('内部错误: ' + e.message + '\n', { status: 500 });
+  }
   },
 
   // 定时任务：同步各节点信息文件
