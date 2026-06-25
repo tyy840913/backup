@@ -43,10 +43,6 @@ async function checkToken(request, env, kv) {
   const url = new URL(request.url);
   const token = url.searchParams.get('token') || request.headers.get('X-Token');
   if (!token) return null;
-  if (env.TOKEN) {
-    const tokens = env.TOKEN.split(',').map(t => t.trim()).filter(Boolean);
-    if (tokens.includes(token)) return { permissions: { download: true, upload: true, delete: true }, fromEnv: true };
-  }
   if (kv) {
     try {
       const val = await kv.get('__tokens__/list');
@@ -101,13 +97,6 @@ async function getAllDomains(env, currentDomain, kv) {
       const val = await kv.get('__settings__/domains');
       if (val) all = [...new Set([currentDomain, ...JSON.parse(val)])];
     } catch (e) {}
-  }
-  if (all.length === 1 && env.OTHER_DOMAINS) {
-    const envDoms = env.OTHER_DOMAINS.split(',').map(d => d.trim()).filter(Boolean);
-    if (envDoms.length) {
-      all = [...all, ...envDoms];
-      try { await kv.put('__settings__/domains', JSON.stringify(all.filter(d => d !== currentDomain))); } catch (e) {}
-    }
   }
   return all;
 }
@@ -818,8 +807,27 @@ const fileManagerHtml = `
         if (resp.ok) {
           const encoded = btoa(username + ':' + password);
           sessionStorage.setItem('auth', encoded);
-          showStatus('密码设置成功');
           modal.style.display = 'none';
+          showStatus('密码设置成功');
+          // 首次设置密码后，立即引导绑定节点（仅首次，后续不进入此分支）
+          setTimeout(async () => {
+            const domain = prompt('请输入已绑定的域名地址（留空表示本节点为首个节点），例如: backup.example.com');
+            if (domain !== null && domain.trim()) {
+              const syncResp = await fetch('/sync/pull-from', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ domain: domain.trim() })
+              });
+              if (syncResp.ok) showStatus('数据同步成功');
+              else showStatus('同步失败', true);
+            } else {
+              await fetch('/domains', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ domain: '' })
+              });
+              showStatus('已初始化为首个节点');
+            }
+            render();
+          }, 500);
         } else {
           const txt = await resp.text();
           showStatus(txt.trim() || '设置失败', true);
@@ -1044,33 +1052,7 @@ const fileManagerHtml = `
         renderFileList(data.files || []);
         updateUploadButtonState();
 
-        // 域名引导（首次使用）
-        if (!bootstrapped && data.bootstrapped !== true && data.domains.length <= 1) {
-          const domain = prompt('请输入已绑定的域名地址（留空表示本节点为首个节点），例如: backup.example.com');
-          if (domain !== null && domain.trim()) {
-            const syncResp = await fetch('/sync/pull-from', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ domain: domain.trim() })
-            });
-            if (syncResp.ok) {
-              showStatus('数据同步成功');
-              render();
-            } else {
-              const err = await syncResp.text();
-              showStatus('同步失败: ' + err, true);
-            }
-          } else {
-            await fetch('/domains', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ domain: '' })});
-            showStatus('已初始化为首个节点');
-          }
-          bootstrapped = true;
-        } else if (data.bootstrapped) {
-          bootstrapped = true;
-        }
+        bootstrapped = data.bootstrapped || false;
       } catch (error) {
         showStatus('错误: ' + error.message, true);
       }
@@ -1695,10 +1677,11 @@ export default {
     // 统一页面数据：合并文件列表 + 统计 + 域名（一个请求替代三个）
     if (request.method === 'GET' && path === 'page-data') {
       if (!isAdmin && tokenInfo && !tokenInfo.permissions.download) return new Response('无下载权限。\n', { status: 403 });
-      const [files, allInfos, kvVal] = await Promise.all([
+      const [files, allInfos, kvVal, firstNodeVal] = await Promise.all([
         getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains),
         Promise.all(allDomains.map(d => loadInfo(MY_SCRIPT_BUCKET, d))),
-        MY_SCRIPT_BUCKET.get('__settings__/domains')
+        MY_SCRIPT_BUCKET.get('__settings__/domains'),
+        MY_SCRIPT_BUCKET.get('__settings__/first_node')
       ]);
       let totalSize = 0, totalFiles = 0;
       const nodeMap = {};
@@ -1724,7 +1707,8 @@ export default {
         },
         domains: allDomains,
         kvDomains: kvDoms,
-        bootstrapped: !!kvVal
+        bootstrapped: !!kvVal,
+        firstNode: !!firstNodeVal
       }), {
         headers: { 'Content-Type': 'application/json;charset=UTF-8' }
       });
@@ -1826,6 +1810,10 @@ export default {
       const newDomain = body.domain || currentDomain;
       const newDoms = [newDomain];
       await MY_SCRIPT_BUCKET.put('__settings__/domains', JSON.stringify(newDoms));
+      // 如果域名和当前节点一致（首个节点），写入标记
+      if (newDomain === currentDomain) {
+        await MY_SCRIPT_BUCKET.put('__settings__/first_node', '1');
+      }
       const updatedDoms = await getAllDomains(env, currentDomain, MY_SCRIPT_BUCKET);
       await syncSettingsToAll('domains', newDoms, updatedDoms, currentDomain, requestAuthHeader);
       return new Response(JSON.stringify({ success: true, domains: updatedDoms }), {
@@ -1916,6 +1904,8 @@ export default {
           }
         }
         const newDomains = await getAllDomains(env, currentDomain, MY_SCRIPT_BUCKET);
+        // 同步成功后清除首个节点标记
+        await MY_SCRIPT_BUCKET.delete('__settings__/first_node');
         await Promise.allSettled(
           newDomains.filter(d => d !== currentDomain).map(d =>
             fetch(`https://${d}/__settings__/domains`, {
@@ -1962,16 +1952,12 @@ export default {
           const newDoms = JSON.parse(body);
           const merged = [...new Set([...(existing ? JSON.parse(existing) : []), ...newDoms])];
           await MY_SCRIPT_BUCKET.put('__settings__/domains', JSON.stringify(merged));
-        } else if (key === 'tokens') {
-          const existing = await MY_SCRIPT_BUCKET.get('__tokens__/list');
-          const remote = JSON.parse(body);
-          const local = existing ? JSON.parse(existing) : [];
-          for (const rt of remote) {
-            const found = local.findIndex(l => l.token === rt.token);
-            if (found >= 0) local[found] = rt;
-            else local.push(rt);
+          // 收到外部域名同步时，清除首个节点标记
+          if (merged.some(d => d !== url.hostname)) {
+            await MY_SCRIPT_BUCKET.delete('__settings__/first_node');
           }
-          await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(local));
+        } else if (key === 'tokens') {
+          await MY_SCRIPT_BUCKET.put('__tokens__/list', body);
         } else {
           await MY_SCRIPT_BUCKET.put(`__settings__/${key}`, body);
         }
