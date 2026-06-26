@@ -51,7 +51,9 @@ async function checkToken(request, env, kv) {
         const found = list.find(t => t.token === token);
         if (found) return found;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('checkToken KV error:', e);
+    }
   }
   return null;
 }
@@ -96,7 +98,9 @@ async function getAllDomains(env, currentDomain, kv) {
     try {
       const val = await kv.get('__settings__/domains');
       if (val) all = [...new Set([currentDomain, ...JSON.parse(val)])];
-    } catch (e) {}
+    } catch (e) {
+      console.error('getAllDomains KV error:', e);
+    }
   }
   return all;
 }
@@ -105,7 +109,9 @@ async function loadKVCredentials(kv) {
   try {
     const val = await kv.get('__settings__/credentials');
     if (val) return JSON.parse(val);
-  } catch (e) {}
+  } catch (e) {
+    console.error('loadKVCredentials KV error:', e);
+  }
   return null;
 }
 
@@ -117,7 +123,9 @@ async function checkCredentials(authHeader, env, kv) {
   if (env.JIANGUO_USERNAME && env.JIANGUO_PASSWORD) {
     const match = env.JIANGUO_USERNAME === creds.username && env.JIANGUO_PASSWORD === creds.password;
     if (match) {
-      try { await kv.put('__settings__/credentials', JSON.stringify({ username: creds.username, password: creds.password })); } catch (e) {}
+      try { await kv.put('__settings__/credentials', JSON.stringify({ username: creds.username, password: creds.password })); } catch (e) {
+        console.error('checkCredentials: failed to cache credentials to KV:', e);
+      }
     }
     return match;
   }
@@ -487,6 +495,7 @@ const fileManagerHtml = `
             <div class="menu-item" onclick="menuAction('user')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>修改密码</div>
             <div class="menu-item" onclick="menuAction('domains')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>域名列表</div>
             <div class="menu-item" onclick="menuAction('tokens')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>API 令牌</div>
+            <div class="menu-item" onclick="menuAction('sync')"><svg viewBox="0 0 24 24" fill="var(--success-color)"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>数据同步</div>
             <div class="divider"></div>
             <div class="menu-item" onclick="menuAction('logout')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>退出</div>
           </div>
@@ -599,9 +608,10 @@ const fileManagerHtml = `
     var d = document.getElementById('settings-dropdown');
     if (d) d.classList.remove('show');
     if (action === 'logout') { sessionStorage.removeItem('auth'); location.href = '/'; }
-    else if (action === 'user') { var m = document.getElementById('settings-modal'); if (m) { document.getElementById('settings-modal-title').textContent = '修改密码'; document.getElementById('settings-modal-body').innerHTML = '加载中...'; m.style.display = 'block'; } }
+    else if (action === 'user') { showUserCenter(); }
     else if (action === 'domains') { var m = document.getElementById('settings-modal'); if (m) { document.getElementById('settings-modal-title').textContent = '域名列表'; document.getElementById('settings-modal-body').innerHTML = '加载中...'; m.style.display = 'block'; } }
     else if (action === 'tokens') { var m = document.getElementById('settings-modal'); if (m) { document.getElementById('settings-modal-title').textContent = 'API 令牌管理'; document.getElementById('settings-modal-body').innerHTML = '加载中...'; m.style.display = 'block'; } }
+    else if (action === 'sync') { startDataSync(); }
   }
   // 从令牌列表复制完整令牌
   function copyFullToken(index) {
@@ -661,6 +671,7 @@ const fileManagerHtml = `
       else if (action === 'user') showUserCenter();
       else if (action === 'domains') showDomainList();
       else if (action === 'tokens') showTokenList();
+      else if (action === 'sync') startDataSync();
     }
 
     // Patch fetch to include auth header
@@ -676,7 +687,7 @@ const fileManagerHtml = `
     };
 
     document.addEventListener('DOMContentLoaded', () => {
-      setupSettings();
+      try { setupSettings(); } catch (e) { console.error('setupSettings error:', e); }
       // 查询服务端认证状态，实时判断（支持HTML边缘缓存）
       fetch('/auth/status').then(r => r.json()).then(status => {
         if (!status.configured) {
@@ -771,6 +782,8 @@ const fileManagerHtml = `
             showDomainList();
           } else if (action === 'tokens') {
             showTokenList();
+          } else if (action === 'sync') {
+            startDataSync();
           }
         };
       });
@@ -795,7 +808,10 @@ const fileManagerHtml = `
       modal.style.display = 'block';
       modal.querySelector('.close').onclick = () => modal.style.display = 'none';
       modal.querySelector('.btn-cancel').onclick = () => modal.style.display = 'none';
-      document.getElementById('sc-save').onclick = async () => {
+      document.getElementById('sc-save').onclick = savePassword;
+    }
+
+    async function savePassword() {
         const username = document.getElementById('sc-username').value.trim();
         const password = document.getElementById('sc-password').value;
         const password2 = document.getElementById('sc-password2').value;
@@ -815,11 +831,11 @@ const fileManagerHtml = `
         if (resp.ok) {
           const encoded = btoa(username + ':' + password);
           sessionStorage.setItem('auth', encoded);
-          modal.style.display = 'none';
+          document.getElementById('settings-modal').style.display = 'none';
           showStatus('密码设置成功');
           // 首次设置密码后，立即引导绑定节点（仅首次，后续不进入此分支）
           setTimeout(async () => {
-            const domain = prompt('请输入已绑定的域名地址（留空表示本节点为首个节点），例如: backup.example.com');
+            const domain = prompt('请输入已绑定的域名地址（留空跳过），例如: backup.example.com');
             if (domain !== null && domain.trim()) {
               const syncResp = await fetch('/sync/pull-from', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -832,7 +848,7 @@ const fileManagerHtml = `
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ domain: '' })
               });
-              showStatus('已初始化为首个节点');
+              showStatus('初始化完成');
             }
             render();
           }, 500);
@@ -840,7 +856,25 @@ const fileManagerHtml = `
           const txt = await resp.text();
           showStatus(txt.trim() || '设置失败', true);
         }
-      };
+    }
+
+    async function startDataSync() {
+      showStatus('正在从所有节点同步数据...');
+      try {
+        const resp = await fetch('/sync/data-sync', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }
+        });
+        if (!resp.ok) {
+          const err = await resp.text();
+          showStatus('数据同步失败: ' + (err.length > 60 ? err.substring(0,60) + '...' : err), true);
+          return;
+        }
+        const data = await resp.json();
+        showStatus('同步完成: ' + (data.domains || []).length + ' 个域名, ' +
+          (data.tokens || 0) + ' 个令牌, ' + (data.syncedInfo || 0) + ' 个文件列表更新');
+      } catch (e) {
+        showStatus('数据同步异常: ' + e.message, true);
+      }
     }
 
     async function showDomainList() {
@@ -1103,13 +1137,25 @@ const fileManagerHtml = `
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.className = 'file-checkbox';
-        cb.onchange = function(e) {
+        cb.onclick = function(e) {
           e.stopPropagation();
-          updateSelection(this, li);
+          window.__selectedFiles = window.__selectedFiles || new Set();
+          const fn = li.dataset.filename;
+          if (this.checked) {
+            window.__selectedFiles.add(fn);
+            li.classList.add('selected');
+          } else {
+            window.__selectedFiles.delete(fn);
+            li.classList.remove('selected');
+            document.getElementById('select-all').checked = false;
+          }
+          const count = window.__selectedFiles.size;
+          document.getElementById('select-count').textContent = '已选 ' + count + ' 个';
+          document.getElementById('delete-selected-btn').disabled = count === 0;
         };
         li.appendChild(cb);
 
-        li.innerHTML += icons.file;
+        li.insertAdjacentHTML('beforeend', icons.file);
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'item-name';
@@ -1290,7 +1336,12 @@ const fileManagerHtml = `
     
     async function downloadFile(domain, filePath) {
       const resp = await fetch('/' + encodeURIComponent(filePath) + '?node=' + encodeURIComponent(domain));
-      if (!resp.ok) { showStatus('下载失败', true); return; }
+      if (!resp.ok) {
+        let msg = '下载失败';
+        try { const err = await resp.json(); msg = err.error || msg; } catch (e) {}
+        showStatus(msg, true);
+        return;
+      }
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1369,7 +1420,12 @@ const fileManagerHtml = `
     async function editFile(domain, filePath) {
       try {
         const response = await fetch('/' + encodeURIComponent(filePath) + '?node=' + encodeURIComponent(domain));
-        if (!response.ok) throw new Error('无法下载文件');
+        if (!response.ok) {
+          let msg = '无法读取文件';
+          try { const err = await response.json(); msg = err.error || msg; } catch (e) {}
+          showStatus(msg, true);
+          return;
+        }
         const content = await response.text();
         document.getElementById('editor-filename').textContent = filePath;
         document.getElementById('editor-textarea').value = content;
@@ -1477,21 +1533,45 @@ export default {
       const contentType = request.headers.get('Content-Type') || guessContentType(filename);
       const fileSize = bodyText.length;
 
-      await MY_SCRIPT_BUCKET.put(filename, bodyText);
+      try {
+        await MY_SCRIPT_BUCKET.put(filename, bodyText);
+      } catch (e) {
+        console.error('PUT /update/: KV put failed for', filename, e);
+        return new Response(JSON.stringify({ success: false, error: `KV 写入失败: ${e.message}` }), {
+          headers: { 'Content-Type': 'application/json' }, status: 500
+        });
+      }
 
       // 更新本地信息文件
-      const info = await addFileToInfo(MY_SCRIPT_BUCKET, currentDomain, filename, fileSize, contentType);
+      try {
+        await addFileToInfo(MY_SCRIPT_BUCKET, currentDomain, filename, fileSize, contentType);
+      } catch (e) {
+        console.error('PUT /update/: addFileToInfo failed for', filename, e);
+        // 数据已写入 KV 但 info 未更新，尝试回滚
+        try { await MY_SCRIPT_BUCKET.delete(filename); } catch (e2) {
+          console.error('PUT /update/: rollback delete failed for', filename, e2);
+        }
+        return new Response(JSON.stringify({ success: false, error: `信息文件更新失败，数据已回滚: ${e.message}` }), {
+          headers: { 'Content-Type': 'application/json' }, status: 500
+        });
+      }
 
-      // 同步信息文件到所有其他节点
-      const infoBody = JSON.stringify(info);
-      await Promise.allSettled(
-        allDomains.filter(d => d !== currentDomain).map(d =>
-          fetch(`https://${d}/__info__/${currentDomain}`, {
-            method: 'PUT', body: infoBody,
-            headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
-          }).catch(() => {})
-        )
-      );
+      // 同步信息文件到所有其他节点（非关键路径，失败不影响本次请求）
+      try {
+        const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+        const infoBody = JSON.stringify(info);
+        await Promise.allSettled(
+          allDomains.filter(d => d !== currentDomain).map(d =>
+            fetch(`https://${d}/__info__/${currentDomain}`, {
+              method: 'PUT', body: infoBody,
+              headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+            }).catch(() => {})
+          )
+        );
+      } catch (e) {
+        console.error('PUT /update/: sync info failed for', filename, e);
+        // 不阻塞响应，但日志记录
+      }
 
       return new Response(JSON.stringify({ success: true, filename, size: fileSize, node: currentDomain }), {
         headers: { 'Content-Type': 'application/json' }, status: 200
@@ -1512,21 +1592,38 @@ export default {
         return proxyRequest(targetDomain, path, request, requestAuthHeader, url);
       }
 
-      await MY_SCRIPT_BUCKET.delete(filename);
+      try {
+        await MY_SCRIPT_BUCKET.delete(filename);
+      } catch (e) {
+        console.error('DELETE /delete/: KV delete failed for', filename, e);
+        return new Response(JSON.stringify({ success: false, error: `KV 删除失败: ${e.message}` }), {
+          headers: { 'Content-Type': 'application/json' }, status: 500
+        });
+      }
 
       // 更新本地信息文件
-      const info = await removeFileFromInfo(MY_SCRIPT_BUCKET, currentDomain, filename);
+      try {
+        await removeFileFromInfo(MY_SCRIPT_BUCKET, currentDomain, filename);
+      } catch (e) {
+        console.error('DELETE /delete/: removeFileFromInfo failed for', filename, e);
+        // KV 数据已删除，但 info 未更新；不阻塞响应但日志记录
+      }
 
-      // 同步信息文件到所有其他节点
-      const infoBody = JSON.stringify(info);
-      await Promise.allSettled(
-        allDomains.filter(d => d !== currentDomain).map(d =>
-          fetch(`https://${d}/__info__/${currentDomain}`, {
-            method: 'PUT', body: infoBody,
-            headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
-          }).catch(() => {})
-        )
-      );
+      // 同步信息文件到所有其他节点（非关键路径，失败不影响本次请求）
+      try {
+        const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+        const infoBody = JSON.stringify(info);
+        await Promise.allSettled(
+          allDomains.filter(d => d !== currentDomain).map(d =>
+            fetch(`https://${d}/__info__/${currentDomain}`, {
+              method: 'PUT', body: infoBody,
+              headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+            }).catch(() => {})
+          )
+        );
+      } catch (e) {
+        console.error('DELETE /delete/: sync info failed for', filename, e);
+      }
 
       return new Response(JSON.stringify({ success: true, filename, node: currentDomain }), {
         headers: { 'Content-Type': 'application/json' }, status: 200
@@ -1566,35 +1663,68 @@ export default {
           return new Response(`代理请求失败: ${e.message}\n`, { status: 500 });
         }
       }
-      if (!newName || !isSafePath(newName)) {
-        return new Response('错误：新文件名不合法。\n', { status: 400 });
-      }
 
-      const content = await MY_SCRIPT_BUCKET.get(oldName, { type: 'text' });
+      // 三步原子操作：get → put → delete，带回滚
+      let content;
+      try {
+        content = await MY_SCRIPT_BUCKET.get(oldName, { type: 'text' });
+      } catch (e) {
+        console.error('POST /rename/: KV get failed for', oldName, e);
+        return new Response(JSON.stringify({ success: false, error: `KV 读取失败: ${e.message}` }), {
+          headers: { 'Content-Type': 'application/json' }, status: 500
+        });
+      }
       if (content === null) {
         return new Response(`未找到文件: ${oldName}\n`, { status: 404 });
       }
 
-      await MY_SCRIPT_BUCKET.put(newName, content);
-      await MY_SCRIPT_BUCKET.delete(oldName);
-
-      const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
-      const oldEntry = info.files[oldName];
-      if (oldEntry) {
-        delete info.files[oldName];
-        info.files[newName] = oldEntry;
+      try {
+        await MY_SCRIPT_BUCKET.put(newName, content);
+      } catch (e) {
+        console.error('POST /rename/: KV put failed for', newName, e);
+        return new Response(JSON.stringify({ success: false, error: `KV 写入失败: ${e.message}` }), {
+          headers: { 'Content-Type': 'application/json' }, status: 500
+        });
       }
-      await saveInfo(MY_SCRIPT_BUCKET, currentDomain, info);
 
-      const infoBody = JSON.stringify(info);
-      await Promise.allSettled(
-        allDomains.filter(d => d !== currentDomain).map(d =>
-          fetch(`https://${d}/__info__/${currentDomain}`, {
-            method: 'PUT', body: infoBody,
-            headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
-          }).catch(() => {})
-        )
-      );
+      // 旧文件删除：put 成功后尝试删除，失败时回滚新文件
+      try {
+        await MY_SCRIPT_BUCKET.delete(oldName);
+      } catch (e) {
+        console.error('POST /rename/: KV delete old file failed for', oldName, e);
+        // 回滚：删除已写入的新文件
+        try { await MY_SCRIPT_BUCKET.delete(newName); } catch (e2) {
+          console.error('POST /rename/: rollback delete new file failed for', newName, e2);
+        }
+        return new Response(JSON.stringify({ success: false, error: `删除旧文件失败，已回滚: ${e.message}` }), {
+          headers: { 'Content-Type': 'application/json' }, status: 500
+        });
+      }
+
+      // 更新信息文件
+      try {
+        const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+        const oldEntry = info.files[oldName];
+        if (oldEntry) {
+          delete info.files[oldName];
+          info.files[newName] = oldEntry;
+        }
+        await saveInfo(MY_SCRIPT_BUCKET, currentDomain, info);
+
+        // 同步信息文件到所有其他节点（非关键路径）
+        const infoBody = JSON.stringify(info);
+        await Promise.allSettled(
+          allDomains.filter(d => d !== currentDomain).map(d =>
+            fetch(`https://${d}/__info__/${currentDomain}`, {
+              method: 'PUT', body: infoBody,
+              headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+            }).catch(() => {})
+          )
+        );
+      } catch (e) {
+        console.error('POST /rename/: info update/sync failed for', oldName, '->', newName, e);
+        // KV 数据已正确 rename，info 不一致不阻塞响应
+      }
 
       return new Response(JSON.stringify({ success: true, old_name: oldName, new_name: newName }), {
         headers: { 'Content-Type': 'application/json' }, status: 200
@@ -1618,12 +1748,18 @@ export default {
 
     // 列出所有键（仅文件内容，不含 __info__）
     if (request.method === 'GET' && path === 'list-keys') {
-      const localList = await MY_SCRIPT_BUCKET.list();
+      let localList;
+      try { localList = await MY_SCRIPT_BUCKET.list(); } catch (e) {
+        console.error('list-keys: KV list 失败', e);
+        return new Response(JSON.stringify({ error: 'KV list 失败' }), {
+          headers: { 'Content-Type': 'application/json;charset=UTF-8' }, status: 500
+        });
+      }
       const localKeys = localList.keys.filter(k => !k.name.startsWith('__info__/')).map(k => k.name);
       const allFilesByDomain = { [currentDomain]: localKeys };
 
       const results = await Promise.allSettled(
-        allDomains.filter(d => d !== currentDomain).map(domain => 
+        allDomains.filter(d => d !== currentDomain).map(domain =>
           fetch(`https://${domain}/list-keys-flat`, { headers: { 'Authorization': requestAuthHeader } })
             .then(res => res.ok ? res.json() : Promise.reject())
             .then(data => ({ domain, keys: data.keys }))
@@ -1636,10 +1772,16 @@ export default {
         headers: { 'Content-Type': 'application/json;charset=UTF-8' }
       });
     }
-    
+
     // 只返回本地文件键（不含 __info__）
     if (request.method === 'GET' && path === 'list-keys-flat') {
-        const localList = await MY_SCRIPT_BUCKET.list();
+        let localList;
+        try { localList = await MY_SCRIPT_BUCKET.list(); } catch (e) {
+          console.error('list-keys-flat: KV list 失败', e);
+          return new Response(JSON.stringify({ keys: [] }), {
+            headers: { 'Content-Type': 'application/json;charset=UTF-8' }
+          });
+        }
         const localKeys = localList.keys.filter(k => !k.name.startsWith('__info__/')).map(k => k.name);
         return new Response(JSON.stringify({ keys: localKeys }), {
             headers: { 'Content-Type': 'application/json;charset=UTF-8' }
@@ -1687,11 +1829,10 @@ export default {
     if (request.method === 'GET' && path === 'page-data') {
       if (!isAdmin && tokenInfo && !tokenInfo.permissions.download) return new Response('无下载权限。\n', { status: 403 });
       try {
-        const [files, allInfos, kvVal, firstNodeVal] = await Promise.all([
+        const [files, allInfos, kvVal] = await Promise.all([
           getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains),
           Promise.all(allDomains.map(d => loadInfo(MY_SCRIPT_BUCKET, d))),
-          MY_SCRIPT_BUCKET.get('__settings__/domains'),
-          MY_SCRIPT_BUCKET.get('__settings__/first_node')
+          MY_SCRIPT_BUCKET.get('__settings__/domains')
         ]);
         let totalSize = 0, totalFiles = 0;
         const nodeMap = {};
@@ -1718,14 +1859,13 @@ export default {
           },
           domains: allDomains,
           kvDomains: kvDoms,
-          bootstrapped: !!kvVal,
-          firstNode: !!firstNodeVal
+          bootstrapped: !!kvVal
         }), {
           headers: { 'Content-Type': 'application/json;charset=UTF-8' }
         });
       } catch (e) {
         console.error('page-data error:', e);
-        return new Response(JSON.stringify({ files: [], stats: { nodes: [], total: 0, totalSize: 0, bucketCount: 0, totalDomains: allDomains.length }, domains: allDomains, kvDomains: [], bootstrapped: false, firstNode: false }), {
+        return new Response(JSON.stringify({ files: [], stats: { nodes: [], total: 0, totalSize: 0, bucketCount: 0, totalDomains: allDomains.length }, domains: allDomains, kvDomains: [], bootstrapped: false }), {
           headers: { 'Content-Type': 'application/json;charset=UTF-8' }, status: 200
         });
       }
@@ -1782,7 +1922,12 @@ export default {
       const body = JSON.parse(await request.text() || '{}');
       if (!body.username || !body.password) return new Response('需要用户名和密码。\n', { status: 400 });
       const creds = { username: body.username, password: body.password };
-      await MY_SCRIPT_BUCKET.put('__settings__/credentials', JSON.stringify(creds));
+      try {
+        await MY_SCRIPT_BUCKET.put('__settings__/credentials', JSON.stringify(creds));
+      } catch (e) {
+        console.error('POST /auth/setup: KV 写入失败', e);
+        return new Response('设置失败：KV 写入错误\n', { status: 500 });
+      }
       return new Response(JSON.stringify({ success: true }), {
         headers: { 'Content-Type': 'application/json' }
       });
@@ -1805,14 +1950,22 @@ export default {
       const body = JSON.parse(await request.text() || '{}');
       if (!body.username || !body.password) return new Response('需要用户名和密码。\n', { status: 400 });
       const creds = { username: body.username, password: body.password };
-      await MY_SCRIPT_BUCKET.put('__settings__/credentials', JSON.stringify(creds));
+      try {
+        await MY_SCRIPT_BUCKET.put('__settings__/credentials', JSON.stringify(creds));
+      } catch (e) {
+        console.error('PUT /auth/credentials: KV 写入失败', e);
+        return new Response('修改失败：KV 写入错误\n', { status: 500 });
+      }
       await syncSettingsToAll('credentials', creds, allDomains, currentDomain, requestAuthHeader);
       return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
     }
 
     // GET /domains — 域名列表
     if (request.method === 'GET' && path === 'domains') {
-      const kvVal = await MY_SCRIPT_BUCKET.get('__settings__/domains');
+      let kvVal;
+      try { kvVal = await MY_SCRIPT_BUCKET.get('__settings__/domains'); } catch (e) {
+        console.error('GET /domains: KV 读取失败', e);
+      }
       const kvDoms = kvVal ? JSON.parse(kvVal) : [];
       return new Response(JSON.stringify({ domains: allDomains, kvDomains: kvDoms, bootstrapped: !!kvVal }), {
         headers: { 'Content-Type': 'application/json' }
@@ -1821,15 +1974,20 @@ export default {
 
     // POST /domains — 添加域名（仅首次）
     if (request.method === 'POST' && path === 'domains') {
-      const existing = await MY_SCRIPT_BUCKET.get('__settings__/domains');
+      let existing;
+      try { existing = await MY_SCRIPT_BUCKET.get('__settings__/domains'); } catch (e) {
+        console.error('POST /domains: 检查已有域名失败', e);
+        return new Response('操作失败：KV 读取错误\n', { status: 500 });
+      }
       if (existing) return new Response('域名列表已锁定，不可手动添加。\n', { status: 400 });
       const body = JSON.parse(await request.text() || '{}');
       const newDomain = body.domain || currentDomain;
       const newDoms = [newDomain];
-      await MY_SCRIPT_BUCKET.put('__settings__/domains', JSON.stringify(newDoms));
-      // 如果域名和当前节点一致（首个节点），写入标记
-      if (newDomain === currentDomain) {
-        await MY_SCRIPT_BUCKET.put('__settings__/first_node', '1');
+      try {
+        await MY_SCRIPT_BUCKET.put('__settings__/domains', JSON.stringify(newDoms));
+      } catch (e) {
+        console.error('POST /domains: KV 写入失败', e);
+        return new Response('操作失败：KV 写入错误\n', { status: 500 });
       }
       const updatedDoms = await getAllDomains(env, currentDomain, MY_SCRIPT_BUCKET);
       await syncSettingsToAll('domains', newDoms, updatedDoms, currentDomain, requestAuthHeader);
@@ -1845,7 +2003,11 @@ export default {
 
     // GET /tokens — 令牌列表
     if (request.method === 'GET' && path === 'tokens') {
-      const val = await MY_SCRIPT_BUCKET.get('__tokens__/list');
+      let val;
+      try { val = await MY_SCRIPT_BUCKET.get('__tokens__/list'); } catch (e) {
+        console.error('GET /tokens: KV 读取失败', e);
+        return new Response(JSON.stringify([]), { headers: { 'Content-Type': 'application/json' } });
+      }
       const list = val ? JSON.parse(val) : [];
       return new Response(JSON.stringify(list.map((t, i) => ({ ...t, index: i, token: t.token.slice(0, 4) + '***' + t.token.slice(-4), token_full: t.token }))), {
         headers: { 'Content-Type': 'application/json' }
@@ -1862,10 +2024,21 @@ export default {
         permissions,
         created_at: new Date().toISOString()
       };
-      const val = await MY_SCRIPT_BUCKET.get('__tokens__/list');
-      const list = val ? JSON.parse(val) : [];
+      let list;
+      try {
+        const val = await MY_SCRIPT_BUCKET.get('__tokens__/list');
+        list = val ? JSON.parse(val) : [];
+      } catch (e) {
+        console.error('POST /tokens: KV 读取失败', e);
+        return new Response('操作失败：KV 读取错误\n', { status: 500 });
+      }
       list.push(newToken);
-      await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(list));
+      try {
+        await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(list));
+      } catch (e) {
+        console.error('POST /tokens: KV 写入失败', e);
+        return new Response('操作失败：KV 写入错误\n', { status: 500 });
+      }
       await syncSettingsToAll('tokens', list, allDomains, currentDomain, requestAuthHeader);
       return new Response(JSON.stringify({ success: true, token: newToken }), {
         headers: { 'Content-Type': 'application/json' }
@@ -1875,13 +2048,24 @@ export default {
     // PUT /tokens/<index> — 修改令牌
     if (request.method === 'PUT' && path.startsWith('tokens/')) {
       const idx = parseInt(path.substring('tokens/'.length));
-      const body = JSON.parse(await request.text() || '{}');
-      const val = await MY_SCRIPT_BUCKET.get('__tokens__/list');
-      const list = val ? JSON.parse(val) : [];
+      let list;
+      try {
+        const val = await MY_SCRIPT_BUCKET.get('__tokens__/list');
+        list = val ? JSON.parse(val) : [];
+      } catch (e) {
+        console.error('PUT /tokens: KV 读取失败', e);
+        return new Response('操作失败：KV 读取错误\n', { status: 500 });
+      }
       if (idx < 0 || idx >= list.length) return new Response('令牌不存在。\n', { status: 404 });
+      const body = JSON.parse(await request.text() || '{}');
       if (body.name !== undefined) list[idx].name = body.name;
       if (body.permissions) list[idx].permissions = body.permissions;
-      await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(list));
+      try {
+        await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(list));
+      } catch (e) {
+        console.error('PUT /tokens: KV 写入失败', e);
+        return new Response('操作失败：KV 写入错误\n', { status: 500 });
+      }
       await syncSettingsToAll('tokens', list, allDomains, currentDomain, requestAuthHeader);
       return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
     }
@@ -1889,11 +2073,22 @@ export default {
     // DELETE /tokens/<index> — 删除令牌
     if (request.method === 'DELETE' && path.startsWith('tokens/')) {
       const idx = parseInt(path.substring('tokens/'.length));
-      const val = await MY_SCRIPT_BUCKET.get('__tokens__/list');
-      const list = val ? JSON.parse(val) : [];
+      let list;
+      try {
+        const val = await MY_SCRIPT_BUCKET.get('__tokens__/list');
+        list = val ? JSON.parse(val) : [];
+      } catch (e) {
+        console.error('DELETE /tokens: KV 读取失败', e);
+        return new Response('操作失败：KV 读取错误\n', { status: 500 });
+      }
       if (idx < 0 || idx >= list.length) return new Response('令牌不存在。\n', { status: 404 });
       list.splice(idx, 1);
-      await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(list));
+      try {
+        await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(list));
+      } catch (e) {
+        console.error('DELETE /tokens: KV 写入失败', e);
+        return new Response('操作失败：KV 写入错误\n', { status: 500 });
+      }
       await syncSettingsToAll('tokens', list, allDomains, currentDomain, requestAuthHeader);
       return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
     }
@@ -1908,26 +2103,80 @@ export default {
         });
         if (!resp.ok) return new Response('同步失败：目标节点拒绝访问。\n', { status: 502 });
         const data = await resp.json();
-        if (data.credentials) await MY_SCRIPT_BUCKET.put('__settings__/credentials', JSON.stringify(data.credentials));
-        if (data.tokens) await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(data.tokens));
-        if (data.domains) {
-          const existing = await MY_SCRIPT_BUCKET.get('__settings__/domains');
-          const merged = [...new Set([...(existing ? JSON.parse(existing) : []), ...data.domains])];
-          await MY_SCRIPT_BUCKET.put('__settings__/domains', JSON.stringify(merged));
-        }
-        if (data.info) {
-          for (const [key, val] of Object.entries(data.info)) {
-            await MY_SCRIPT_BUCKET.put(key, val);
+
+        // 逐个写入设置，确保每个 kv 操作有错误保护
+        try {
+          if (data.credentials) await MY_SCRIPT_BUCKET.put('__settings__/credentials', JSON.stringify(data.credentials));
+        } catch (e) { console.error('sync/pull-from: 写入 credentials 失败', e); }
+
+        try {
+          if (data.tokens) await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(data.tokens));
+        } catch (e) { console.error('sync/pull-from: 写入 tokens 失败', e); }
+
+        try {
+          if (data.domains) {
+            const existing = await MY_SCRIPT_BUCKET.get('__settings__/domains');
+            // 收集初始域名列表（含自身 + 源节点列表 + 本地已有）
+            let allDiscovered = [...new Set([currentDomain, ...(existing ? JSON.parse(existing) : []), ...data.domains])];
+
+            // 链式发现：并行查询每个已知域名，收集更多域名
+            const discoveryResults = await Promise.allSettled(
+              allDiscovered.filter(d => d !== currentDomain).map(dom =>
+                fetch(`https://${dom}/__settings__/all`, {
+                  headers: { 'Authorization': requestAuthHeader }
+                }).then(r => r.ok ? r.json() : null)
+              )
+            );
+            discoveryResults.forEach(r => {
+              if (r.status === 'fulfilled' && r.value?.domains) {
+                for (const d of r.value.domains) {
+                  if (!allDiscovered.includes(d)) allDiscovered.push(d);
+                }
+              }
+            });
+
+            // 写入最完整的域名列表
+            await MY_SCRIPT_BUCKET.put('__settings__/domains', JSON.stringify(allDiscovered));
           }
-        }
+        } catch (e) { console.error('sync/pull-from: 写入 domains 失败', e); }
+
+        try {
+          if (data.info) {
+            for (const [key, val] of Object.entries(data.info)) {
+              try { await MY_SCRIPT_BUCKET.put(key, val); } catch (e2) {
+                console.error('sync/pull-from: 写入 info key 失败:', key, e2);
+              }
+            }
+          }
+        } catch (e) { console.error('sync/pull-from: 写入 info 失败', e); }
+
+        // 从所有已发现域名同步最新的 info 文件（确保每个节点的文件列表都是最新的）
+        const domsForInfoSync = await getAllDomains(env, currentDomain, MY_SCRIPT_BUCKET);
+        await Promise.allSettled(
+          domsForInfoSync.filter(d => d !== currentDomain).map(async (domain) => {
+            try {
+              const resp = await fetch(`https://${domain}/__info__`, {
+                headers: { 'Authorization': requestAuthHeader }
+              });
+              if (!resp.ok) return;
+              const remoteInfo = await resp.json();
+              const localInfo = await loadInfo(MY_SCRIPT_BUCKET, domain);
+              if (remoteInfo.updated_at > localInfo.updated_at) {
+                await MY_SCRIPT_BUCKET.put(getInfoKey(domain), JSON.stringify(remoteInfo));
+              }
+            } catch (e) {
+              console.error('sync/pull-from: 同步 info 失败:', domain, e);
+            }
+          })
+        );
+
         const newDomains = await getAllDomains(env, currentDomain, MY_SCRIPT_BUCKET);
-        // 同步成功后清除首个节点标记
-        await MY_SCRIPT_BUCKET.delete('__settings__/first_node');
+
         await Promise.allSettled(
           newDomains.filter(d => d !== currentDomain).map(d =>
             fetch(`https://${d}/__settings__/domains`, {
               method: 'PUT',
-              body: JSON.stringify([currentDomain]),
+              body: JSON.stringify(newDomains),
               headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
             }).catch(() => {})
           )
@@ -1940,21 +2189,157 @@ export default {
       }
     }
 
+    // POST /sync/data-sync — 从所有已知节点同步数据（域名列表 + 令牌 + 文件列表）
+    if (request.method === 'POST' && path === 'sync/data-sync') {
+      const allDomains = await getAllDomains(env, currentDomain, MY_SCRIPT_BUCKET);
+
+      // 从所有节点并行拉取 __settings__/all，合并域名和令牌
+      let mergedDomains = [currentDomain];
+      let tokenMap = new Map();
+      const results = await Promise.allSettled(
+        allDomains.filter(d => d !== currentDomain).map(async (domain) => {
+          try {
+            const resp = await fetch(`https://${domain}/__settings__/all`, {
+              headers: { 'Authorization': requestAuthHeader }
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.domains) {
+              for (const d of data.domains) {
+                if (!mergedDomains.includes(d)) mergedDomains.push(d);
+              }
+            }
+            if (data.tokens) {
+              for (const t of data.tokens) {
+                if (!tokenMap.has(t.token)) tokenMap.set(t.token, t);
+              }
+            }
+          } catch (e) { console.error('sync/data-sync: 拉取失败', domain, e); }
+        })
+      );
+      const mergedTokens = [...tokenMap.values()];
+
+      // 写入合并后的域名和令牌到本地
+      try { await MY_SCRIPT_BUCKET.put('__settings__/domains', JSON.stringify(mergedDomains)); } catch (e) {
+        console.error('sync/data-sync: 写入 domains 失败', e);
+      }
+      if (mergedTokens.length > 0) {
+        try { await MY_SCRIPT_BUCKET.put('__tokens__/list', JSON.stringify(mergedTokens)); } catch (e) {
+          console.error('sync/data-sync: 写入 tokens 失败', e);
+        }
+      }
+
+      // 从所有节点同步 info 文件（按时间戳比较）
+      let syncedInfoCount = 0;
+      await Promise.allSettled(
+        mergedDomains.filter(d => d !== currentDomain).map(async (domain) => {
+          try {
+            const resp = await fetch(`https://${domain}/__info__`, {
+              headers: { 'Authorization': requestAuthHeader }
+            });
+            if (!resp.ok) return;
+            const remoteInfo = await resp.json();
+            const localInfo = await loadInfo(MY_SCRIPT_BUCKET, domain);
+            if (remoteInfo.updated_at > localInfo.updated_at) {
+              await MY_SCRIPT_BUCKET.put(getInfoKey(domain), JSON.stringify(remoteInfo));
+              syncedInfoCount++;
+            }
+          } catch (e) { console.error('sync/data-sync: 同步 info 失败', domain, e); }
+        })
+      );
+
+      // 推送合并后的域名列表到所有其他节点
+      let pushedCount = 0;
+      await Promise.allSettled(
+        mergedDomains.filter(d => d !== currentDomain).map(async d => {
+          try {
+            const r = await fetch(`https://${d}/__settings__/domains`, {
+              method: 'PUT',
+              body: JSON.stringify(mergedDomains),
+              headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+            });
+            if (r.ok) pushedCount++;
+          } catch (e) {}
+        })
+      );
+
+      // 推送合并后的令牌到所有其他节点
+      if (mergedTokens.length > 0) {
+        await Promise.allSettled(
+          mergedDomains.filter(d => d !== currentDomain).map(async d => {
+            try {
+              await fetch(`https://${d}/__settings__/tokens`, {
+                method: 'PUT',
+                body: JSON.stringify(mergedTokens),
+                headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+              });
+            } catch (e) {}
+          })
+        );
+      }
+
+      // 推送最新 info 文件到所有其他节点（按时间戳比较）
+      await Promise.allSettled(
+        mergedDomains.filter(d => d !== currentDomain).map(async (domain) => {
+          try {
+            const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
+            if (!info || !info.files) return;
+            const infoBody = JSON.stringify(info);
+            await Promise.allSettled(
+              mergedDomains.filter(d2 => d2 !== domain && d2 !== currentDomain).map(async d2 => {
+                try {
+                  await fetch(`https://${d2}/__info__/${domain}`, {
+                    method: 'PUT', body: infoBody,
+                    headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+                  });
+                } catch (e) {}
+              })
+            );
+          } catch (e) { console.error('sync/data-sync: 推送 info 失败', domain, e); }
+        })
+      );
+
+      return new Response(JSON.stringify({
+        success: true,
+        domains: mergedDomains,
+        tokens: mergedTokens.length,
+        syncedInfo: syncedInfoCount,
+        pushedCount
+      }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
     // GET /__settings__/all — 导出全量设置（用于同步）
     if (request.method === 'GET' && path === '__settings__/all') {
-      const infoKeys = await MY_SCRIPT_BUCKET.list({ prefix: '__info__/' });
+      let infoKeys;
+      try {
+        infoKeys = await MY_SCRIPT_BUCKET.list({ prefix: '__info__/' });
+      } catch (e) {
+        console.error('GET /__settings__/all: 列出 info keys 失败', e);
+        return new Response(JSON.stringify({ error: '列出 info keys 失败' }), {
+          headers: { 'Content-Type': 'application/json' }, status: 500
+        });
+      }
       const info = {};
       for (const key of infoKeys.keys) {
-        const val = await MY_SCRIPT_BUCKET.get(key.name);
-        if (val) info[key.name] = val;
+        try {
+          const val = await MY_SCRIPT_BUCKET.get(key.name);
+          if (val) info[key.name] = val;
+        } catch (e) {
+          console.error('GET /__settings__/all: 读取 info key 失败:', key.name, e);
+        }
       }
       const credentials = await loadKVCredentials(MY_SCRIPT_BUCKET);
-      const tokensVal = await MY_SCRIPT_BUCKET.get('__tokens__/list');
-      const domainsVal = await MY_SCRIPT_BUCKET.get('__settings__/domains');
+      let tokensVal;
+      try { tokensVal = await MY_SCRIPT_BUCKET.get('__tokens__/list'); } catch (e) {
+        console.error('GET /__settings__/all: 读取 tokens 失败', e);
+      }
+      // 使用 getAllDomains 返回完整域名列表（含当前节点自身），
+      // 避免下游节点拉取时只拿到 __settings__/domains 原始存储（缺本节点）
+      const allDomains = await getAllDomains(env, currentDomain, MY_SCRIPT_BUCKET);
       return new Response(JSON.stringify({
         credentials,
         tokens: tokensVal ? JSON.parse(tokensVal) : [],
-        domains: domainsVal ? JSON.parse(domainsVal) : [],
+        domains: allDomains,
         info
       }), { headers: { 'Content-Type': 'application/json' } });
     }
@@ -1964,19 +2349,20 @@ export default {
       const key = path.substring('__settings__/'.length);
       const body = await request.text();
       if (['credentials', 'tokens', 'domains'].includes(key)) {
-        if (key === 'domains') {
-          const existing = await MY_SCRIPT_BUCKET.get('__settings__/domains');
-          const newDoms = JSON.parse(body);
-          const merged = [...new Set([...(existing ? JSON.parse(existing) : []), ...newDoms])];
-          await MY_SCRIPT_BUCKET.put('__settings__/domains', JSON.stringify(merged));
-          // 收到外部域名同步时，清除首个节点标记
-          if (merged.some(d => d !== url.hostname)) {
-            await MY_SCRIPT_BUCKET.delete('__settings__/first_node');
+        try {
+          if (key === 'domains') {
+            const existing = await MY_SCRIPT_BUCKET.get('__settings__/domains');
+            const newDoms = JSON.parse(body);
+            const merged = [...new Set([...(existing ? JSON.parse(existing) : []), ...newDoms])];
+            await MY_SCRIPT_BUCKET.put('__settings__/domains', JSON.stringify(merged));
+          } else if (key === 'tokens') {
+            await MY_SCRIPT_BUCKET.put('__tokens__/list', body);
+          } else {
+            await MY_SCRIPT_BUCKET.put(`__settings__/${key}`, body);
           }
-        } else if (key === 'tokens') {
-          await MY_SCRIPT_BUCKET.put('__tokens__/list', body);
-        } else {
-          await MY_SCRIPT_BUCKET.put(`__settings__/${key}`, body);
+        } catch (e) {
+          console.error('PUT /__settings__/: 写入失败', key, e);
+          return new Response('写入失败\n', { status: 500 });
         }
       }
       return new Response('ok\n', { status: 200 });
@@ -2008,9 +2394,20 @@ export default {
       }
     }
 
-    const file = await MY_SCRIPT_BUCKET.get(decodedPath, { type: 'stream' });
+    // 获取文件内容，确保失败时返回错误而非错误文本作为文件内容
+    let file;
+    try {
+      file = await MY_SCRIPT_BUCKET.get(decodedPath, { type: 'stream' });
+    } catch (e) {
+      console.error('文件下载 KV get 失败:', decodedPath, e);
+      return new Response(JSON.stringify({ success: false, error: `KV 读取失败: ${e.message}` }), {
+        headers: { 'Content-Type': 'application/json;charset=UTF-8' }, status: 500
+      });
+    }
     if (file === null) {
-      return new Response(`未找到文件: ${decodedPath}\n`, { status: 404 });
+      return new Response(JSON.stringify({ success: false, error: `文件不存在: ${decodedPath}` }), {
+        headers: { 'Content-Type': 'application/json;charset=UTF-8' }, status: 404
+      });
     }
     return new Response(file, {
       headers: {
