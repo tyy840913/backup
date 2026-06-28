@@ -32,6 +32,47 @@ function guessContentType(filename) {
   return mimeTypes[fileExtension] || 'application/octet-stream';
 }
 
+// 基于 UTF-8 编码验证检测原始字节是否为文本
+function isTextContent(bytes) {
+  if (!bytes || bytes.length === 0) return true;
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const textExtensions = [
+  'txt', 'js', 'json', 'html', 'htm', 'xhtml', 'css', 'md', 'markdown', 'xml', 'yml', 'yaml', 'csv', 'log', 'sh', 'conf',
+  'py', 'ts', 'tsx', 'mts', 'cts', 'jsx', 'vue', 'svelte', 'astro',
+  'java', 'go', 'rs', 'rb', 'php', 'pl', 'pm', 'lua',
+  'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'hxx', 'cs', 'm', 'mm',
+  'toml', 'ini', 'cfg', 'env', 'sql',
+  'bat', 'cmd', 'ps1', 'psm1', 'psd1', 'bash', 'zsh', 'ksh', 'csh', 'fish',
+  'mjs', 'cjs',
+  'swift', 'kt', 'kts', 'dart', 'tex', 'sty', 'cls', 'bib', 'r', 'dockerfile', 'graphql', 'gql',
+  'gradle', 'makefile', 'cmake', 'mk',
+  'scala', 'clj', 'cljs', 'edn', 'el', 'lisp', 'hs', 'lhs', 'erl', 'hrl', 'ex', 'exs',
+  'scss', 'sass', 'less', 'styl', 'postcss',
+  'rst', 'asciidoc', 'adoc', 'org', 'wiki', 'textile',
+  'patch', 'diff',
+  'pem', 'crt', 'cer', 'key', 'csr',
+  'plist', 'proto', 'thrift', 'avsc',
+  'properties', 'prop', 'prefs',
+  'nim', 'nix', 'zig', 'wgsl', 'jl', 'rkt', 'fs', 'fsx',
+  'srt', 'vtt', 'sub',
+  'json5', 'jsonc', 'jsonl', 'ndjson',
+  'po', 'pot', 'xliff', 'xlf',
+  'editorconfig', 'gitattributes', 'gitignore', 'gitmodules', 'htaccess', 'htpasswd',
+  'slug', 'gemfile', 'lock'
+];
+
+function isTextFile(filename) {
+  const extension = filename.split('.').pop().toLowerCase();
+  return textExtensions.includes(extension);
+}
+
 function generateToken() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
@@ -231,9 +272,9 @@ async function saveInfo(MY_SCRIPT_BUCKET, domain, info) {
   }
 }
 
-async function addFileToInfo(MY_SCRIPT_BUCKET, domain, filename, size, contentType) {
+async function addFileToInfo(MY_SCRIPT_BUCKET, domain, filename, size, contentType, isText) {
   const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
-  info.files[filename] = { size, content_type: contentType };
+  info.files[filename] = { size, content_type: contentType, is_text: !!isText };
   await saveInfo(MY_SCRIPT_BUCKET, domain, info);
   return info;
 }
@@ -251,7 +292,7 @@ async function getAllFilesFromInfo(MY_SCRIPT_BUCKET, allDomains) {
   const files = [];
   for (let i = 0; i < allDomains.length; i++) {
     for (const [filename, f] of Object.entries(infos[i].files)) {
-      files.push({ filename, size: f.size, content_type: f.content_type, node: allDomains[i] });
+      files.push({ filename, size: f.size, content_type: f.content_type, node: allDomains[i], is_text: f.is_text !== undefined ? f.is_text === true : undefined });
     }
   }
   return files;
@@ -1161,9 +1202,11 @@ const fileManagerHtml = `
         nameSpan.className = 'item-name';
         nameSpan.textContent = item.filename;
         nameSpan.title = item.filename;
+        const canEdit = item.is_text === true || (item.is_text === undefined && isTextFile(item.filename));
+
         nameSpan.onclick = (e) => {
           e.stopPropagation();
-          if (isTextFile(item.filename)) {
+          if (canEdit) {
             editFile(item.node, item.filename);
           } else {
             downloadFile(item.node, item.filename);
@@ -1180,7 +1223,7 @@ const fileManagerHtml = `
         const actions = document.createElement('div');
         actions.className = 'item-actions';
         
-        if (isTextFile(item.filename)) {
+        if (canEdit) {
           const editBtn = document.createElement('button');
           editBtn.title = '编辑';
           editBtn.innerHTML = icons.edit;
@@ -1219,15 +1262,28 @@ const fileManagerHtml = `
     
     function isTextFile(filename) {
       const textExtensions = [
-        'txt', 'js', 'json', 'html', 'css', 'md', 'xml', 'yml', 'yaml', 'csv', 'log', 'sh', 'conf',
+        'txt', 'js', 'json', 'html', 'htm', 'xhtml', 'css', 'md', 'markdown', 'xml', 'yml', 'yaml', 'csv', 'log', 'sh', 'conf',
         'py', 'ts', 'tsx', 'mts', 'cts', 'jsx', 'vue', 'svelte', 'astro',
-        'java', 'go', 'rs', 'rb', 'php', 'pl', 'lua',
-        'c', 'cpp', 'cc', 'h', 'hpp', 'cs',
+        'java', 'go', 'rs', 'rb', 'php', 'pl', 'pm', 'lua',
+        'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'hxx', 'cs', 'm', 'mm',
         'toml', 'ini', 'cfg', 'env', 'sql',
-        'bat', 'ps1', 'bash', 'zsh',
+        'bat', 'cmd', 'ps1', 'psm1', 'psd1', 'bash', 'zsh', 'ksh', 'csh', 'fish',
         'mjs', 'cjs',
-        'swift', 'kt', 'dart', 'tex', 'r', 'dockerfile', 'graphql',
-        'gradle', 'makefile'
+        'swift', 'kt', 'kts', 'dart', 'tex', 'sty', 'cls', 'bib', 'r', 'dockerfile', 'graphql', 'gql',
+        'gradle', 'cmake', 'mk',
+        'scala', 'clj', 'cljs', 'edn', 'el', 'lisp', 'hs', 'lhs', 'erl', 'hrl', 'ex', 'exs',
+        'scss', 'sass', 'less', 'styl', 'postcss',
+        'rst', 'asciidoc', 'adoc', 'org', 'wiki', 'textile',
+        'patch', 'diff',
+        'pem', 'crt', 'cer', 'key', 'csr',
+        'plist', 'proto', 'thrift', 'avsc',
+        'properties', 'prop', 'prefs',
+        'nim', 'nix', 'zig', 'wgsl', 'jl', 'rkt', 'fs', 'fsx',
+        'srt', 'vtt', 'sub',
+        'json5', 'jsonc', 'jsonl', 'ndjson',
+        'po', 'pot', 'xliff', 'xlf',
+        'editorconfig', 'gitattributes', 'gitignore', 'gitmodules', 'htaccess', 'htpasswd',
+        'slug', 'gemfile', 'lock'
       ];
       const extension = filename.split('.').pop().toLowerCase();
       return textExtensions.includes(extension);
@@ -1527,14 +1583,29 @@ export default {
         }
       }
 
-      const bodyText = await request.text();
+      const bodyBuffer = await request.arrayBuffer();
+      const bodyBytes = new Uint8Array(bodyBuffer);
+      const bodyText = new TextDecoder('utf-8', { fatal: false }).decode(bodyBuffer);
+
+      // 判定是否可编辑：有后缀用后缀识别，无后缀用内容编码检测
+      const dotIdx = filename.lastIndexOf('.');
+      const ext = dotIdx > 0 ? filename.slice(dotIdx + 1).toLowerCase() : '';
+      let isText;
+      const proxyIsTextHeader = request.headers.get('X-Is-Text');
+      if (proxyIsTextHeader !== null) {
+        isText = proxyIsTextHeader === '1';
+      } else if (!ext) {
+        isText = isTextContent(bodyBytes);
+      } else {
+        isText = isTextFile(filename);
+      }
 
       if (targetDomain !== currentDomain) {
         const targetUrl = buildProxyUrl(targetDomain, path, url);
         try {
           const resp = await fetch(targetUrl, {
             method: 'PUT', body: bodyText,
-            headers: { 'Authorization': requestAuthHeader, 'X-Proxy-Request': '1', 'Content-Type': request.headers.get('Content-Type') || 'application/octet-stream' }
+            headers: { 'Authorization': requestAuthHeader, 'X-Proxy-Request': '1', 'X-Is-Text': isText ? '1' : '0', 'Content-Type': request.headers.get('Content-Type') || 'application/octet-stream' }
           });
           try {
             const body = await resp.clone().json();
@@ -1571,7 +1642,7 @@ export default {
 
       // 更新本地信息文件
       try {
-        await addFileToInfo(MY_SCRIPT_BUCKET, currentDomain, filename, fileSize, contentType);
+        await addFileToInfo(MY_SCRIPT_BUCKET, currentDomain, filename, fileSize, contentType, isText);
       } catch (e) {
         console.error('PUT /update/: addFileToInfo failed for', filename, e);
         try { await MY_SCRIPT_BUCKET.delete(filename); } catch (e2) {
