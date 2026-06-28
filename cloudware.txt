@@ -1501,7 +1501,10 @@ export default {
       if (remoteInfo.updated_at > localInfo.updated_at) {
         await MY_SCRIPT_BUCKET.put(getInfoKey(domain), body);
       }
-      return new Response('ok\n', { status: 200 });
+      const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
+      return new Response(JSON.stringify({ success: true, updatedInfo: { ...info, domain } }), {
+        headers: { 'Content-Type': 'application/json' }, status: 200
+      });
     }
 
     // --- API 路由 ---
@@ -1527,7 +1530,31 @@ export default {
       const bodyText = await request.text();
 
       if (targetDomain !== currentDomain) {
-        return proxyRequest(targetDomain, path, request, requestAuthHeader, url, bodyText);
+        const targetUrl = buildProxyUrl(targetDomain, path, url);
+        try {
+          const resp = await fetch(targetUrl, {
+            method: 'PUT', body: bodyText,
+            headers: { 'Authorization': requestAuthHeader, 'X-Proxy-Request': '1', 'Content-Type': request.headers.get('Content-Type') || 'application/octet-stream' }
+          });
+          try {
+            const body = await resp.clone().json();
+            if (body.updatedInfo) {
+              await MY_SCRIPT_BUCKET.put(getInfoKey(targetDomain), JSON.stringify(body.updatedInfo));
+              const infoBody = JSON.stringify(body.updatedInfo);
+              await Promise.allSettled(
+                allDomains.filter(d => d !== currentDomain && d !== targetDomain).map(d =>
+                  fetch(`https://${d}/__info__/${targetDomain}`, {
+                    method: 'PUT', body: infoBody,
+                    headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+                  }).then(r => r.text().catch(() => {})).catch(() => {})
+                )
+              );
+            }
+          } catch (e) {}
+          return new Response(resp.body, resp);
+        } catch (e) {
+          return new Response(`代理请求失败: ${e.message}\n`, { status: 500 });
+        }
       }
 
       const contentType = request.headers.get('Content-Type') || guessContentType(filename);
@@ -1547,7 +1574,6 @@ export default {
         await addFileToInfo(MY_SCRIPT_BUCKET, currentDomain, filename, fileSize, contentType);
       } catch (e) {
         console.error('PUT /update/: addFileToInfo failed for', filename, e);
-        // 数据已写入 KV 但 info 未更新，尝试回滚
         try { await MY_SCRIPT_BUCKET.delete(filename); } catch (e2) {
           console.error('PUT /update/: rollback delete failed for', filename, e2);
         }
@@ -1556,24 +1582,27 @@ export default {
         });
       }
 
-      // 同步信息文件到所有其他节点（非关键路径，失败不影响本次请求）
-      try {
-        const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
-        const infoBody = JSON.stringify(info);
-        await Promise.allSettled(
-          allDomains.filter(d => d !== currentDomain).map(d =>
-            fetch(`https://${d}/__info__/${currentDomain}`, {
-              method: 'PUT', body: infoBody,
-              headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
-            }).catch(() => {})
-          )
-        );
-      } catch (e) {
-        console.error('PUT /update/: sync info failed for', filename, e);
-        // 不阻塞响应，但日志记录
+      // 本节点操作：推送更新到所有其他节点（非代理请求才推送）
+      const isProxy = request.headers.get('X-Proxy-Request') === '1';
+      if (!isProxy) {
+        try {
+          const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+          const infoBody = JSON.stringify(info);
+          await Promise.allSettled(
+            allDomains.filter(d => d !== currentDomain).map(d =>
+              fetch(`https://${d}/__info__/${currentDomain}`, {
+                method: 'PUT', body: infoBody,
+                headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+              }).then(r => r.text().catch(() => {})).catch(() => {})
+            )
+          );
+        } catch (e) {
+          console.error('PUT /update/: sync info failed for', filename, e);
+        }
       }
 
-      return new Response(JSON.stringify({ success: true, filename, size: fileSize, node: currentDomain }), {
+      const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+      return new Response(JSON.stringify({ success: true, filename, size: fileSize, node: currentDomain, updatedInfo: { ...info, domain: currentDomain } }), {
         headers: { 'Content-Type': 'application/json' }, status: 200
       });
     }
@@ -1589,7 +1618,33 @@ export default {
       const targetDomain = resolveNode(filename, allDomains, nodeParam);
 
       if (targetDomain !== currentDomain) {
-        return proxyRequest(targetDomain, path, request, requestAuthHeader, url);
+        // 代理删除：代理节点处理完不推送，本节点接收后推送
+        const targetUrl = buildProxyUrl(targetDomain, path, url);
+        try {
+          const resp = await fetch(targetUrl, {
+            method: 'DELETE',
+            headers: { 'Authorization': requestAuthHeader, 'X-Proxy-Request': '1' }
+          });
+          try {
+            const body = await resp.clone().json();
+            if (body.updatedInfo) {
+              await MY_SCRIPT_BUCKET.put(getInfoKey(targetDomain), JSON.stringify(body.updatedInfo));
+              // 本节点推送更新到其他节点（排除已更新的代理节点）
+              const infoBody = JSON.stringify(body.updatedInfo);
+              await Promise.allSettled(
+                allDomains.filter(d => d !== currentDomain && d !== targetDomain).map(d =>
+                  fetch(`https://${d}/__info__/${targetDomain}`, {
+                    method: 'PUT', body: infoBody,
+                    headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+                  }).then(r => r.text().catch(() => {})).catch(() => {})
+                )
+              );
+            }
+          } catch (e) {}
+          return new Response(resp.body, resp);
+        } catch (e) {
+          return new Response(`代理请求失败: ${e.message}\n`, { status: 500 });
+        }
       }
 
       try {
@@ -1606,26 +1661,29 @@ export default {
         await removeFileFromInfo(MY_SCRIPT_BUCKET, currentDomain, filename);
       } catch (e) {
         console.error('DELETE /delete/: removeFileFromInfo failed for', filename, e);
-        // KV 数据已删除，但 info 未更新；不阻塞响应但日志记录
       }
 
-      // 同步信息文件到所有其他节点（非关键路径，失败不影响本次请求）
-      try {
-        const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
-        const infoBody = JSON.stringify(info);
-        await Promise.allSettled(
-          allDomains.filter(d => d !== currentDomain).map(d =>
-            fetch(`https://${d}/__info__/${currentDomain}`, {
-              method: 'PUT', body: infoBody,
-              headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
-            }).catch(() => {})
-          )
-        );
-      } catch (e) {
-        console.error('DELETE /delete/: sync info failed for', filename, e);
+      // 本节点操作：推送更新到所有其他节点（非代理请求才推送）
+      const isProxy = request.headers.get('X-Proxy-Request') === '1';
+      if (!isProxy) {
+        try {
+          const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+          const infoBody = JSON.stringify(info);
+          await Promise.allSettled(
+            allDomains.filter(d => d !== currentDomain).map(d =>
+              fetch(`https://${d}/__info__/${currentDomain}`, {
+                method: 'PUT', body: infoBody,
+                headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+              }).then(r => r.text().catch(() => {})).catch(() => {})
+            )
+          );
+        } catch (e) {
+          console.error('DELETE /delete/: sync info failed for', filename, e);
+        }
       }
 
-      return new Response(JSON.stringify({ success: true, filename, node: currentDomain }), {
+      const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+      return new Response(JSON.stringify({ success: true, filename, node: currentDomain, updatedInfo: { ...info, domain: currentDomain } }), {
         headers: { 'Content-Type': 'application/json' }, status: 200
       });
     }
@@ -1656,8 +1714,23 @@ export default {
         try {
           const resp = await fetch(targetUrl, {
             method: 'POST', body: bodyText,
-            headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+            headers: { 'Authorization': requestAuthHeader, 'X-Proxy-Request': '1', 'Content-Type': 'application/json' }
           });
+          try {
+            const body = await resp.clone().json();
+            if (body.updatedInfo) {
+              await MY_SCRIPT_BUCKET.put(getInfoKey(targetDomain), JSON.stringify(body.updatedInfo));
+              const infoBody = JSON.stringify(body.updatedInfo);
+              await Promise.allSettled(
+                allDomains.filter(d => d !== currentDomain && d !== targetDomain).map(d =>
+                  fetch(`https://${d}/__info__/${targetDomain}`, {
+                    method: 'PUT', body: infoBody,
+                    headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+                  }).then(r => r.text().catch(() => {})).catch(() => {})
+                )
+              );
+            }
+          } catch (e) {}
           return new Response(resp.body, resp);
         } catch (e) {
           return new Response(`代理请求失败: ${e.message}\n`, { status: 500 });
@@ -1711,22 +1784,26 @@ export default {
         }
         await saveInfo(MY_SCRIPT_BUCKET, currentDomain, info);
 
-        // 同步信息文件到所有其他节点（非关键路径）
-        const infoBody = JSON.stringify(info);
-        await Promise.allSettled(
-          allDomains.filter(d => d !== currentDomain).map(d =>
-            fetch(`https://${d}/__info__/${currentDomain}`, {
-              method: 'PUT', body: infoBody,
-              headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
-            }).catch(() => {})
-          )
-        );
+        // 本节点操作：推送更新到所有其他节点（非代理请求才推送）
+        const isProxy = request.headers.get('X-Proxy-Request') === '1';
+        if (!isProxy) {
+          const infoBody = JSON.stringify(info);
+          await Promise.allSettled(
+            allDomains.filter(d => d !== currentDomain).map(d =>
+              fetch(`https://${d}/__info__/${currentDomain}`, {
+                method: 'PUT', body: infoBody,
+                headers: { 'Authorization': requestAuthHeader, 'Content-Type': 'application/json' }
+              }).then(r => r.text().catch(() => {})).catch(() => {})
+            )
+          );
+        }
       } catch (e) {
         console.error('POST /rename/: info update/sync failed for', oldName, '->', newName, e);
         // KV 数据已正确 rename，info 不一致不阻塞响应
       }
 
-      return new Response(JSON.stringify({ success: true, old_name: oldName, new_name: newName }), {
+      const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+      return new Response(JSON.stringify({ success: true, old_name: oldName, new_name: newName, updatedInfo: { ...info, domain: currentDomain } }), {
         headers: { 'Content-Type': 'application/json' }, status: 200
       });
     }
