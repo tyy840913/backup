@@ -420,8 +420,8 @@ const fileManagerHtml = `
     .btn-confirm { background-color: var(--primary-color); color: white; }
     .btn-danger { background-color: var(--danger-color); color: white; }
     
-    #editor-modal .modal-content { 
-      width: 95%; max-width: 95%; height: 90vh; max-height: 90vh; display: flex; flex-direction: column; 
+    #editor-modal .modal-content {
+      width: 95%; max-width: 95%; height: 90vh; max-height: 90vh; display: flex; flex-direction: column; scrollbar-gutter: stable; overflow-y: auto;
     }
     .editor-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 2px; margin-bottom: 10px; border-bottom: 1px solid var(--border-color); }
     .editor-header h2 { margin: 0; font-size: 1.1rem; }
@@ -432,8 +432,9 @@ const fileManagerHtml = `
     .editor-toolbar button:hover { background-color: var(--hover-bg-color); }
     .editor-toolbar .btn-cancel { background-color: #ccc; color: black; }
     .editor-toolbar .btn-confirm { background-color: var(--primary-color); color: white; }
-    #editor-textarea { flex-grow: 1; width: 100%; font-family: monospace; font-size: 14px; resize: none; border: 1px solid var(--border-color); border-radius: 4px; padding: 10px; box-sizing: border-box; white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+    #editor-textarea { display: block; flex: 1; padding: 0 50px 0 0; box-sizing: border-box; font-family: 'Cascadia Code', 'Cascadia Mono', 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 16px; resize: none; border: none; outline: none; margin: 0; white-space: pre; overflow-wrap: normal; overflow-x: auto; overflow-y: auto; background: transparent; color: inherit; }
     #editor-textarea.wrap { white-space: pre-wrap; overflow-wrap: break-word; overflow-x: hidden; }
+    .editor-textarea-wrap { flex-grow: 1; display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--border-color); border-radius: 4px; padding: 10px; }
 
     @media (max-width: 768px) {
       .container { padding: 10px; border-radius: 0; box-shadow: none; }
@@ -454,13 +455,13 @@ const fileManagerHtml = `
       .token-item .item-actions svg { width: 24px; height: 24px; }
       #status-message { left: 10px; right: 10px; transform: none; text-align: center; font-size: 14px; padding: 12px; }
       .modal-content { width: 95%; margin: 5% auto; max-height: 85vh; }
-      #editor-modal .modal-content { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; border-radius: 0; overflow-x: hidden; }
+      #editor-modal .modal-content { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; border-radius: 0; scrollbar-gutter: stable; overflow-y: auto; }
       .editor-header h2 { font-size: 0.95rem; }
       .editor-header h2 span { max-width: 200px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
       .editor-toolbar { flex-wrap: wrap; gap: 6px; }
       .editor-toolbar > div { flex-wrap: wrap; }
       .editor-toolbar button { font-size: 12px; padding: 6px 8px; }
-      #editor-textarea { font-size: 13px; }
+      #editor-textarea { font-size: 12px; }
       #path-breadcrumbs { font-size: 0.85rem; }
     }
 
@@ -571,7 +572,7 @@ const fileManagerHtml = `
           <button class="btn-confirm" id="save-editor">保存</button>
         </div>
       </div>
-      <textarea id="editor-textarea"></textarea>
+      <div class="editor-textarea-wrap"><textarea id="editor-textarea"></textarea></div>
     </div>
   </div>
   
@@ -1083,7 +1084,7 @@ const fileManagerHtml = `
       document.getElementById('format-json-btn').onclick = () => formatJson(true);
       document.getElementById('minify-json-btn').onclick = () => formatJson(false);
       document.getElementById('wrap-toggle-btn').onclick = toggleWrap;
-      
+
       window.onclick = function(event) {
         if (event.target.classList.contains('modal')) {
           event.target.style.display = 'none';
@@ -1371,7 +1372,7 @@ const fileManagerHtml = `
         showStatus('创建文件时出错: ' + error.message, true);
       }
     }
-    
+
     function toggleWrap() {
       const textarea = document.getElementById('editor-textarea');
       const btn = document.getElementById('wrap-toggle-btn');
