@@ -10,9 +10,7 @@
 
 Docker及工具安装 Docker.sh
 
-mihomo代理（优先） mihomo_install.sh
-
-mihomo代理状态检查 mihomo_status.sh
+mihomo代理（优先） mihomo.sh
 
 xiaoya-mihomo目录运行 xiaoya-mihomo.sh
 
