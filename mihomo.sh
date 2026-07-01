@@ -135,9 +135,9 @@ print_info() {
 setup_cron() {
   local cron_job
   if [[ $OS == alpine ]]; then
-    cron_job="0 8 * * * /bin/sh $CONF_DIR/mihomo.sh config && docker restart mihomo >/dev/null 2>&1"
+    cron_job="0 5 * * * cp $CONF_DIR/config.yaml /docker_data/mihomo >/dev/null 2>&1"
   else
-    cron_job="0 8 * * * /usr/bin/bash $CONF_DIR/mihomo.sh config && docker restart mihomo >/dev/null 2>&1"
+    cron_job="0 5 * * * cp $CONF_DIR/config.yaml /docker_data/mihomo >/dev/null 2>&1"
   fi
   local current; current=$(crontab -l 2>/dev/null || true)
   if ! echo "$current" | grep -Fq "/etc/mihomo/mihomo.sh"; then
