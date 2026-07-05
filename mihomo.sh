@@ -4,6 +4,7 @@ R='\033[1;31m'; G='\033[1;32m'; Y='\033[1;33m'; B='\033[1;34m'; C='\033[1;36m'; 
 
 CONF_DIR="/etc/mihomo"
 DATA_DIR="/docker_data/mihomo"
+GH_PROXY="https://git.woskee.nyc.mn/"
 
 handle_error() { echo -e "${R}$1${N}"; exit 1; }
 
@@ -21,7 +22,7 @@ install_docker() {
   echo -e "${Y}安装 Docker...${N}"
   case $OS in
     alpine) apk update && apk add docker && rc-update add docker boot && service docker start ;;
-    debian|ubuntu) curl -fsSL https://get.docker.com | sh && systemctl enable docker && systemctl start docker ;;
+    debian|ubuntu) curl -fsSL "${GH_PROXY}https://get.docker.com" | sh -s -- --mirror Aliyun && systemctl enable docker && systemctl start docker ;;
   esac
   command -v docker &>/dev/null || handle_error "Docker 安装失败"
   echo -e "${G}Docker 安装成功${N}"
@@ -168,8 +169,16 @@ check_status() {
 
   if command -v docker &>/dev/null; then
     echo -e "Docker: ${G}已安装${N}"
-    systemctl is-active --quiet docker 2>/dev/null && echo -e "Docker 服务: ${G}运行中${N}" \
-      || echo -e "Docker 服务: ${R}未运行${N}"
+    local docker_up=false
+    if command -v systemctl &>/dev/null; then
+      systemctl is-active --quiet docker 2>/dev/null && docker_up=true
+    elif command -v rc-service &>/dev/null; then
+      rc-service docker status &>/dev/null && docker_up=true
+    elif command -v service &>/dev/null; then
+      service docker status &>/dev/null && docker_up=true
+    fi
+    $docker_up && echo -e "Docker 服务: ${G}运行中${N}" \
+              || echo -e "Docker 服务: ${R}未运行${N}"
   else
     echo -e "Docker: ${R}未安装${N}"; return
   fi

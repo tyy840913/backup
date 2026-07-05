@@ -182,9 +182,14 @@ main() {
     detect_os
     install_dependencies
     install_docker
+    local ret=$?
     configure_docker
     verify_docker
-    echo -e "\n${G}Docker 安装配置完成${N}"
+    if [[ $ret -eq 0 ]]; then
+        echo -e "\n${G}Docker 安装配置完成${N}"
+    else
+        echo -e "\n${R}Docker 安装失败，请检查后重试${N}"
+    fi
 }
 
 main "$@"

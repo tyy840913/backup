@@ -45,8 +45,15 @@ check_status() {
   if ! command -v docker &>/dev/null; then
     echo -e "${R}Docker 未安装${N}"; return
   fi
-  systemctl is-active --quiet docker 2>/dev/null && \
-    echo -e "Docker: ${G}运行中${N}" || echo -e "Docker: ${R}未运行${N}"
+  local docker_up=false
+  if command -v systemctl &>/dev/null; then
+    systemctl is-active --quiet docker 2>/dev/null && docker_up=true
+  elif command -v rc-service &>/dev/null; then
+    rc-service docker status &>/dev/null && docker_up=true
+  elif command -v service &>/dev/null; then
+    service docker status &>/dev/null && docker_up=true
+  fi
+  $docker_up && echo -e "Docker: ${G}运行中${N}" || echo -e "Docker: ${R}未运行${N}"
 
   local cid=$(docker ps -q --filter name=xiaoya 2>/dev/null)
   if [[ -n "$cid" ]]; then
