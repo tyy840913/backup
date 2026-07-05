@@ -174,6 +174,7 @@ start_container() {
     $PROXY_ARGS \
     -v "$XIAOYA_DIR:/data" \
     -v "$XIAOYA_DIR/data:/www/data" \
+    -v "$DATA_DIR:$DATA_DIR" \
     --restart=always \
     --name=xiaoya \
     "$IMG" || { echo -e "${R}创建失败${N}"; exit 1; }

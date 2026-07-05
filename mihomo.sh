@@ -109,7 +109,8 @@ start_container() {
   # 先尝试 host 网络
   echo -e "${C}尝试 host 网络模式...${N}"
   if docker run -d --name=mihomo --restart=unless-stopped --network=host \
-    -v "$CONF_DIR:/root/.config/mihomo" metacubex/mihomo:latest &>/dev/null; then
+    -v "$CONF_DIR:/root/.config/mihomo" \
+    -v "$DATA_DIR:$DATA_DIR" metacubex/mihomo:latest &>/dev/null; then
     sleep 5
     if docker ps --filter "name=mihomo" --format "{{.Status}}" | grep -q "Up"; then
       echo -e "${G}  ✓ host 模式启动成功${N}"
@@ -121,7 +122,8 @@ start_container() {
   echo -e "${Y}host 失败，尝试桥接模式...${N}"
   if docker run -d --name=mihomo --restart=unless-stopped \
     -p 7890:7890 -p 7891:7891 -p 7892:7892 -p 9090:9090 \
-    -v "$CONF_DIR:/root/.config/mihomo" metacubex/mihomo:latest &>/dev/null; then
+    -v "$CONF_DIR:/root/.config/mihomo" \
+    -v "$DATA_DIR:$DATA_DIR" metacubex/mihomo:latest &>/dev/null; then
     sleep 5
     if docker ps --filter "name=mihomo" --format "{{.Status}}" | grep -q "Up"; then
       echo -e "${G}  ✓ 桥接模式启动成功${N}"
