@@ -1,202 +1,219 @@
 #!/bin/bash
-set -e
 
-########################  统一读取账号密码（只问一次）  ########################
-read -p "请输入用于远端备份的用户名: " BACKUP_USER
-read -s -p "请输入用于远端备份的密码: " BACKUP_PASS
-echo
-export BACKUP_USER BACKUP_PASS
+R='\033[1;31m'; G='\033[1;32m'; Y='\033[1;33m'; B='\033[1;34m'; C='\033[1;36m'; N='\033[0m'
 
-########################  工具函数  ########################
-green=$(echo -e "\033[32m"); yellow=$(echo -e "\033[33m")
-cyan=$(echo -e "\033[36m"); reset=$(echo -e "\033[0m")
+XIAOYA_DIR="/etc/xiaoya"
+DATA_DIR="/docker_data/xiaoya"
+IMG_BRIDGE="docker.1ms.run/xiaoyaliu/alist:latest"
+IMG_HOST="docker.1ms.run/xiaoyaliu/alist:hostmode"
 
-check_token(){      [ ${#1} -eq 32 ]; }
-check_opentoken(){  [ ${#1} -gt 334 ]; }
-check_folderid(){   [ ${#1} -eq 40 ]; }
+check_token()     { [ ${#1} -eq 32 ]; }
+check_opentoken() { [ ${#1} -gt 334 ]; }
+check_folderid()  { [ ${#1} -eq 40 ]; }
 
-########################  独立定时任务模块（精简无重复）  ########################
-add_cron(){
-  local cron="$1" desc="$2"
-  if crontab -l 2>/dev/null | grep -qF "$cron"; then
-    echo ">>> 定时任务已存在：$desc"
+load_config() {
+  local dir="$1"
+  TOK=$(cat "$dir/mytoken.txt" 2>/dev/null)
+  OT=$(cat "$dir/myopentoken.txt" 2>/dev/null)
+  FID=$(cat "$dir/temp_transfer_folder_id.txt" 2>/dev/null)
+  check_token "$TOK" && check_opentoken "$OT" && check_folderid "$FID"
+}
+
+get_local_ip() {
+  LOCAL_IP=$(ip -4 addr show scope global 2>/dev/null | awk '/inet/ {print $2; exit}' | cut -d/ -f1)
+  [[ -z "$LOCAL_IP" ]] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+  echo "${LOCAL_IP:-127.0.0.1}"
+}
+
+check_status() {
+  local ip=$(get_local_ip)
+  echo -e "\n${B}========== xiaoya 状态 ==========${N}"
+
+  if ! command -v docker &>/dev/null; then
+    echo -e "${R}Docker 未安装${N}"; return
+  fi
+  systemctl is-active --quiet docker 2>/dev/null && \
+    echo -e "Docker: ${G}运行中${N}" || echo -e "Docker: ${R}未运行${N}"
+
+  local cid=$(docker ps -q --filter name=xiaoya 2>/dev/null)
+  if [[ -n "$cid" ]]; then
+    local start=$(docker inspect -f '{{.State.StartedAt}}' xiaoya 2>/dev/null)
+    local sec=0
+    [[ -n "$start" ]] && sec=$(( $(date +%s) - $(date -d "$start" +%s) )) 2>/dev/null || true
+    local nm=$(docker inspect xiaoya --format '{{.HostConfig.NetworkMode}}' 2>/dev/null)
+    echo -e "容器: ${G}运行中${N} | 网络: ${G}$nm${N}"
+    echo -e "已运行: $((sec/86400))d $((sec%86400/3600))h $((sec%3600/60))m"
+    docker logs xiaoya --tail 3 2>/dev/null | grep -i "error\|warn\|version" || true
   else
-    (crontab -l 2>/dev/null; echo "$cron") | crontab -
-    echo ">>> 定时任务已创建：$desc"
+    local aid=$(docker ps -aq --filter name=xiaoya 2>/dev/null)
+    [[ -n "$aid" ]] && echo -e "容器: ${Y}已停止${N}" || echo -e "容器: ${R}不存在${N}"
   fi
+
+  curl -s -m 3 http://127.0.0.1:5678 &>/dev/null && \
+    echo -e "服务: ${G}http://$ip:5678${N}" || \
+    echo -e "服务: ${R}不可访问${N}"
+
+  [[ -f "$XIAOYA_DIR/mytoken.txt" ]] && \
+    echo -e "配置: ${G}已存在${N}" || echo -e "配置: ${R}不存在${N}"
+
+  echo -e "${B}==============================${N}"
 }
 
-add_backup_cron(){
-  local user="$1" pass="$2"
-  # 修复: 使用绝对路径，并将变量直接替换为值，以确保 cron 环境下能正确执行
-  local cron_cmd="0 0 */3 * * /usr/bin/tar -cf - -C /etc --exclude=xiaoya/data xiaoya | /usr/bin/curl -u ${user}:${pass} -T - https://backup.woskee.dpdns.org/update/xiaoya >/dev/null 2>&1"
-  add_cron "$cron_cmd" "每3天备份xiaoya目录"
-}
+init_config() {
+  echo -e "\n${B}--- 检查配置 ---${N}"
 
-add_restart_cron(){
-  local docker_path=$(command -v docker)
-  if [ -z "$docker_path" ]; then
-    echo ">>> 错误：未找到 docker 命令，无法创建重启定时任务。" >&2
-    return 1 # 返回错误，但让脚本继续运行
-  fi
-  # 修复: 使用 command -v 获取 docker 的绝对路径，确保 cron 能找到命令
-  local cron_cmd="30 2 * * * ${docker_path} restart xiaoya >/dev/null 2>&1"
-  add_cron "$cron_cmd" "每天凌晨2:30重启xiaoya容器"
-}
-
-########################  本地配置检查 + 交互选择  ########################
-XIAOYA_DIR=/etc/xiaoya
-NEED_INIT=0
-[ -d "$XIAOYA_DIR" ] || NEED_INIT=1
-if [ "$NEED_INIT" -eq 0 ]; then
-  TOK=$(cat "$XIAOYA_DIR"/mytoken.txt 2>/dev/null)
-  OT=$(cat "$XIAOYA_DIR"/myopentoken.txt 2>/dev/null)
-  FID=$(cat "$XIAOYA_DIR"/temp_transfer_folder_id.txt 2>/dev/null)
-  check_token "$TOK" && check_opentoken "$OT" && check_folderid "$FID" || NEED_INIT=1
-fi
-
-if [ "$NEED_INIT" -eq 1 ]; then
-  echo
-  echo "检测到本地配置缺失或 Token 长度异常！"
-  echo "  1) 自动拉取远端配置（需用户名密码）"
-  echo "  2) 手动输入三个 Token（跳过下载）"
-  read -p "请选择： " choice
-  choice=${choice:-1}
-if [ "$choice" -eq 1 ]; then
-    echo ">>> 开始拉取远端配置..."
-    echo ">>> 正在从远端服务器下载配置..."
-    if ! curl -fsSL --connect-timeout 10 --max-time 30 \
-         -u "$BACKUP_USER":"$BACKUP_PASS" \
-         https://backup.woskee.dpdns.org/xiaoya 2>/dev/null | tar -xf - -C /etc 2>/dev/null; then
-        echo ">>> 下载配置失败，请检查网络或账号密码是否正确！"
-        exit 1
+  if [[ -d "$DATA_DIR" ]] && load_config "$DATA_DIR"; then
+    echo -e "${G}从 $DATA_DIR 检测到有效配置${N}"
+    if [[ -L "$XIAOYA_DIR" ]] && [[ "$(readlink "$XIAOYA_DIR")" = "$DATA_DIR" ]]; then
+      echo -e "${G}软链接已存在${N}"
+    elif [[ -d "$XIAOYA_DIR" ]] && ! [[ -L "$XIAOYA_DIR" ]]; then
+      echo -e "${Y}$XIAOYA_DIR 是实体目录，移除并创建软链接？(y/N)${N}"
+      read -r confirm
+      if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        rm -rf "$XIAOYA_DIR" && ln -s "$DATA_DIR" "$XIAOYA_DIR"
+        echo -e "${G}已创建软链接${N}"
+      fi
+    else
+      ln -sf "$DATA_DIR" "$XIAOYA_DIR"
+      echo -e "${G}已创建软链接${N}"
     fi
+    return 0
+  fi
+
+  if [[ -d "$XIAOYA_DIR" ]] && load_config "$XIAOYA_DIR"; then
+    echo -e "${G}从 $XIAOYA_DIR 检测到有效配置${N}"
+    return 0
+  fi
+
+  echo -e "${Y}未检测到有效配置，请输入 Token${N}"
+  mkdir -p "$XIAOYA_DIR" "$XIAOYA_DIR/data"
+
+  while ! check_token "$(cat "$XIAOYA_DIR/mytoken.txt" 2>/dev/null)"; do
+    read -p "$(echo -e "${C}输入阿里云盘 Token（32 位）:${N}") " tk
+    [[ ${#tk} -ne 32 ]] && echo "长度不为 32" && continue
+    echo "$tk" > "$XIAOYA_DIR/mytoken.txt"
+  done
+
+  while ! check_opentoken "$(cat "$XIAOYA_DIR/myopentoken.txt" 2>/dev/null)"; do
+    read -p "$(echo -e "${Y}输入 Open Token（至少 335 位）:${N}") " ot
+    [[ ${#ot} -le 334 ]] && echo "长度不足 335" && continue
+    echo "$ot" > "$XIAOYA_DIR/myopentoken.txt"
+  done
+
+  while ! check_folderid "$(cat "$XIAOYA_DIR/temp_transfer_folder_id.txt" 2>/dev/null)"; do
+    read -p "$(echo -e "${C}输入转存目录 folder_id（40 位）:${N}") " fid
+    [[ ${#fid} -ne 40 ]] && echo "长度不为 40" && continue
+    echo "$fid" > "$XIAOYA_DIR/temp_transfer_folder_id.txt"
+  done
+  echo -e "${G}Token 填写完成${N}"
+}
+
+select_network() {
+  echo -e "\n${B}--- 网络模式 ---${N}"
+  echo "1) bridge（默认）"
+  echo "2) host"
+  read -p "请选择： " mode_choice
+  case "${mode_choice:-1}" in 2|host|HOST) MODE=host ;; *) MODE=bridge ;; esac
+  echo -e "${G}已选择 $MODE${N}"
+}
+
+start_container() {
+  local ip=$(get_local_ip)
+
+  # 已有容器时提示
+  if docker ps -aq --filter name=xiaoya | grep -q .; then
+    check_status
+    echo -e "\n${Y}已存在 xiaoya 容器${N}"
+    read -p "是否重新部署？(y/N): " redeploy
+    [[ ! "$redeploy" =~ ^[Yy]$ ]] && echo -e "${Y}已取消${N}" && return
+    echo "停止并删除旧容器..."
+    docker stop xiaoya 2>/dev/null || true
+    docker rm xiaoya 2>/dev/null || true
+  fi
+
+  init_config
+  select_network
+
+  [[ -s "$XIAOYA_DIR/docker_address.txt" ]] || echo "http://${ip}:5678" > "$XIAOYA_DIR/docker_address.txt"
+
+  [[ "$MODE" = "host" ]] && IMG="$IMG_HOST" || IMG="$IMG_BRIDGE"
+  PORT_MAP=""
+  [[ "$MODE" != "host" ]] && PORT_MAP="-p 5678:80 -p 2345:2345 -p 2346:2346 -p 2347:2347"
+
+  PROXY_ARGS=""
+  if [[ -s "$XIAOYA_DIR/proxy.txt" ]]; then
+    local pu=$(head -n1 "$XIAOYA_DIR/proxy.txt")
+    PROXY_ARGS="--env HTTP_PROXY=$pu --env HTTPS_PROXY=$pu --env NO_PROXY=*.aliyundrive.com,*.alipan.com --env http_proxy=$pu --env https_proxy=$pu --env no_proxy=*.aliyundrive.com,*.alipan.com"
+  fi
+
+  echo -e "\n${B}--- 部署容器 ---${N}"
+  echo "拉取镜像 $IMG..."
+  docker pull "$IMG" || { echo -e "${R}拉取失败${N}"; exit 1; }
+
+  echo "创建容器..."
+  docker create --privileged \
+    $PORT_MAP \
+    $PROXY_ARGS \
+    -v "$XIAOYA_DIR:/data" \
+    -v "$XIAOYA_DIR/data:/www/data" \
+    --restart=always \
+    --name=xiaoya \
+    "$IMG" || { echo -e "${R}创建失败${N}"; exit 1; }
+
+  echo "启动容器..."
+  docker start xiaoya || { echo -e "${R}启动失败${N}"; docker logs xiaoya --tail 20 2>/dev/null; exit 1; }
+
+  echo "等待服务就绪..."
+  for i in $(seq 1 15); do
+    sleep 2
+    if curl -s -m 3 http://127.0.0.1:5678 &>/dev/null; then
+      echo -e "${G}服务已就绪，访问地址：http://${ip}:5678${N}"
+      return 0
+    fi
+    echo -n "."
+  done
+  echo -e "\n${Y}容器已启动但服务未响应，请稍后检查${N}"
+  docker logs xiaoya --tail 10 2>/dev/null
+}
+
+restart_container() {
+  if docker ps -q --filter name=xiaoya | grep -q .; then
+    echo -e "${Y}正在重启 xiaoya 容器...${N}"
+    docker restart xiaoya && echo -e "${G}已重启${N}" || echo -e "${R}重启失败${N}"
+    show_logs
   else
-    echo "跳过下载，仅手动填写 Token ..."
+    echo -e "${R}容器未运行${N}"
   fi
+}
 
-  mkdir -p "$XIAOYA_DIR"/data
-  touch "$XIAOYA_DIR"/{mytoken.txt,myopentoken.txt,temp_transfer_folder_id.txt}
+show_logs() {
+  docker logs --tail 50 -f xiaoya 2>/dev/null || echo -e "${Y}无日志${N}"
+}
 
-  while ! check_token "$(cat "$XIAOYA_DIR"/mytoken.txt)"; do
-    read -p "${green}输入阿里云盘 Token（32 位）:${reset} " tk
-    # 修复: 将 exit 1 改为 continue，允许用户重新输入
-    if [ ${#tk} -ne 32 ]; then
-      echo "长度不为 32，请重新输入。"
-      continue
+# --- 入口 ---
+case "${1:-menu}" in
+  status|st)   check_status ;;
+  restart)     restart_container ;;
+  *)
+    if docker ps -q --filter name=xiaoya | grep -q .; then
+      while true; do
+        clear
+        echo -e "${C}===== xiaoya-alist 管理 =====${N}"
+        echo " 1) 重新部署容器"
+        echo " 2) 状态检查"
+        echo " 3) 重启容器"
+        echo " 0) 退出"
+        read -p "请选择： " ch
+        case "$ch" in
+          1) start_container && show_logs ;;
+          2) check_status ;;
+          3) restart_container ;;
+          0) exit 0 ;;
+        esac
+        read -p "按回车键继续..."
+      done
+    else
+start_container && show_logs
     fi
-    echo "$tk" > "$XIAOYA_DIR"/mytoken.txt
-  done
-
-  while ! check_opentoken "$(cat "$XIAOYA_DIR"/myopentoken.txt)"; do
-    read -p "${yellow}输入阿里云盘 Open Token（335 位）:${reset} " ot
-    # 修复: 将 exit 1 改为 continue，允许用户重新输入
-    if [ ${#ot} -le 334 ]; then
-      echo "长度不足 335，请重新输入。"
-      continue
-    fi
-    echo "$ot" > "$XIAOYA_DIR"/myopentoken.txt
-  done
-
-  while ! check_folderid "$(cat "$XIAOYA_DIR"/temp_transfer_folder_id.txt)"; do
-    read -p "${cyan}输入阿里云盘转存目录 folder_id（40 位）:${reset} " fid
-    # 修复: 将 exit 1 改为 continue，允许用户重新输入
-    if [ ${#fid} -ne 40 ]; then
-      echo "长度不为 40，请重新输入。"
-      continue
-    fi
-    echo "$fid" > "$XIAOYA_DIR"/temp_transfer_folder_id.txt
-  done
-  echo "阿里云盘信息已全部填写完成。"
-else
-  echo "配置已存在且 Token 长度正常，直接启动容器..."
-fi
-
-########################  网络模式选择  ########################
-# 修复: 修正了 ifconfig 和 ip 命令获取IP的逻辑，确保能正确提取IP地址
-if command -v ifconfig &>/dev/null; then
-  LOCAL_IP=$(ifconfig | awk '/inet [^127]/ {print $2; exit}' | cut -d: -f2)
-else
-  LOCAL_IP=$(ip -4 addr show scope global | awk '/inet/ {print $2; exit}' | cut -d/ -f1)
-fi
-[ -s /etc/xiaoya/docker_address.txt ] || echo "http://${LOCAL_IP}:5678" > /etc/xiaoya/docker_address.txt
-
-echo
-echo ">>> 请选择 Docker 网络模式："
-echo "  1 或回车 = bridge（默认）"
-echo "  2        = host"
-read -p "请选择： " mode_choice
-mode_choice=${mode_choice:-1}
-case "$mode_choice" in
-  2|host|HOST) MODE=host ;;
-  *)           MODE=bridge ;;
+    ;;
 esac
-echo ">>> 已选择 $MODE 模式"
-
-########################  定时任务模块  ########################
-add_backup_cron "$BACKUP_USER" "$BACKUP_PASS"
-add_restart_cron
-
-########################  Docker 镜像选择（独立两行）  ########################
-IMG_BRIDGE=docker.1ms.run/xiaoyaliu/alist:latest
-IMG_HOST=docker.1ms.run/xiaoyaliu/alist:hostmode
-
-# 根据模式选用镜像
-if [ "$MODE" = "host" ]; then
-  IMG="$IMG_HOST"
-else
-  IMG="$IMG_BRIDGE"
-fi
-
-[ "$MODE" = "host" ] && PORT_MAP="" || PORT_MAP="-p 5678:80 -p 2345:2345 -p 2346:2346 -p 2347:2347"
-PROXY_ARGS=""
-if [ -s /etc/xiaoya/proxy.txt ]; then
-  proxy_url=$(head -n1 /etc/xiaoya/proxy.txt)
-  PROXY_ARGS="--env HTTP_PROXY=$proxy_url --env HTTPS_PROXY=$proxy_url --env no_proxy=*.aliyundrive.com,*.alipan.com"
-fi
-
-echo ">>> 检查并停止旧容器 ..."
-if docker ps -aq --filter name=xiaoya | grep -q .; then
-  if ! docker stop xiaoya; then
-    echo ">>> 停止旧容器失败，请检查 Docker 服务" >&2; exit 1
-  fi
-  echo ">>> 删除旧容器 ..."
-  if ! docker rm xiaoya; then
-    echo ">>> 删除旧容器失败" >&2; exit 1
-  fi
-else
-  echo ">>> 容器 xiaoya 不存在，跳过停止/删除"
-fi
-
-echo ">>> 检查并删除本地旧镜像 ..."
-if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q xiaoyaliu/alist; then
-  if ! docker rmi $(docker images --format "{{.Repository}}:{{.Tag}}" | grep xiaoyaliu/alist); then
-    echo ">>> 镜像删除失败" >&2; exit 1
-  fi
-else
-  echo ">>> 本地无 xiaoyaliu/alist 镜像，跳过删除"
-fi
-
-echo ">>> 正在拉取镜像 $IMG ..."
-if ! docker pull "$IMG"; then
-  echo ">>> 镜像拉取失败，请检查网络或镜像仓库是否可达" >&2; exit 1
-fi
-
-echo ">>> 正在创建容器 ..."
-if ! docker create --privileged \
-                   $PORT_MAP \
-                   $PROXY_ARGS \
-                   -v /etc/xiaoya:/data \
-                   -v /etc/xiaoya/data:/www/data \
-                   --restart=always \
-                   --name=xiaoya \
-                   "$IMG"; then
-  echo ">>> 容器创建失败，请检查端口占用、挂载路径权限或磁盘空间" >&2; exit 1
-fi
-
-echo ">>> 正在启动容器 ..."
-if ! docker start xiaoya; then
-  echo ">>> 容器启动失败，请查看上面 Docker 报错信息" >&2; exit 1
-fi
-
-echo ">>> Docker 容器已启动，访问地址：http://${LOCAL_IP}:5678"

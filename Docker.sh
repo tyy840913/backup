@@ -1,327 +1,195 @@
 #!/bin/bash
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+# ============================================================
+#  Docker 安装与配置脚本
+#  功能：安装 Docker CE + Docker Compose v2 | 配置镜像加速
+#  支持：Ubuntu / Debian / CentOS / RHEL / Fedora
+# ============================================================
 
-# GitHub 加速器代理 (脚本级别配置)
+R='\033[1;31m'; G='\033[1;32m'; Y='\033[1;33m'; B='\033[1;34m'; C='\033[1;36m'; N='\033[0m'
 GH_PROXY="https://git.woskee.nyc.mn/"
 
-# 检查是否为 root 用户
 check_root() {
-    if [ "$EUID" -ne 0 ]; then
-        echo -e "${RED}请使用 root 权限运行此脚本${NC}"
+    if [[ $EUID -ne 0 ]]; then
+        echo -e "${R}需要 root 权限${N}"
         exit 1
     fi
 }
 
-# 检测系统类型
 detect_os() {
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        OS=$ID
-        echo -e "${GREEN}检测到系统: $OS${NC}"
-    elif [ -f /etc/alpine-release ]; then
-        OS="alpine"
-        echo -e "${GREEN}检测到系统: Alpine Linux${NC}"
+    if [[ -f /etc/os-release ]]; then
+        source /etc/os-release
+        OS="${ID,,}"
+        echo -e "${G}系统：${PRETTY_NAME:-$ID}${N}"
     else
-        echo -e "${RED}无法检测操作系统${NC}"
+        echo -e "${R}无法检测操作系统${N}"
         exit 1
     fi
+    case "$OS" in
+        ubuntu|debian|centos|rhel|fedora|almalinux|rocky) ;;
+        *) echo -e "${R}不支持的发行版：$OS${N}"; exit 1 ;;
+    esac
 }
 
-# 检查并安装依赖，避免重复安装
 install_dependencies() {
-    echo -e "${CYAN}--- 检查并安装依赖包 ---${NC}"
-    
-    # 移除了 wget，只保留 curl 和 jq
-    REQUIRED_COMMANDS="curl jq"
-    PACKAGES_TO_INSTALL=""
-    
-    for cmd in $REQUIRED_COMMANDS; do
-        if ! command -v "$cmd" &> /dev/null; then
-            echo -e "${YELLOW}命令 '$cmd' 未找到，准备安装...${NC}"
-            PACKAGES_TO_INSTALL+="$cmd "
-        else
-            echo -e "${GREEN}✔ 命令 '$cmd' 已存在${NC}"
-        fi
-    done
-    
-    PACKAGES_TO_INSTALL=$(echo "$PACKAGES_TO_INSTALL" | sed 's/ *$//')
-
-    if [ -n "$PACKAGES_TO_INSTALL" ]; then
-        echo -e "${BLUE}开始安装缺失的依赖: $PACKAGES_TO_INSTALL${NC}"
-        case $OS in
-            ubuntu|debian)
-                apt-get update
-                apt-get install -y $PACKAGES_TO_INSTALL
-                ;;
-            centos|rhel|fedora)
-                if command -v dnf &> /dev/null; then
-                    dnf install -y $PACKAGES_TO_INSTALL
-                else
-                    yum install -y $PACKAGES_TO_INSTALL
-                fi
-                ;;
-            alpine)
-                apk update
-                apk add $PACKAGES_TO_INSTALL
-                ;;
-            *)
-                echo -e "${RED}无法为未知系统自动安装依赖，请手动安装: $PACKAGES_TO_INSTALL${NC}"
-                return 1
-                ;;
-        esac
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}依赖安装失败，请检查错误信息。${NC}"
-            exit 1
-        fi
-        echo -e "${GREEN}依赖安装完成。${NC}"
-    else
-        echo -e "${GREEN}所有依赖均已安装，无需操作。${NC}"
+    echo -e "${B}--- 检查依赖 ---${N}"
+    if command -v curl &>/dev/null; then
+        echo -e "${G}✔ curl 已安装${N}"
+        return 0
     fi
+    echo "安装 curl..."
+    case "$OS" in
+        ubuntu|debian) apt-get update -qq && apt-get install -y curl ;;
+        centos|rhel|almalinux|rocky) yum install -y curl ;;
+        fedora) dnf install -y curl ;;
+    esac
+    echo -e "${G}依赖安装完成${N}"
 }
 
-# 使用系统包管理工具安装 Docker
 install_docker() {
-    echo -e "${CYAN}--- 安装 Docker ---${NC}"
-    
-    if command -v docker &> /dev/null; then
-        echo -e "${YELLOW}Docker 已安装，跳过。${NC}"
-        # 确保 Docker 服务是启动的
-        if ! pgrep dockerd > /dev/null; then
-           echo -e "${YELLOW}检测到 Docker 已安装但未运行，尝试启动...${NC}"
-           if [ "$OS" = "alpine" ]; then service docker start; else systemctl start docker; fi
+    echo -e "\n${B}--- 安装 Docker CE ---${N}"
+    if command -v docker &>/dev/null; then
+        echo -e "${Y}Docker 已安装，版本：$(docker --version 2>/dev/null)${N}"
+        if ! pgrep dockerd &>/dev/null; then
+            echo "启动 Docker 服务..."
+            systemctl start docker 2>/dev/null || service docker start 2>/dev/null
         fi
         return 0
     fi
-
-    case $OS in
-        ubuntu|debian)
-            apt-get install -y docker.io
-            ;;
-        centos)
-            yum install -y docker
-            ;;
-        rhel)
-            subscription-manager repos --enable=rhel-7-server-extras-rpms
-            yum install -y docker
-            ;;
-        fedora)
-            dnf install -y docker
-            ;;
-        alpine)
-            apk add docker
-            ;;
-        *)
-            echo -e "${RED}不支持的 Linux 发行版: $OS${NC}"
-            exit 1
-            ;;
-    esac
-    
-    echo -e "${GREEN}Docker 安装完成，正在启动服务...${NC}"
-    if [ "$OS" = "alpine" ]; then
-        rc-update add docker boot && service docker start
+    echo "从官方源安装 Docker CE（使用镜像加速）..."
+    # 脚本走代理下载，包从阿里云镜像拉取
+    if curl -fsSL "${GH_PROXY}https://get.docker.com" | sh -s -- --mirror Aliyun; then
+        echo -e "${G}Docker CE 安装成功${N}"
+        systemctl enable docker && systemctl start docker
     else
-        systemctl start docker && systemctl enable docker
+        echo -e "${R}安装失败，尝试从系统源安装...${N}"
+        case "$OS" in
+            ubuntu|debian) apt-get install -y docker.io ;;
+            centos|rhel|almalinux|rocky) yum install -y docker-ce ;;
+            fedora) dnf install -y docker-ce ;;
+        esac
+        systemctl enable docker && systemctl start docker
     fi
 }
 
-# 安装 Docker Compose
-install_docker_compose() {
-    echo -e "${CYAN}--- 安装 Docker Compose ---${NC}"
-    
-    if command -v docker-compose &> /dev/null; then
-        echo -e "${YELLOW}Docker Compose 已安装，跳过。${NC}"
-        return 0
-    fi
-
-    echo -e "${BLUE}尝试从系统源安装 Docker Compose...${NC}"
-    case $OS in
-        ubuntu|debian) apt-get install -y docker-compose > /dev/null 2>&1 ;;
-        centos|rhel|fedora)
-            if command -v dnf &> /dev/null; then dnf install -y docker-compose > /dev/null 2>&1; else yum install -y docker-compose > /dev/null 2>&1; fi ;;
-        alpine) apk add docker-compose > /dev/null 2>&1 ;;
-    esac
-    
-    if command -v docker-compose &> /dev/null; then
-        echo -e "${GREEN}从系统源安装 Docker Compose 成功${NC}"
-        return 0
-    fi
-
-    echo -e "${YELLOW}系统源安装失败或不可用，尝试从 GitHub 下载...${NC}"
-    COMPOSE_VERSION=$(curl -s "${GH_PROXY}https://api.github.com/repos/docker/compose/releases/latest" | jq -r ".tag_name")
-    if [ -z "$COMPOSE_VERSION" ] || [ "$COMPOSE_VERSION" = "null" ]; then
-        echo -e "${RED}无法获取 Docker Compose 最新版本号${NC}"; return 1;
-    fi
-
-    echo -e "${BLUE}下载 Docker Compose ${COMPOSE_VERSION}...${NC}"
-    DOWNLOAD_URL="${GH_PROXY}https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
-    
-    if curl -L "$DOWNLOAD_URL" -o /usr/local/bin/docker-compose; then
-        chmod +x /usr/local/bin/docker-compose
-        ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
-        echo -e "${GREEN}Docker Compose ${COMPOSE_VERSION} 安装完成${NC}"
-    else
-        echo -e "${RED}Docker Compose 下载失败${NC}"; return 1;
-    fi
-}
-
-# 配置 Docker 加速和代理
-configure_docker_proxy_and_mirror() {
+configure_docker() {
     local DAEMON_JSON="/etc/docker/daemon.json"
-    local PROXY_CONF_DIR="/etc/systemd/system/docker.service.d"
     local CONFIG_CHANGED=0
 
-    echo -e "\n${CYAN}--- 配置 Docker 镜像加速与 systemd 代理 ---${NC}"
-
+    echo -e "\n${B}--- 配置 Docker 镜像加速 ---${N}"
     mkdir -p "$(dirname "$DAEMON_JSON")"
 
-    # 使用 jq 处理 JSON 配置（不再使用 sed）
-    if command -v jq >/dev/null 2>&1; then
-        if [ -f "$DAEMON_JSON" ]; then
-            if ! grep -q "registry-mirrors" "$DAEMON_JSON"; then
-                jq '. + {"registry-mirrors": ["https://docker.1ms.run","https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"],"live-restore": true}' \
-                "$DAEMON_JSON" > "$DAEMON_JSON.tmp" && mv "$DAEMON_JSON.tmp" "$DAEMON_JSON"
+    local MIRRORS='["https://docker.xuanyuan.me","https://docker.1ms.run","https://docker.woskee.nyc.mn","https://docker.wosken.dpdns.org","https://docker.luxxk.dpdns.org","https://docker.woskee.dpdns.org"]'
+
+    if command -v python3 &>/dev/null; then
+        # 用 python3 安全处理 JSON
+        if [[ -f "$DAEMON_JSON" ]]; then
+            python3 -c "
+import json
+with open('$DAEMON_JSON') as f:
+    cfg = json.load(f)
+if 'registry-mirrors' in cfg:
+    print('EXISTS')
+else:
+    cfg['registry-mirrors'] = $MIRRORS
+    cfg['live-restore'] = True
+    with open('$DAEMON_JSON', 'w') as f:
+        json.dump(cfg, f, indent=2)
+    print('UPDATED')
+" 2>/dev/null
+            result=$(python3 -c "
+import json
+with open('$DAEMON_JSON') as f:
+    cfg = json.load(f)
+print('EXISTS' if 'registry-mirrors' in cfg else 'UPDATED')
+")
+            if [[ "$result" = "UPDATED" ]]; then
                 CONFIG_CHANGED=1
-                echo -e "${GREEN}已通过 jq 添加 registry-mirrors 配置${NC}"
+                echo -e "${G}已添加 registry-mirrors 配置${N}"
             else
-                echo -e "${YELLOW}检测到已有 registry-mirrors 配置，跳过添加。${NC}"
+                echo -e "${Y}检测到已有镜像加速配置，跳过${N}"
             fi
         else
-            echo '{"registry-mirrors": ["https://docker.1ms.run","https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"],"live-restore": true}' > "$DAEMON_JSON"
-            CONFIG_CHANGED=1
-            echo -e "${GREEN}已新建 $DAEMON_JSON 并写入 registry-mirrors 配置${NC}"
+            python3 -c "
+import json
+cfg = {'registry-mirrors': $MIRRORS, 'live-restore': True}
+with open('$DAEMON_JSON', 'w') as f:
+    json.dump(cfg, f, indent=2)
+" && CONFIG_CHANGED=1 && echo -e "${G}已创建 daemon.json${N}"
         fi
     else
-        # 没有 jq 时的替代方案：使用简单的 echo 和重定向
-        echo -e "${YELLOW}未找到 jq 命令，使用简化方式配置${NC}"
-        if [ -f "$DAEMON_JSON" ]; then
-            if ! grep -q "registry-mirrors" "$DAEMON_JSON"; then
-                echo -e "${YELLOW}已存在 $DAEMON_JSON 但无法安全修改，请手动添加 registry-mirrors 配置${NC}"
-            else
-                echo -e "${YELLOW}检测到已有 registry-mirrors 配置，跳过添加。${NC}"
-            fi
+        # 无 python3 时用简单方式
+        if [[ -f "$DAEMON_JSON" ]] && grep -q "registry-mirrors" "$DAEMON_JSON"; then
+            echo -e "${Y}检测到已有镜像加速配置，跳过${N}"
         else
-            echo '{"registry-mirrors": ["https://docker.1ms.run","https://docker.woskee.nyc.mn", "https://docker.luxxk.dpdns.org", "https://docker.woskee.dpdns.org", "https://docker.wosken.dpdns.org"],"live-restore": true}' > "$DAEMON_JSON"
+            cat > "$DAEMON_JSON" <<EOF
+{
+  "registry-mirrors": $MIRRORS,
+  "live-restore": true
+}
+EOF
             CONFIG_CHANGED=1
-            echo -e "${GREEN}已新建 $DAEMON_JSON 并写入 registry-mirrors 配置${NC}"
+            echo -e "${G}已创建 daemon.json${N}"
         fi
     fi
 
-    # systemd 代理设置（非 alpine 系统）- 添加确认步骤
-    if [ "$OS" != "alpine" ]; then
-        if [ ! -f "$PROXY_CONF_DIR/http-proxy.conf" ]; then
-            echo -e "\n${YELLOW}是否配置 Docker systemd 代理？(默认: n) [y/N]${NC}"
-            read -r user_input
-            if [[ "$user_input" =~ ^[Yy]$ ]]; then
-                CONFIG_CHANGED=1
-                mkdir -p "$PROXY_CONF_DIR"
-                cat > "$PROXY_CONF_DIR/http-proxy.conf" <<EOF
+    # systemd 代理（可选）
+    if [[ "$OS" != alpine ]]; then
+        local PROXY_DIR="/etc/systemd/system/docker.service.d"
+        if [[ ! -f "$PROXY_DIR/http-proxy.conf" ]]; then
+            echo -e "\n${Y}是否配置 Docker systemd 代理？(y/N)${N}"
+            read -r input
+            if [[ "$input" =~ ^[Yy]$ ]]; then
+                mkdir -p "$PROXY_DIR"
+                cat > "$PROXY_DIR/http-proxy.conf" <<EOF
 [Service]
 Environment="HTTP_PROXY=http://127.0.0.1:7890"
 Environment="HTTPS_PROXY=http://127.0.0.1:7890"
-Environment="NO_PROXY=localhost,127.0.0.1,docker.1ms.run,.nyc.mn,.dpdns.org"
+Environment="NO_PROXY=localhost,127.0.0.1,docker.xuanyuan.me,docker.1ms.run,.nyc.mn,.dpdns.org"
+Environment="http_proxy=http://127.0.0.1:7890"
+Environment="https_proxy=http://127.0.0.1:7890"
+Environment="no_proxy=localhost,127.0.0.1,docker.xuanyuan.me,docker.1ms.run,.nyc.mn,.dpdns.org"
 EOF
-                echo -e "${GREEN}systemd 代理配置已写入。${NC}"
-            else
-                echo -e "${BLUE}跳过 systemd 代理配置。${NC}"
+                CONFIG_CHANGED=1
+                echo -e "${G}代理配置已写入${N}"
             fi
-        else
-            echo -e "${YELLOW}检测到已存在的 systemd 代理配置，跳过。${NC}"
         fi
     fi
 
-    # 应用更改
-    if [ "$CONFIG_CHANGED" -eq 1 ]; then
-        echo -e "${YELLOW}正在应用配置并重启 Docker 服务...${NC}"
-        if [ "$OS" = "alpine" ]; then
-            service docker restart
-        else
-            systemctl daemon-reload && systemctl restart docker
-        fi
-
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}Docker 重启成功。${NC}"
-        else
-            echo -e "${RED}Docker 重启失败，请手动排查问题。${NC}"
-            return 1
-        fi
+    if [[ $CONFIG_CHANGED -eq 1 ]]; then
+        echo "重启 Docker 服务..."
+        systemctl daemon-reload && systemctl restart docker && echo -e "${G}Docker 已重启${N}"
     else
-        echo -e "${GREEN}Docker 配置无变化，无需重启。${NC}"
+        echo -e "${G}配置无变化，无需重启${N}"
     fi
 }
 
-# 验证安装
-verify_installation() {
-    echo -e "\n${CYAN}--- 验证安装状态 ---${NC}"
-    if pgrep dockerd > /dev/null; then
-        echo -e "${GREEN}✔ Docker 进程正在运行${NC}"
-    else
-        echo -e "${RED}✖ Docker 进程未运行${NC}"
-    fi
+verify_docker() {
+    echo -e "\n${B}--- 验证安装 ---${N}"
+    docker --version 2>/dev/null && echo -e "${G}✔ Docker 可用${N}" || echo -e "${R}✖ Docker 不可用${N}"
+    docker compose version 2>/dev/null && echo -e "${G}✔ Docker Compose v2 可用${N}" || {
+        echo -e "${R}✖ Docker Compose v2 未找到${N}"
+        echo "尝试安装 Docker Compose 插件..."
+        local PLUGIN_DIR="/usr/local/lib/docker/cli-plugins"
+        mkdir -p "$PLUGIN_DIR"
+        local VERSION=$(curl -s "${GH_PROXY}https://api.github.com/repos/docker/compose/releases/latest" | grep '"tag_name":' | cut -d'"' -f4)
+        [[ -n "$VERSION" ]] && curl -L "${GH_PROXY}https://github.com/docker/compose/releases/download/${VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o "$PLUGIN_DIR/docker-compose" && chmod +x "$PLUGIN_DIR/docker-compose" && echo -e "${G}Docker Compose $VERSION 安装完成${N}"
+    }
 
-    if command -v docker-compose > /dev/null; then
-        echo -e "${GREEN}✔ docker-compose 命令可用${NC}"
-    else
-        echo -e "${RED}✖ docker-compose 命令未找到${NC}"
-    fi
+    echo -e "\n${C}镜像加速器：${N}"
+    docker info 2>/dev/null | awk '/Registry Mirrors:/{flag=1; next} /^$/{flag=0} flag{sub(/^[ \t]+/,""); print}'
+    echo -e "\n${C}代理配置：${N}"
+    docker info 2>/dev/null | awk '/HTTP Proxy:|HTTPS Proxy:|No Proxy:/{sub(/^[ \t]+/,""); print}'
 }
 
-# 从 docker info 获取并显示实时配置
-show_config_info() {
-    echo -e "${GREEN}\n=== Docker 实际运行配置 (来自 'docker info') ===${NC}"
-
-    if ! command -v docker >/dev/null || ! docker info >/dev/null 2>&1; then
-        echo -e "${RED}无法连接到 Docker 守护进程，无法获取配置信息。${NC}"
-        echo -e "${YELLOW}请确保 Docker 服务正在运行。${NC}"
-        return
-    fi
-    
-    local DOCKER_INFO
-    DOCKER_INFO=$(docker info)
-    
-   echo -e "${CYAN}镜像加速器 (Registry Mirrors):${NC}"
-local MIRRORS
-MIRRORS=$(echo "$DOCKER_INFO" | awk '/Registry Mirrors:/{flag=1; next} /^[[:space:]]*$/{flag=0} flag {sub(/^[ \t]+/, ""); print}')
-if [ -n "$MIRRORS" ]; then
-    echo -e "${MIRRORS}"
-else
-    echo -e "  未配置"
-fi
-
-
-    echo -e "\n${CYAN}HTTP/HTTPS 代理:${NC}"
-    local HTTP_PROXY HTTPS_PROXY NO_PROXY
-    HTTP_PROXY=$(echo "$DOCKER_IFO" | grep -i 'HTTP Proxy:' | awk -F': ' '{print $2}')
-    HTTPS_PROXY=$(echo "$DOCKER_INFO" | grep -i 'HTTPS Proxy:' | awk -F': ' '{print $2}')
-    NO_PROXY=$(echo "$DOCKER_INFO" | grep -i 'No Proxy:' | awk -F': ' '{print $2}')
-
-    echo -e "  HTTP Proxy:  ${HTTP_PROXY:-未配置}"
-    echo -e "  HTTPS Proxy: ${HTTPS_PROXY:-未配置}"
-    echo -e "  No Proxy:    ${NO_PROXY:-未配置}"
-    
-    echo -e "\n${CYAN}脚本级 GitHub 加速器:${NC}"
-    echo -e "  ${GH_PROXY}"
-}
-
-# 主函数
 main() {
     check_root
     detect_os
     install_dependencies
     install_docker
-    install_docker_compose
-    configure_docker_proxy_and_mirror
-    verify_installation
-    show_config_info
-    
-    echo -e "\n${BLUE}安装与配置流程结束。${NC}"
+    configure_docker
+    verify_docker
+    echo -e "\n${G}Docker 安装配置完成${N}"
 }
 
-# 执行主函数
 main "$@"

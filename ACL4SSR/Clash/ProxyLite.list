@@ -1,3 +1,75 @@
+# --- [核心 AI 大模型 (关键词覆盖)] ---
+DOMAIN-KEYWORD,anthropic
+DOMAIN-KEYWORD,claude
+DOMAIN-KEYWORD,openai
+DOMAIN-KEYWORD,chatgpt
+DOMAIN-KEYWORD,oaistatic
+DOMAIN-KEYWORD,oaiusercontent
+DOMAIN-KEYWORD,generative
+DOMAIN-KEYWORD,deepmind
+DOMAIN-KEYWORD,datadog
+DOMAIN-KEYWORD,mistral
+DOMAIN-KEYWORD,perplexity
+DOMAIN-KEYWORD,cohere
+DOMAIN-KEYWORD,runway
+DOMAIN-KEYWORD,midjourney
+DOMAIN-KEYWORD,stability
+DOMAIN-KEYWORD,stablediffusion
+DOMAIN-KEYWORD,replicate
+DOMAIN-KEYWORD,together
+DOMAIN-KEYWORD,fireworks
+DOMAIN-KEYWORD,notionai
+DOMAIN-KEYWORD,blackbox
+DOMAIN-KEYWORD,phind
+DOMAIN-KEYWORD,bing
+DOMAIN-KEYWORD,playground
+DOMAIN-KEYWORD,copilot
+DOMAIN-KEYWORD,cursor
+DOMAIN-KEYWORD,grazie
+DOMAIN-KEYWORD,elevenlabs
+DOMAIN-KEYWORD,cloudflare
+
+# --- [短词/易误伤服务 (后缀匹配)] ---
+DOMAIN-SUFFIX,jan.ai
+DOMAIN-SUFFIX,poe.com
+DOMAIN-SUFFIX,coze.com
+DOMAIN-SUFFIX,coze.io
+DOMAIN-SUFFIX,groq.com
+DOMAIN-SUFFIX,modal.com
+DOMAIN-SUFFIX,modal.run
+DOMAIN-SUFFIX,ai21.com
+DOMAIN-SUFFIX,x.com
+DOMAIN-SUFFIX,x.ai
+DOMAIN-SUFFIX,meta.ai
+DOMAIN-SUFFIX,grok.com
+DOMAIN-SUFFIX,mozilla.org
+
+# --- [AI 必须的身份验证与风控服务] ---
+DOMAIN-SUFFIX,auth0.com
+DOMAIN-SUFFIX,sentry.io
+DOMAIN-SUFFIX,stripe.com
+DOMAIN-SUFFIX,identrust.com
+DOMAIN-SUFFIX,statsigapi.net
+DOMAIN-SUFFIX,featuregates.org
+DOMAIN-SUFFIX,arkoselabs.com
+DOMAIN-SUFFIX,intercom.io
+DOMAIN-SUFFIX,prodregistryv2.org
+DOMAIN-SUFFIX,intercomcdn.com
+DOMAIN-SUFFIX,segment.io
+DOMAIN-SUFFIX,appcenter.ms
+DOMAIN-SUFFIX,browser-intake-datadoghq.com
+DOMAIN-SUFFIX,revenuecat.com
+DOMAIN-SUFFIX,app-measurement.com
+
+# --- [大厂 AI 专属云服务接口] ---
+DOMAIN-SUFFIX,ai.azure.com
+DOMAIN-SUFFIX,azureedge.net
+DOMAIN-SUFFIX,cloudflareai.com
+
+# --- [笔记与生产力 AI 增强] ---
+DOMAIN-SUFFIX,notion.so
+DOMAIN-SUFFIX,notion-static.com
+DOMAIN-SUFFIX,quora.com
 # --- [自定义与特殊后缀] ---
 DOMAIN-SUFFIX,ip-ddns.com
 DOMAIN-SUFFIX,ddns-ip.net
@@ -82,7 +154,8 @@ DOMAIN-KEYWORD,primevideo
 # --- [开发者与技术工具] ---
 DOMAIN-KEYWORD,github
 DOMAIN-KEYWORD,gitlab
-DOMAIN-KEYWORD,docker
+DOMAIN-SUFFIX,docker.com
+DOMAIN-SUFFIX,docker.io
 DOMAIN-KEYWORD,python
 DOMAIN-KEYWORD,pypi
 DOMAIN-KEYWORD,rust-lang

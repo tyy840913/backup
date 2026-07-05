@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# 颜色配置
+COLOR_TITLE=$'\033[1;36m'
+COLOR_OPTION=$'\033[1;33m'
+COLOR_DIVIDER=$'\033[1;34m'
+COLOR_INPUT=$'\033[1;35m'
+COLOR_ERROR=$'\033[1;31m'
+COLOR_RESET=$'\033[0m'
+
 # 基础配置
 original_url="https://raw.githubusercontent.com/tyy840913/backup/main"
 proxy_url="https://git.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main"
@@ -12,18 +20,10 @@ else
     base_url="$proxy_url"
 fi
 
-memory_tmpdir="/dev/shm/script_platform_$$"  # 内存临时目录（使用PID保证唯一性）
-catalog_file="${memory_tmpdir}/cata.txt"    # 内存中的目录文件
+memory_tmpdir="/dev/shm/script_platform_$$"
+catalog_file="${memory_tmpdir}/cata.txt"
 descriptions=()
 filenames=()
-
-# 颜色配置
-COLOR_TITLE=$'\033[1;36m'
-COLOR_OPTION=$'\033[1;33m'
-COLOR_DIVIDER=$'\033[1;34m'
-COLOR_INPUT=$'\033[1;35m'
-COLOR_ERROR=$'\033[1;31m'
-COLOR_RESET=$'\033[0m'
 
 # 退出时清理函数
 cleanup() {

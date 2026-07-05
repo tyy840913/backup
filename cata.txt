@@ -1,18 +1,10 @@
-设置SSH时区清华源 init.sh
-
-修改系统中文环境 ziti.sh
-
-更换 APT 镜像源 mirror.sh
-
-清理系统缓存垃圾 system_cleaner.sh
+系统初始化（时区/中文/换源/SSH/清理） init.sh
 
 **********************************************
 
 Docker及工具安装 Docker.sh
 
 mihomo代理（优先） mihomo.sh
-
-xiaoya-mihomo目录运行 xiaoya-mihomo.sh
 
 xiaoya-alist部署 xiaoya.sh
 
@@ -24,7 +16,7 @@ xiaoya-alist部署 xiaoya.sh
 
 PVE磁盘转换 qm.sh
 
-系统防火墙设置 ufw.sh
+系统防火墙设置 port.sh
 
 获取内网主机信息 ping_ip.sh
 

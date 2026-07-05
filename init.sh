@@ -1,208 +1,345 @@
 #!/bin/bash
 
-# --- 系统检测 ---
-if ! grep -qiE 'debian|ubuntu' /etc/os-release; then
-    echo "错误：不支持的系统。"
-    echo "本脚本仅支持 Debian 和 Ubuntu 系统。"
-    exit 1
-fi
+# ============================================================
+#  系统初始化脚本
+#  功能：时区设置 | 中文环境 | 换源 | SSH 配置 | 系统清理
+#  支持：Ubuntu / Debian / CentOS / RHEL / Fedora / Alpine
+# ============================================================
+
+# --- 颜色 ---
+R='\033[1;31m'; G='\033[1;32m'; Y='\033[1;33m'
+B='\033[1;34m'; C='\033[1;36m'; N='\033[0m'
 
 # --- 权限检查 ---
-if [[ $EUID -ne 0 ]]; then
-   echo "错误：此脚本必须以 root 权限运行。"
-   echo "请尝试使用: sudo bash $0"
-   exit 1
-fi
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        echo -e "${R}错误：需要 root 权限。请使用 sudo 或切换到 root 用户。${N}"
+        exit 1
+    fi
+}
 
-# --- 主循环 ---
-while true; do
-    # 清屏，显示菜单
-    clear
-    echo "================================================"
-    echo "          Debian && Ubuntu服务器设置脚本          "
-    echo "================================================"
-    echo "请选择要执行的功能："
-    echo
-    echo "1. 设置时区为 Asia/Shanghai"
-    echo "2. 更换 APT 源为清华大学镜像"
-    echo "3. 开启 SSH 远程 root/密码登录 (有风险!)"
-    echo
-    echo "0. 退出脚本"
-    echo "================================================"
-    read -p "请输入选项 [0-3]: " choice
-
-    case $choice in
-        1)
-            echo
-            echo "--- 1. 设置时区 ---"
-            
-            # (优化) 执行前检查：检查当前时区是否已经是目标时区
-            is_already_set=false
-            if command -v timedatectl &> /dev/null; then
-                if timedatectl | grep -q "Asia/Shanghai"; then
-                    is_already_set=true
-                fi
-            elif [[ "$(readlink /etc/localtime)" == *"/Asia/Shanghai" ]]; then
-                is_already_set=true
-            fi
-
-            if [ "$is_already_set" = true ]; then
-                echo "检测到当前时区已经是 Asia/Shanghai，无需修改。"
-            else
-                echo "当前时区不是 Asia/Shanghai，开始设置..."
-                # 策略1：优先使用现代系统的 timedatectl 命令
-                echo "[策略1] 正在尝试使用推荐命令 'timedatectl'..."
-                if command -v timedatectl &> /dev/null; then
-                    if timedatectl set-timezone Asia/Shanghai; then
-                        echo "成功！时区已通过 timedatectl 设置。"
-                    else
-                        echo "错误：timedatectl 命令执行失败！"
-                    fi
-                else
-                    echo "'timedatectl' 命令不存在。启动备用方案..."
-                    echo "[策略2] 正在尝试使用传统的符号链接方法..."
-                    if [ -f /usr/share/zoneinfo/Asia/Shanghai ]; then
-                        ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
-                        if [ $? -eq 0 ]; then
-                            echo "成功！时区已通过符号链接设置。"
-                            echo "注意：在某些老系统上，可能需要重启服务(如cron)或系统才能完全生效。"
-                        else
-                            echo "错误：创建符号链接失败！"
-                        fi
-                    else
-                        echo "错误：备用方案也失败了，因为时区文件 /usr/share/zoneinfo/Asia/Shanghai 不存在。"
-                    fi
-                fi
-            fi
-
-            echo "------------------------------------------------"
-            echo "检查最终结果：当前系统时间为 $(date)"
-            echo
-            read -p "按 Enter 键返回主菜单..."
-            ;;
-
-        2)
-            echo
-            echo "--- 2. 更换 APT 源 ---"
-            
-            if grep -q "tuna.tsinghua.edu.cn" /etc/apt/sources.list; then
-                read -p "检测到源文件已包含清华镜像地址，是否仍要强制覆盖？(y/n): " confirm_overwrite
-                if [[ ! "$confirm_overwrite" =~ ^[Yy]$ ]]; then
-                    echo "操作已取消。"
-                    read -p "按 Enter 键返回主菜单..."
-                    continue
-                fi
-            fi
-
-            echo "[步骤 1/4] 正在获取系统代号..."
-            if ! command -v lsb_release &> /dev/null; then
-                echo "正在安装 'lsb-release' 以获取系统信息..."
-                apt-get update && apt-get install -y lsb-release
-            fi
-
-            CODENAME=$(lsb_release -cs)
-            if [ -z "$CODENAME" ]; then
-                echo "错误：无法获取系统代号。请手动检查并修复 'lsb-release' 工具。"
-            else
-                echo "系统代号: $CODENAME"
-                
-                BACKUP_FILE="/etc/apt/sources.list.bak.$(date +%s)"
-                echo "[步骤 2/4] 正在备份原始文件到 $BACKUP_FILE ..."
-                cp /etc/apt/sources.list "$BACKUP_FILE"
-                
-                echo "[步骤 3/4] 正在根据系统类型写入新的清华大学镜像源..."
-                if grep -q "Ubuntu" /etc/os-release; then
-                    echo "检测到系统为 Ubuntu。"
-                    MIRROR_URL="https://mirrors.tuna.tsinghua.edu.cn/ubuntu/"
-                    cat << EOF > /etc/apt/sources.list
-deb ${MIRROR_URL} ${CODENAME} main restricted universe multiverse
-deb ${MIRROR_URL} ${CODENAME}-updates main restricted universe multiverse
-deb ${MIRROR_URL} ${CODENAME}-backports main restricted universe multiverse
-deb ${MIRROR_URL} ${CODENAME}-security main restricted universe multiverse
-EOF
-                else
-                    echo "检测到系统为 Debian。"
-                    MIRROR_URL="https://mirrors.tuna.tsinghua.edu.cn/debian/"
-                    # (重要修正) Debian 的安全源有独立地址，且组件不同
-                    cat << EOF > /etc/apt/sources.list
-deb ${MIRROR_URL} ${CODENAME} main contrib non-free
-deb ${MIRROR_URL} ${CODENAME}-updates main contrib non-free
-deb ${MIRROR_URL} ${CODENAME}-backports main
-deb https://security.debian.org/debian-security ${CODENAME}-security main contrib non-free
-EOF
-                fi
-
-                echo "[步骤 4/4] 正在执行 'apt-get update'..."
-                if apt-get update; then
-                    echo "成功！APT 源已更新。"
-                else
-                    echo "错误：'apt-get update' 执行失败！"
-                    echo "正在从备份 $BACKUP_FILE 自动恢复原始配置..."
-                    mv "$BACKUP_FILE" /etc/apt/sources.list
-                    echo "已恢复原始 sources.list 文件。请手动检查网络或源地址问题。"
-                fi
-            fi
-            
-            echo "------------------------------------------------"
-            echo "所有步骤执行完毕！"
-            echo
-            read -p "按 Enter 键返回主菜单..."
-            ;;
-
-        3)
-            echo
-            echo "--- 3. 开启 SSH 远程 root/密码登录 ---"
-            
-            # (优化) 检查是否已配置
-            if grep -q "^PermitRootLogin yes" /etc/ssh/sshd_config && grep -q "^PasswordAuthentication yes" /etc/ssh/sshd_config; then
-                echo "检测到 SSH 已配置为允许 root 和密码登录，无需修改。"
-                if systemctl is-active --quiet ssh; then
-                    echo "服务状态：SSH 服务当前正在运行。"
-                else
-                    echo "警告：SSH 服务当前未运行！请使用 'systemctl start ssh' 启动它。"
-                fi
-            else
-                echo "!!!!!! 安全警告 !!!!!!"
-                echo "此操作会极大增加服务器被攻击的风险，请仅在受信任的环境中使用。"
-                echo "!!!!!!!!!!!!!!!!!!!!"
-                read -p "您是否理解风险并确认要继续？(y/n): " confirm_ssh
-                
-                if [[ "$confirm_ssh" =~ ^[Yy]$ ]]; then
-                    echo "正在修改 SSH 配置文件..."
-                    sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
-                    sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-                    
-                    echo "正在重启 SSH 服务..."
-                    if systemctl restart ssh; then
-                        echo "成功！SSH 服务已重启。"
-                        if systemctl is-active --quiet ssh; then
-                            echo "检查通过：SSH 服务当前正在运行。"
-                        else
-                            echo "警告：SSH 服务重启后并未处于活动状态！请立即检查！"
-                        fi
-                    else
-                        echo "!!!!!! 严重错误：SSH服务重启失败! !!!!!! "
-                        echo "为防止您被锁定，请不要关闭当前的终端连接！"
-                        echo "请立即手动执行 'systemctl status ssh' 和 'journalctl -xeu ssh' 来排查问题。"
-                    fi
-                else
-                    echo "操作已取消。"
-                fi
-            fi
-            
-            echo "------------------------------------------------"
-            echo
-            read -p "按 Enter 键返回主菜单..."
-            ;;
-
-        0)
-            echo "正在退出脚本..."
-            exit 0
-            ;;
-
-        *)
-            echo "无效选项，请输入 0-3 之间的数字。"
-            read -p "按 Enter 键重试..."
-            ;;
+# --- 发行版检测 ---
+detect_distro() {
+    source /etc/os-release
+    DISTRO="${ID,,}"
+    CODENAME="${VERSION_CODENAME,,}"
+    VER_MAJOR=$(echo "$VERSION_ID" | cut -d. -f1)
+    case "$DISTRO" in
+        ubuntu|debian) PKG="apt" ;;
+        centos|rhel|almalinux|rocky) PKG="yum" ;;
+        fedora) PKG="dnf" ;;
+        alpine) PKG="apk" ;;
+        *) echo -e "${R}不支持的发行版：$DISTRO${N}"; exit 1 ;;
     esac
-done
+    echo -e "${C}系统：${PRETTY_NAME:-$DISTRO}${N}"
+}
+
+# --- 1. 设置时区 ---
+set_timezone() {
+    echo -e "\n${B}--- 设置时区为 Asia/Shanghai ---${N}"
+    if [[ "$(readlink /etc/localtime 2>/dev/null)" = *Asia/Shanghai ]] || \
+       timedatectl show 2>/dev/null | grep -q 'Timezone=Asia/Shanghai'; then
+        echo -e "${G}当前时区已是 Asia/Shanghai，跳过。${N}"
+        return 0
+    fi
+    if command -v timedatectl &>/dev/null; then
+        timedatectl set-timezone Asia/Shanghai && echo -e "${G}时区设置成功${N}" || \
+            echo -e "${R}timedatectl 设置失败${N}"
+    else
+        ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+            echo -e "${G}时区设置成功${N}" || \
+            echo -e "${R}链接失败，请检查 /usr/share/zoneinfo/Asia/Shanghai 是否存在${N}"
+    fi
+    echo "当前时间：$(date)"
+}
+
+# --- 2. 中文环境 ---
+setup_chinese() {
+    echo -e "\n${B}--- 配置中文环境 ---${N}"
+
+    # 安装中文字体
+    echo -e "${Y}检查中文字体...${N}"
+    if dpkg -s fonts-wqy-zenhi &>/dev/null 2>&1; then
+        echo -e "${G}文泉驿字体已安装${N}"
+    else
+        echo "安装文泉驿字体..."
+        $PKG install -y fonts-wqy-zenhi >/dev/null 2>&1 && \
+            echo -e "${G}字体安装成功${N}" || \
+            echo -e "${R}字体安装失败${N}"
+    fi
+
+    # 配置 locale
+    local LC_FILE="/etc/default/locale"
+    if grep -q 'LANG=zh_CN.UTF-8' "$LC_FILE" 2>/dev/null; then
+        echo -e "${G}中文 locale 已配置${N}"
+        return 0
+    fi
+
+    if [[ "$DISTRO" = ubuntu ]]; then
+        $PKG install -y language-pack-zh-hans >/dev/null 2>&1 && \
+            echo -e "${G}中文语言包安装成功${N}" || \
+            echo -e "${Y}中文语言包安装失败，尝试用 locale-gen 方式...${N}"
+    fi
+
+    if command -v locale-gen &>/dev/null; then
+        sed -i '/^# *zh_CN.UTF-8/s/^# *//' /etc/locale.gen 2>/dev/null
+        locale-gen zh_CN.UTF-8 >/dev/null 2>&1
+    fi
+
+    echo 'LANG=zh_CN.UTF-8' >> "$LC_FILE"
+    export LANG=zh_CN.UTF-8
+    echo -e "${G}中文环境配置完成（部分更改需要重新登录生效）${N}"
+}
+
+# --- 3. 换源 ---
+select_mirror_and_apply() {
+    echo -e "\n${B}--- 更换镜像源 ---${N}"
+    echo "1) 阿里云    2) 腾讯云    3) 华为云"
+    echo "4) 中科大    5) 清华大学  0) 跳过"
+    read -p "$(echo -e "${C}请选择镜像源：${N}")" m_choice
+
+    case "$m_choice" in
+        1) HOST="mirrors.aliyun.com";   NAME="阿里云" ;;
+        2) HOST="mirrors.tencent.com";  NAME="腾讯云" ;;
+        3) HOST="repo.huaweicloud.com"; NAME="华为云" ;;
+        4) HOST="mirrors.ustc.edu.cn";  NAME="中科大" ;;
+        5) HOST="mirrors.tuna.tsinghua.edu.cn"; NAME="清华大学" ;;
+        0) return 0 ;;
+        *) echo -e "${R}无效选项${N}"; return 1 ;;
+    esac
+    echo -e "选择：${C}$NAME${N} ($HOST)"
+
+    case "$PKG" in
+        apt) apply_apt_mirror ;;
+        apk) apply_alpine_mirror ;;
+        yum|dnf) apply_rpm_mirror ;;
+    esac
+}
+
+apply_apt_mirror() {
+    local BACKUP_DIR="/etc/apt/backup_$(date +%s)"
+    mkdir -p "$BACKUP_DIR"
+
+    # 检测是否使用 DEB822 格式（Ubuntu 24.04+）
+    local USE_DEB822=false
+    if ls /etc/apt/sources.list.d/*.sources &>/dev/null 2>&1; then
+        USE_DEB822=true
+    fi
+
+    if $USE_DEB822; then
+        echo -e "${Y}检测到 DEB822 格式，使用新格式配置...${N}"
+        # 备份并删除旧的 sources 文件
+        cp /etc/apt/sources.list.d/*.sources "$BACKUP_DIR/" 2>/dev/null
+        cp /etc/apt/sources.list "$BACKUP_DIR/" 2>/dev/null
+        rm -f /etc/apt/sources.list.d/*.sources 2>/dev/null
+        : > /etc/apt/sources.list
+
+        if [[ "$DISTRO" = ubuntu ]]; then
+            local KEYRING="/usr/share/keyrings/ubuntu-archive-keyring.gpg"
+            cat > /etc/apt/sources.list.d/ubuntu.sources <<EOF
+Types: deb
+URIs: https://$HOST/ubuntu/
+Suites: $CODENAME $CODENAME-updates $CODENAME-backports $CODENAME-security
+Components: main restricted universe multiverse
+Signed-By: $KEYRING
+EOF
+        elif [[ "$DISTRO" = debian ]]; then
+            local KEYRING="/usr/share/keyrings/debian-archive-keyring.gpg"
+            cat > /etc/apt/sources.list.d/debian.sources <<EOF
+Types: deb
+URIs: https://$HOST/debian/
+Suites: $CODENAME $CODENAME-updates $CODENAME-backports
+Components: main contrib non-free
+Signed-By: $KEYRING
+
+Types: deb
+URIs: https://$HOST/debian-security/
+Suites: $CODENAME-security
+Components: main contrib non-free
+Signed-By: $KEYRING
+EOF
+        fi
+    else
+        # 传统格式
+        cp /etc/apt/sources.list "$BACKUP_DIR/" 2>/dev/null
+        if [[ "$DISTRO" = ubuntu ]]; then
+            cat > /etc/apt/sources.list <<EOF
+deb https://$HOST/ubuntu/ $CODENAME main restricted universe multiverse
+deb https://$HOST/ubuntu/ $CODENAME-updates main restricted universe multiverse
+deb https://$HOST/ubuntu/ $CODENAME-backports main restricted universe multiverse
+deb https://$HOST/ubuntu/ $CODENAME-security main restricted universe multiverse
+EOF
+        elif [[ "$DISTRO" = debian ]]; then
+            local FW=""
+            [[ $VER_MAJOR -ge 12 ]] && FW="non-free-firmware"
+            cat > /etc/apt/sources.list <<EOF
+deb https://$HOST/debian/ $CODENAME main contrib non-free $FW
+deb https://$HOST/debian/ $CODENAME-updates main contrib non-free $FW
+deb https://$HOST/debian/ $CODENAME-backports main contrib non-free $FW
+deb https://$HOST/debian-security/ $CODENAME-security main contrib non-free $FW
+EOF
+        fi
+    fi
+
+    echo "备份目录：$BACKUP_DIR"
+    echo "更新软件源..."
+    apt-get update && echo -e "${G}换源成功${N}" || {
+        echo -e "${R}更新失败，正在恢复备份...${N}"
+        cp -r "$BACKUP_DIR"/* /etc/apt/ 2>/dev/null
+        apt-get update
+    }
+}
+
+apply_alpine_mirror() {
+    local VER=$(cut -d. -f1,2 < /etc/alpine-release)
+    cp /etc/apk/repositories /etc/apk/repositories.bak
+    cat > /etc/apk/repositories <<EOF
+https://$HOST/alpine/v$VER/main
+https://$HOST/alpine/v$VER/community
+EOF
+    apk update && echo -e "${G}换源成功${N}"
+}
+
+apply_rpm_mirror() {
+    local REPO_DIR="/etc/yum.repos.d"
+    local BAK="${REPO_DIR}.bak_$(date +%s)"
+    [[ -d "$REPO_DIR" ]] && cp -r "$REPO_DIR" "$BAK"
+
+    mkdir -p "$REPO_DIR"
+    if [[ $VER_MAJOR -le 7 ]]; then
+        cat > "${REPO_DIR}/custom.repo" <<EOF
+[base]
+name=CentOS-\$releasever - Base
+baseurl=https://$HOST/centos/\$releasever/os/\$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+
+[updates]
+name=CentOS-\$releasever - Updates
+baseurl=https://$HOST/centos/\$releasever/updates/\$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+EOF
+    else
+        cat > "${REPO_DIR}/custom.repo" <<EOF
+[BaseOS]
+name=CentOS Stream \$releasever - BaseOS
+baseurl=https://$HOST/centos-stream/\$releasever/BaseOS/\$basearch/os/
+gpgcheck=1
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
+
+[AppStream]
+name=CentOS Stream \$releasever - AppStream
+baseurl=https://$HOST/centos-stream/\$releasever/AppStream/\$basearch/os/
+gpgcheck=1
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
+EOF
+    fi
+    $PKG clean all && $PKG makecache && echo -e "${G}换源成功${N}"
+}
+
+# --- 4. SSH 配置 ---
+configure_ssh() {
+    echo -e "\n${B}--- SSH 远程登录配置 ---${N}"
+    echo -e "${R}!!! 开启 root/密码登录会增加安全风险 !!!${N}"
+    read -p "确认开启？(y/N): " confirm
+    [[ ! "$confirm" =~ ^[Yy]$ ]] && echo "已取消" && return 0
+
+    local CFG="/etc/ssh/sshd_config"
+    sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' "$CFG"
+    sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' "$CFG"
+
+    if systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null; then
+        echo -e "${G}SSH 服务已重启${N}"
+    else
+        echo -e "${Y}请手动重启 SSH 服务：systemctl restart ssh${N}"
+    fi
+}
+
+# --- 5. 系统清理 ---
+clean_system() {
+    echo -e "\n${B}--- 系统清理 ---${N}"
+
+    # 清理临时文件
+    echo -n "清理临时文件..."
+    for d in /tmp /var/tmp; do
+        [[ -d "$d" ]] && find "$d" -mindepth 1 -mtime +1 -exec rm -rf {} + 2>/dev/null
+    done
+    echo -e " ${G}完成${N}"
+
+    # 清理旧日志（保留7天）
+    echo -n "清理旧日志..."
+    find /var/log -name "*.log" -o -name "*.gz" -o -name "syslog" -o -name "messages" \
+        -o -name "kern.log" -o -name "auth.log" -o -name "daemon.log" | \
+        xargs -I{} find {} -type f -mtime +7 -delete 2>/dev/null
+    echo -e " ${G}完成${N}"
+
+    # 清理缓存（保留30天）
+    echo -n "清理缓存..."
+    for d in /root/.cache /root/.thumbnails; do
+        [[ -d "$d" ]] && find "$d" -mindepth 1 -mtime +30 -exec rm -rf {} + 2>/dev/null
+    done
+    echo -e " ${G}完成${N}"
+
+    # apt 清理
+    if command -v apt-get &>/dev/null; then
+        echo -n "APT 自动清理..."
+        apt-get autoremove -y >/dev/null 2>&1 && apt-get clean >/dev/null 2>&1
+        echo -e " ${G}完成${N}"
+    fi
+
+    # updatedb
+    if command -v updatedb &>/dev/null; then
+        echo -n "更新数据库索引..."
+        updatedb >/dev/null 2>&1
+        echo -e " ${G}完成${N}"
+    fi
+
+    sync
+    echo -e "${G}清理完毕${N}"
+}
+
+# --- 主菜单 ---
+main_menu() {
+    while true; do
+        clear
+        echo -e "${C}==============================================${N}"
+        echo -e "${C}           系统初始化工具                      ${N}"
+        echo -e "${C}==============================================${N}"
+        echo " 1) 设置时区 (Asia/Shanghai)"
+        echo " 2) 配置中文环境 (字体 + locale)"
+        echo " 3) 更换镜像源"
+        echo " 4) 开启 SSH root/密码登录"
+        echo " 5) 系统清理"
+        echo " 6) 全部执行 (1→2→3→4→5)"
+        echo " 0) 退出"
+        echo -e "${C}==============================================${N}"
+        read -p "$(echo -e "${Y}请输入选项：${N}")" choice
+
+        case "$choice" in
+            1) set_timezone ;;
+            2) setup_chinese ;;
+            3) select_mirror_and_apply ;;
+            4) configure_ssh ;;
+            5) clean_system ;;
+            6)
+                set_timezone
+                setup_chinese
+                select_mirror_and_apply
+                configure_ssh
+                clean_system
+                echo -e "\n${G}全部任务执行完毕${N}"
+                ;;
+            0) echo "退出"; exit 0 ;;
+            *) echo -e "${R}无效选项${N}" ;;
+        esac
+        read -p "按回车键继续..."
+    done
+}
+
+# --- 入口 ---
+check_root
+detect_distro
+main_menu
