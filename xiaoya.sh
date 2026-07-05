@@ -7,6 +7,19 @@ DATA_DIR="/docker_data/xiaoya"
 IMG_BRIDGE="docker.1ms.run/xiaoyaliu/alist:latest"
 IMG_HOST="docker.1ms.run/xiaoyaliu/alist:hostmode"
 
+check_deps() {
+  command -v curl &>/dev/null || {
+    echo -e "${Y}安装 curl...${N}"
+    if command -v apt-get &>/dev/null; then
+      apt-get install -y curl >/dev/null 2>&1
+    elif command -v apk &>/dev/null; then
+      apk add curl >/dev/null 2>&1
+    elif command -v yum &>/dev/null; then
+      yum install -y curl >/dev/null 2>&1
+    fi
+  }
+}
+
 check_token()     { [ ${#1} -eq 32 ]; }
 check_opentoken() { [ ${#1} -gt 334 ]; }
 check_folderid()  { [ ${#1} -eq 40 ]; }
@@ -115,6 +128,7 @@ select_network() {
 }
 
 start_container() {
+  check_deps
   local ip=$(get_local_ip)
 
   # 已有容器时提示

@@ -31,7 +31,7 @@ install_docker() {
 ensure_tools() {
   local pm; [[ $OS == alpine ]] && pm="apk" || pm="apt-get"
   command -v curl &>/dev/null || { echo -e "${Y}安装 curl...${N}"; $pm install -y curl 2>/dev/null || true; }
-  command -v wget &>/dev/null || { echo -e "${Y}安装 wget...${N}"; $pm install -y wget 2>/dev/null || true; }
+  command -v tar &>/dev/null || { echo -e "${Y}安装 tar...${N}"; $pm install -y tar 2>/dev/null || true; }
 }
 
 # ========================== 配置检查 + 软链 ==========================
