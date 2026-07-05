@@ -57,36 +57,70 @@ set_timezone() {
 setup_chinese() {
     echo -e "\n${B}--- 配置中文环境 ---${N}"
 
-    # 安装中文字体
     echo -e "${Y}检查中文字体...${N}"
-    if dpkg -s fonts-wqy-zenhi &>/dev/null 2>&1; then
+    local font_ok=false font_pkg=""
+    case "$DISTRO" in
+        ubuntu|debian)
+            dpkg -s fonts-wqy-zenhei &>/dev/null 2>&1 && font_ok=true
+            font_pkg="fonts-wqy-zenhei"
+            ;;
+        centos|rhel|almalinux|rocky|fedora)
+            rpm -q wqy-zenhei-fonts &>/dev/null 2>&1 && font_ok=true
+            font_pkg="wqy-zenhei-fonts"
+            ;;
+        alpine)
+            apk info -e wqy-zenhei &>/dev/null 2>&1 && font_ok=true
+            font_pkg="wqy-zenhei"
+            ;;
+    esac
+    if $font_ok; then
         echo -e "${G}文泉驿字体已安装${N}"
     else
         echo "安装文泉驿字体..."
-        $PKG install -y fonts-wqy-zenhi >/dev/null 2>&1 && \
+        $PKG install -y "$font_pkg" >/dev/null 2>&1 && \
             echo -e "${G}字体安装成功${N}" || \
             echo -e "${R}字体安装失败${N}"
     fi
 
-    # 配置 locale
-    local LC_FILE="/etc/default/locale"
-    if grep -q 'LANG=zh_CN.UTF-8' "$LC_FILE" 2>/dev/null; then
-        echo -e "${G}中文 locale 已配置${N}"
-        return 0
-    fi
-
-    if [[ "$DISTRO" = ubuntu ]]; then
-        $PKG install -y language-pack-zh-hans >/dev/null 2>&1 && \
-            echo -e "${G}中文语言包安装成功${N}" || \
-            echo -e "${Y}中文语言包安装失败，尝试用 locale-gen 方式...${N}"
-    fi
-
-    if command -v locale-gen &>/dev/null; then
-        sed -i '/^# *zh_CN.UTF-8/s/^# *//' /etc/locale.gen 2>/dev/null
-        locale-gen zh_CN.UTF-8 >/dev/null 2>&1
-    fi
-
-    echo 'LANG=zh_CN.UTF-8' >> "$LC_FILE"
+    echo -e "${Y}配置中文 locale...${N}"
+    case "$DISTRO" in
+        ubuntu)
+            if grep -q 'LANG=zh_CN.UTF-8' /etc/default/locale 2>/dev/null; then
+                echo -e "${G}中文 locale 已配置${N}"; return 0
+            fi
+            $PKG install -y language-pack-zh-hans >/dev/null 2>&1 || true
+            if command -v locale-gen &>/dev/null; then
+                sed -i '/^# *zh_CN.UTF-8/s/^# *//' /etc/locale.gen 2>/dev/null
+                locale-gen zh_CN.UTF-8 >/dev/null 2>&1
+            fi
+            echo 'LANG=zh_CN.UTF-8' >> /etc/default/locale
+            ;;
+        debian)
+            if grep -q 'LANG=zh_CN.UTF-8' /etc/default/locale 2>/dev/null; then
+                echo -e "${G}中文 locale 已配置${N}"; return 0
+            fi
+            $PKG install -y locales >/dev/null 2>&1 || true
+            if command -v locale-gen &>/dev/null; then
+                sed -i '/^# *zh_CN.UTF-8/s/^# *//' /etc/locale.gen 2>/dev/null
+                locale-gen zh_CN.UTF-8 >/dev/null 2>&1
+            fi
+            echo 'LANG=zh_CN.UTF-8' >> /etc/default/locale
+            ;;
+        centos|rhel|almalinux|rocky|fedora)
+            if grep -q 'LANG=zh_CN.UTF-8' /etc/locale.conf 2>/dev/null; then
+                echo -e "${G}中文 locale 已配置${N}"; return 0
+            fi
+            localedef -c -f UTF-8 -i zh_CN zh_CN.UTF-8 2>/dev/null || true
+            echo 'LANG=zh_CN.UTF-8' >> /etc/locale.conf
+            ;;
+        alpine)
+            if grep -q 'LANG=zh_CN.UTF-8' /etc/environment 2>/dev/null; then
+                echo -e "${G}中文 locale 已配置${N}"; return 0
+            fi
+            echo 'LANG=zh_CN.UTF-8' >> /etc/environment
+            echo -e "${Y}Alpine locale 支持有限，仅设置环境变量${N}"
+            ;;
+    esac
     export LANG=zh_CN.UTF-8
     echo -e "${G}中文环境配置完成（部分更改需要重新登录生效）${N}"
 }
@@ -248,49 +282,70 @@ configure_ssh() {
     [[ ! "$confirm" =~ ^[Yy]$ ]] && echo "已取消" && return 0
 
     local CFG="/etc/ssh/sshd_config"
-    sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' "$CFG"
-    sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' "$CFG"
-
-    if systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null; then
-        echo -e "${G}SSH 服务已重启${N}"
-    else
-        echo -e "${Y}请手动重启 SSH 服务：systemctl restart ssh${N}"
+    if [[ ! -f "$CFG" ]]; then
+        echo -e "${Y}未检测到 SSH 服务，尝试安装...${N}"
+        case "$DISTRO" in
+            ubuntu|debian) $PKG install -y openssh-server >/dev/null 2>&1 ;;
+            centos|rhel|almalinux|rocky|fedora) $PKG install -y openssh-server >/dev/null 2>&1 ;;
+            alpine) $PKG add openssh >/dev/null 2>&1 ;;
+        esac
     fi
+
+    sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' "$CFG" 2>/dev/null
+    sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' "$CFG" 2>/dev/null
+
+    if command -v systemctl &>/dev/null; then
+        systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null || \
+            echo -e "${Y}请手动重启 SSH 服务${N}"
+    elif command -v rc-service &>/dev/null; then
+        rc-service sshd restart 2>/dev/null || rc-service ssh restart 2>/dev/null
+    else
+        /etc/init.d/ssh restart 2>/dev/null || /etc/init.d/sshd restart 2>/dev/null
+    fi
+    echo -e "${G}SSH 配置已应用${N}"
 }
 
 # --- 5. 系统清理 ---
 clean_system() {
     echo -e "\n${B}--- 系统清理 ---${N}"
 
-    # 清理临时文件
     echo -n "清理临时文件..."
     for d in /tmp /var/tmp; do
         [[ -d "$d" ]] && find "$d" -mindepth 1 -mtime +1 -exec rm -rf {} + 2>/dev/null
     done
     echo -e " ${G}完成${N}"
 
-    # 清理旧日志（保留7天）
     echo -n "清理旧日志..."
-    find /var/log -name "*.log" -o -name "*.gz" -o -name "syslog" -o -name "messages" \
-        -o -name "kern.log" -o -name "auth.log" -o -name "daemon.log" | \
-        xargs -I{} find {} -type f -mtime +7 -delete 2>/dev/null
+    find /var/log \( -name "*.log" -o -name "*.gz" -o -name "syslog" -o -name "messages" \
+        -o -name "kern.log" -o -name "auth.log" -o -name "daemon.log" \) \
+        -type f -mtime +7 -delete 2>/dev/null
     echo -e " ${G}完成${N}"
 
-    # 清理缓存（保留30天）
     echo -n "清理缓存..."
     for d in /root/.cache /root/.thumbnails; do
         [[ -d "$d" ]] && find "$d" -mindepth 1 -mtime +30 -exec rm -rf {} + 2>/dev/null
     done
     echo -e " ${G}完成${N}"
 
-    # apt 清理
-    if command -v apt-get &>/dev/null; then
-        echo -n "APT 自动清理..."
-        apt-get autoremove -y >/dev/null 2>&1 && apt-get clean >/dev/null 2>&1
-        echo -e " ${G}完成${N}"
-    fi
+    case "$PKG" in
+        apt)
+            echo -n "APT 清理..."
+            apt-get autoremove -y >/dev/null 2>&1
+            apt-get clean >/dev/null 2>&1
+            echo -e " ${G}完成${N}"
+            ;;
+        apk)
+            echo -n "APK 清理..."
+            apk cache clean >/dev/null 2>&1
+            echo -e " ${G}完成${N}"
+            ;;
+        yum|dnf)
+            echo -n "YUM/DNF 清理..."
+            $PKG clean all >/dev/null 2>&1
+            echo -e " ${G}完成${N}"
+            ;;
+    esac
 
-    # updatedb
     if command -v updatedb &>/dev/null; then
         echo -n "更新数据库索引..."
         updatedb >/dev/null 2>&1

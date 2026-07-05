@@ -26,7 +26,7 @@ detect_os() {
         exit 1
     fi
     case "$OS" in
-        ubuntu|debian|centos|rhel|fedora|almalinux|rocky) ;;
+        ubuntu|debian|centos|rhel|fedora|almalinux|rocky|alpine) ;;
         *) echo -e "${R}不支持的发行版：$OS${N}"; exit 1 ;;
     esac
 }
@@ -42,6 +42,7 @@ install_dependencies() {
         ubuntu|debian) apt-get update -qq && apt-get install -y curl ;;
         centos|rhel|almalinux|rocky) yum install -y curl ;;
         fedora) dnf install -y curl ;;
+        alpine) apk add curl ;;
     esac
     echo -e "${G}依赖安装完成${N}"
 }
@@ -57,18 +58,36 @@ install_docker() {
         return 0
     fi
     echo "从官方源安装 Docker CE（使用镜像加速）..."
-    # 脚本走代理下载，包从阿里云镜像拉取
     if curl -fsSL "${GH_PROXY}https://get.docker.com" | sh -s -- --mirror Aliyun; then
         echo -e "${G}Docker CE 安装成功${N}"
         systemctl enable docker && systemctl start docker
     else
-        echo -e "${R}安装失败，尝试从系统源安装...${N}"
+        echo -e "${R}官方脚本安装失败，尝试从系统源安装...${N}"
         case "$OS" in
-            ubuntu|debian) apt-get install -y docker.io ;;
-            centos|rhel|almalinux|rocky) yum install -y docker-ce ;;
-            fedora) dnf install -y docker-ce ;;
+            ubuntu|debian)
+                apt-get install -y docker.io
+                systemctl enable docker && systemctl start docker
+                ;;
+            centos|rhel|almalinux|rocky)
+                yum install -y docker 2>/dev/null || yum install -y moby-engine 2>/dev/null || {
+                    echo -e "${R}系统源无 Docker 包，请手动安装${N}"
+                    return 1
+                }
+                systemctl enable docker && systemctl start docker
+                ;;
+            fedora)
+                dnf install -y moby-engine 2>/dev/null || dnf install -y docker 2>/dev/null || {
+                    echo -e "${R}系统源无 Docker 包，请手动安装${N}"
+                    return 1
+                }
+                systemctl enable docker && systemctl start docker
+                ;;
+            alpine)
+                apk add docker
+                rc-update add docker boot
+                service docker start
+                ;;
         esac
-        systemctl enable docker && systemctl start docker
     fi
 }
 
@@ -81,46 +100,22 @@ configure_docker() {
 
     local MIRRORS='["https://docker.xuanyuan.me","https://docker.1ms.run","https://docker.woskee.nyc.mn","https://docker.wosken.dpdns.org","https://docker.luxxk.dpdns.org","https://docker.woskee.dpdns.org"]'
 
-    if command -v python3 &>/dev/null; then
-        # 用 python3 安全处理 JSON
-        if [[ -f "$DAEMON_JSON" ]]; then
+    if grep -q "registry-mirrors" "$DAEMON_JSON" 2>/dev/null; then
+        echo -e "${Y}检测到已有镜像加速配置，跳过${N}"
+    else
+        if command -v python3 &>/dev/null; then
             python3 -c "
 import json
-with open('$DAEMON_JSON') as f:
-    cfg = json.load(f)
-if 'registry-mirrors' in cfg:
-    print('EXISTS')
-else:
-    cfg['registry-mirrors'] = $MIRRORS
-    cfg['live-restore'] = True
-    with open('$DAEMON_JSON', 'w') as f:
-        json.dump(cfg, f, indent=2)
-    print('UPDATED')
-" 2>/dev/null
-            result=$(python3 -c "
-import json
-with open('$DAEMON_JSON') as f:
-    cfg = json.load(f)
-print('EXISTS' if 'registry-mirrors' in cfg else 'UPDATED')
-")
-            if [[ "$result" = "UPDATED" ]]; then
-                CONFIG_CHANGED=1
-                echo -e "${G}已添加 registry-mirrors 配置${N}"
-            else
-                echo -e "${Y}检测到已有镜像加速配置，跳过${N}"
-            fi
-        else
-            python3 -c "
-import json
-cfg = {'registry-mirrors': $MIRRORS, 'live-restore': True}
+try:
+    with open('$DAEMON_JSON') as f:
+        cfg = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    cfg = {}
+cfg['registry-mirrors'] = $MIRRORS
+cfg['live-restore'] = True
 with open('$DAEMON_JSON', 'w') as f:
     json.dump(cfg, f, indent=2)
-" && CONFIG_CHANGED=1 && echo -e "${G}已创建 daemon.json${N}"
-        fi
-    else
-        # 无 python3 时用简单方式
-        if [[ -f "$DAEMON_JSON" ]] && grep -q "registry-mirrors" "$DAEMON_JSON"; then
-            echo -e "${Y}检测到已有镜像加速配置，跳过${N}"
+" && CONFIG_CHANGED=1 && echo -e "${G}已配置镜像加速${N}"
         else
             cat > "$DAEMON_JSON" <<EOF
 {
