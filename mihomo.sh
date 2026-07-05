@@ -218,7 +218,6 @@ case "${1:-menu}" in
   install|i)   cmd_install ;;
   status|st)   check_status ;;
   restart)     docker restart mihomo && echo -e "${G}已重启${N}" ;;
-  logs)        docker logs --tail 50 -f mihomo 2>/dev/null || echo -e "${R}容器不存在${N}" ;;
   *)
     if docker ps -q --filter name=mihomo 2>/dev/null | grep -q .; then
       while true; do
@@ -227,14 +226,12 @@ case "${1:-menu}" in
         echo " 1) 重新部署容器"
         echo " 2) 状态检查"
         echo " 3) 重启容器"
-        echo " 4) 查看日志"
         echo " 0) 退出"
         read -p "请选择： " ch
         case "$ch" in
           1) cmd_install ;;
           2) check_status ;;
           3) docker restart mihomo && echo -e "${G}已重启${N}" ;;
-          4) docker logs --tail 50 -f mihomo 2>/dev/null ;;
           0) exit 0 ;;
         esac
         read -p "按回车键继续..."
