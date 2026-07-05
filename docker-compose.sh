@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# ============================================================
+#  一键运行 Docker 容器
+#  功能：下载 docker-compose.yml 并启动容器
+#  说明：远程优先 → 失败则用本地 /root/docker-compose.yml
+# ============================================================
+
 REMOTE_URL="https://git.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/backup/main/docker-compose.yml"
 LOCAL_YML="/root/docker-compose.yml"
 
