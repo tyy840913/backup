@@ -41,7 +41,7 @@ bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840
 bash -c "$(curl -fsSL https://cdn.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/mihomo-proxy/refs/heads/master/mihomo/mihomo.sh)"
 ```
 
-# 一键运行docker-compose
+# 一键运行 Docker 容器（远程/本地 docker-compose.yml）
 ```bash
 bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker-compose.sh)"
 ```
