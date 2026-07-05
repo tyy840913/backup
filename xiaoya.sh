@@ -64,19 +64,16 @@ init_config() {
 
   if [[ -d "$DATA_DIR" ]] && load_config "$DATA_DIR"; then
     echo -e "${G}从 $DATA_DIR 检测到有效配置${N}"
-    if [[ -L "$XIAOYA_DIR" ]] && [[ "$(readlink "$XIAOYA_DIR")" = "$DATA_DIR" ]]; then
-      echo -e "${G}软链接已存在${N}"
-    elif [[ -d "$XIAOYA_DIR" ]] && ! [[ -L "$XIAOYA_DIR" ]]; then
-      echo -e "${Y}$XIAOYA_DIR 是实体目录，移除并创建软链接？(y/N)${N}"
-      read -r confirm
-      if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        rm -rf "$XIAOYA_DIR" && ln -s "$DATA_DIR" "$XIAOYA_DIR"
-        echo -e "${G}已创建软链接${N}"
+    mkdir -p "$XIAOYA_DIR"
+    local linked=0
+    for f in "$DATA_DIR"/*; do
+      if [[ -f "$f" ]]; then
+        ln -sf "$f" "$XIAOYA_DIR/$(basename "$f")"
+        echo -e "${G}  ✓ 已链接 $(basename "$f")${N}"
+        linked=1
       fi
-    else
-      ln -sf "$DATA_DIR" "$XIAOYA_DIR"
-      echo -e "${G}已创建软链接${N}"
-    fi
+    done
+    [[ $linked -eq 0 ]] && echo -e "${Y}  ⚠ DATA_DIR 中没有文件需要链接${N}"
     return 0
   fi
 
