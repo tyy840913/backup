@@ -69,6 +69,7 @@ DOMAIN-SUFFIX,cloudflareai.com
 DOMAIN-SUFFIX,notion.so
 DOMAIN-SUFFIX,notion-static.com
 DOMAIN-SUFFIX,quora.com
+
 # --- [自定义与特殊后缀] ---
 DOMAIN-SUFFIX,ip-ddns.com
 DOMAIN-SUFFIX,ddns-ip.net
@@ -155,6 +156,7 @@ DOMAIN-KEYWORD,github
 DOMAIN-KEYWORD,gitlab
 DOMAIN-SUFFIX,docker.com
 DOMAIN-SUFFIX,docker.io
+DOMAIN-SUFFIX,apkpure.com
 DOMAIN-KEYWORD,python
 DOMAIN-KEYWORD,pypi
 DOMAIN-KEYWORD,rust-lang
