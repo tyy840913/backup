@@ -71,23 +71,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # 小雅 alist - 挂载阿里云盘（配置独立管理在 /etc/xiaoya/）
-  xiaoya:
-    image: xiaoyaliu/alist:latest
-    container_name: xiaoya
-    restart: always
-    network_mode: bridge
-    privileged: true
-    volumes:
-      - /etc/xiaoya:/data
-      - /etc/xiaoya/data:/www/data
-      - /docker_data/xiaoya:/docker_data/xiaoya
-    ports:
-      - "2345:2345"
-      - "2346:2346"
-      - "2347:2347"
-      - "5678:80"
-
   # SearXNG - 元搜索引擎（与 redis 捆绑）
   searxng:
     image: searxng/searxng:latest
