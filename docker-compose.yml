@@ -64,11 +64,4 @@ services:
       - WEB_VAULT_ENABLED=true
       - SIGNUPS_ALLOWED=true 
 
-  # mihomo 代理
-  mihomo:
-    image: docker.1ms.run/metacubex/mihomo:latest
-    container_name: mihomo
-    restart: always
-    network_mode: host
-    volumes:
-      - /etc/mihomo:/root/.config/mihomo
+  
