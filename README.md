@@ -97,20 +97,12 @@
   ```bash
   bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/auto_backup.sh)"
   ```
-- **Git-CF.sh** — 🌍 Git & Cloudflare 工具安装
-  ```bash
-  curl -o /root/Git-CF.sh -sL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/Git-CF.sh && chmod +x /root/Git-CF.sh && bash /root/Git-CF.sh
-  ```
 
 ## 🛠️ PVE 专用
 
 - **qm.sh** — 💿 虚拟磁盘转换（IMG / ISO）
   ```bash
   curl -LsO https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/qm.sh && chmod +x qm.sh && ./qm.sh
-  ```
-- **pve-init.sh** — 🔄 PVE 镜像源更换
-  ```bash
-  bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/pve-init.sh)"
   ```
 
 ---
@@ -120,7 +112,6 @@
 | 资源 | 说明 | 链接 |
 |------|------|------|
 | 🧩 **ACL4SSR** | Clash 规则集 | `https://github.com/ACL4SSR/ACL4SSR/tree/master` |
-| ⚡ **Git-CF 快捷命令** | 安装后直接执行 `Git-CF` | 见上方安装脚本 |
 
 <br>
 
