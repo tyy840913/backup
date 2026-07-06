@@ -23,6 +23,5 @@ rule-providers:
  
 rules:
   - "RULE-SET,Global-Filter,REJECT"
-  - "RULE-SET,AI,💬 智能平台"
   - "RULE-SET,ProxyLite,♻️ 自动选择"
   - "MATCH,DIRECT"
