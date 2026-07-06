@@ -1,0 +1,53 @@
+use_default_settings:
+  engines:
+    keep_only:
+      - bing
+      - google
+      - sogou
+      - 360search
+      - duckduckgo web
+      - wikipedia
+      - github
+      - stackoverflow
+      - hackernews
+      - npm
+      - bilibili
+      - sogou wechat
+
+engines:
+  - name: bing
+    disabled: false
+  - name: sogou
+    disabled: false
+  - name: 360search
+    disabled: false
+  - name: duckduckgo web
+    disabled: false
+  - name: hackernews
+    disabled: false
+  - name: npm
+    disabled: false
+  - name: bilibili
+    disabled: false
+  - name: sogou wechat
+    disabled: false
+
+server:
+  secret_key: "h2iB1yrscwIaMpf3y7EuZ8ZjGdKmhrC"
+  image_proxy: true
+
+outgoing:
+  request_timeout: 8.0
+  proxies:
+    http: http://172.17.0.1:7890
+    https: http://172.17.0.1:7890
+  no_proxy: "localhost,127.0.0.1,::1,searxng-redis,.baidu.com,.sogou.com,.so.com,.360.cn,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+
+valkey:
+  url: redis://searxng-redis:6379/0
