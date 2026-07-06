@@ -4,12 +4,11 @@
 
 <p align="center">
   <b>⚡ 一键脚本合集 · 开箱即用 · 持续更新</b><br>
-  <sub>服务管理 · 系统初始化 · 代理网络 · 证书安全</sub>
+  <sub>服务管理 · 代理网络 · 证书安全</sub>
 </p>
 
 <p align="center">
   <a href="#-服务管理"><kbd>🖥️ 服务管理</kbd></a> •
-  <a href="#-系统初始化"><kbd>📦 系统初始化</kbd></a> •
   <a href="#-代理与网络"><kbd>🌐 代理与网络</kbd></a> •
   <a href="#-证书与安全"><kbd>🔐 证书与安全</kbd></a>
 </p>
@@ -35,23 +34,8 @@
   bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/vps-node-deploy.sh)
   ```
 
-## 📦 系统初始化
-
-- **mirror.sh** — 📡 更换 Linux 镜像源
-  ```bash
-  bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/mirror.sh)"
-  ```
-- **system_cleaner.sh** — 🧹 日志·缓存·旧内核清理
-  ```bash
-  curl -o /root/system_cleaner.sh -sL https://cdn.wosken.dpdns.org/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/system_cleaner.sh && chmod +x /root/system_cleaner.sh && /root/system_cleaner.sh --cron
-  ```
-
 ## 🌐 代理与网络
 
-- **mihomo_install.sh** — 🏗️ mihomo Docker 代理部署
-  ```bash
-  bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/mihomo_install.sh)"
-  ```
 - **network.sh** — 🔄 路由器网络联通检查恢复
   ```bash
   curl -LsO https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/network.sh && chmod +x network.sh
@@ -69,8 +53,6 @@
   ```
 
 ---
-
-## 📖 其他资源
 
 ## 📖 其他资源
 
