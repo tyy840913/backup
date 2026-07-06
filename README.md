@@ -4,16 +4,14 @@
 
 <p align="center">
   <b>⚡ 一键脚本合集 · 开箱即用 · 持续更新</b><br>
-  <sub>服务管理 · 系统初始化 · 代理网络 · 证书安全 · PVE · 备份监控</sub>
+  <sub>服务管理 · 系统初始化 · 代理网络 · 证书安全</sub>
 </p>
 
 <p align="center">
   <a href="#-服务管理"><kbd>🖥️ 服务管理</kbd></a> •
   <a href="#-系统初始化"><kbd>📦 系统初始化</kbd></a> •
   <a href="#-代理与网络"><kbd>🌐 代理与网络</kbd></a> •
-  <a href="#-证书与安全"><kbd>🔐 证书与安全</kbd></a> •
-  <a href="#-备份存储"><kbd>💾 备份存储</kbd></a> •
-  <a href="#-pve-专用"><kbd>🛠️ PVE</kbd></a>
+  <a href="#-证书与安全"><kbd>🔐 证书与安全</kbd></a>
 </p>
 
 ---
@@ -39,18 +37,6 @@
 
 ## 📦 系统初始化
 
-- **init.sh** — 🕐 时区·中文·换源·SSH·清理
-  ```bash
-  bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/init.sh)"
-  ```
-- **Docker.sh** — 🐳 Docker + Compose v2 安装
-  ```bash
-  bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/Docker.sh)"
-  ```
-- **docker-compose.sh** — 🚀 一键启动容器（远程/本地 YAML）
-  ```bash
-  bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/docker-compose.sh)"
-  ```
 - **mirror.sh** — 📡 更换 Linux 镜像源
   ```bash
   bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/mirror.sh)"
@@ -66,17 +52,9 @@
   ```bash
   bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/mihomo_install.sh)"
   ```
-- **mihomo.sh** — ⚙️ mihomo 裸核代理
-  ```bash
-  bash -c "$(curl -fsSL https://cdn.luxxk.dpdns.org/raw.githubusercontent.com/tyy840913/mihomo-proxy/refs/heads/master/mihomo/mihomo.sh)"
-  ```
 - **network.sh** — 🔄 路由器网络联通检查恢复
   ```bash
   curl -LsO https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/network.sh && chmod +x network.sh
-  ```
-- **ping_ip.sh** — 📡 扫描局域网设备 IP / MAC
-  ```bash
-  bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/ping_ip.sh)"
   ```
 
 ## 🔐 证书与安全
@@ -89,23 +67,10 @@
   ```bash
   bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webroot.sh)
   ```
-- **port.sh** — 🧱 系统防火墙（iptables）管理（集成于主菜单）
-
-## 💾 备份存储
-
-- **auto_backup.sh** — 📀 Docker 容器数据自动备份
-  ```bash
-  bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/auto_backup.sh)"
-  ```
-
-## 🛠️ PVE 专用
-
-- **qm.sh** — 💿 虚拟磁盘转换（IMG / ISO）
-  ```bash
-  curl -LsO https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/qm.sh && chmod +x qm.sh && ./qm.sh
-  ```
 
 ---
+
+## 📖 其他资源
 
 ## 📖 其他资源
 
