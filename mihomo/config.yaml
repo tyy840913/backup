@@ -215,9 +215,9 @@ rule-providers:
     interval: 86400
     format: text
     type: http
-  ProxyLite:
-    url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/Clash/ProxyLite.list
-    path: ./ruleset/ProxyLite.list
+  DIRECT:
+    url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/Clash/DIRECT.list
+    path: ./ruleset/DIRECT.list
     behavior: classical
     interval: 86400
     format: text
@@ -231,5 +231,6 @@ rule-providers:
     type: http
 rules:
   - "RULE-SET,Global-Filter,REJECT"
+  - "RULE-SET,DIRECT,DIRECT
   - "RULE-SET,ProxyLite,♻️ 自动选择"
   - "MATCH,DIRECT"
