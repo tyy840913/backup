@@ -65,7 +65,8 @@ services:
     image: searxng/searxng:latest
     container_name: searxng
     restart: always
-    network_mode: bridge
+    networks:
+      - searxng-net
     ports:
       - "9001:8080"
     volumes:
@@ -82,8 +83,14 @@ services:
     image: redis:alpine
     container_name: searxng-redis
     restart: always
+    networks:
+      - searxng-net
     volumes:
       - searxng-redis-data:/data
+
+networks:
+  searxng-net:
+    name: docker_data_searxng-net
 
 volumes:
   searxng-cache:
