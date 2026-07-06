@@ -65,11 +65,7 @@ services:
       - TZ=Asia/Shanghai
       - WEB_VAULT_ENABLED=true
       - SIGNUPS_ALLOWED=true
-    healthcheck:
-      test: ["CMD", "/healthcheck.sh"]
-      interval: 1m
-      timeout: 10s
-      retries: 3
+
 
   # SearXNG - 元搜索引擎（与 redis 捆绑）
   searxng:
