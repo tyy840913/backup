@@ -1,22 +1,3 @@
-#---------------------------------------------------#
-## 这个是配置文件模版，可根据自己情况重新定义。正式配置文件要放到 "/etc/mihomo" 文件夹下。
-## 
-## 当前配置:
-## - Hysteria2 代理（高性能抗干扰协议）
-## - Vmess 代理（备用协议）
-## - TUN 模式支持（全局透明代理）
-## - 优化 DNS 解析（防污染、加速访问）
-## - 自动分流规则（国内直连、国外代理）
-## - 自动测速选择（自动选择最佳节点）
-## - 面板访问控制（支持远程管理）
-##
-## 使用方法: 
-## 1. 将此文件放置在 $HOME/.config/mihomo/config.yaml
-## 2. 替换 VPS_IP 为你的服务器 IP 地址
-## 3. 替换 your_password 为你的实际密码
-## 4. 根据你的网络情况调整上传下载速度
-#---------------------------------------------------#
-
 # 通用代理端口：同时支持HTTP和SOCKS5协议，一般软件都可以使用这个端口
 mixed-port: 7890
 
@@ -25,7 +6,6 @@ port: 7891
 
 # 仅SOCKS5协议专用端口（如果你的软件只支持SOCKS5代理，用这个）
 socks-port: 7892
-
 
 # 指定 Clash 应绑定的网络接口。
 # 此设置决定 Clash 将使用哪个网络接口进行所有网络操作。
@@ -45,7 +25,6 @@ log-level: silent
 
 # 控制面板访问地址和端口，可以通过浏览器访问查看连接状态
 external-controller: 0.0.0.0:9090
-
 
 # 远程控制面板UI，无需下载就能使用（如果想用就取消注释）
 #external-ui: https://yacd.haishan.me
@@ -213,3 +192,43 @@ tun:
   dns-hijack:
     - tcp://any:53  # 接管所有DNS请求，防止DNS泄露
     - udp://any:53  # 接管所有DNS请求，防止DNS泄露
+
+# ===== 代理节点配置 =====
+proxies:
+
+
+
+# ===== 代理组和规则配置 =====
+proxy-groups:
+  - name: ♻️ 自动选择
+    type: url-test
+    include-all: true
+    interval: 300
+  
+rule-providers:
+  ProxyLite:
+    url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/Clash/ProxyLite.list
+    path: ./ruleset/ProxyLite.list
+    behavior: classical
+    interval: 86400
+    format: text
+    type: http
+  DIRECT:
+    url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/Clash/DIRECT.list
+    path: ./ruleset/DIRECT.list
+    behavior: classical
+    interval: 86400
+    format: text
+    type: http
+  Global-Filter:
+    url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/Clash/Global-Filter.list
+    path: ./ruleset/Global-Filter.list
+    behavior: classical
+    interval: 86400
+    format: text
+    type: http
+rules:
+  - "RULE-SET,Global-Filter,REJECT"
+  - "RULE-SET,DIRECT,DIRECT
+  - "RULE-SET,ProxyLite,♻️ 自动选择"
+  - "MATCH,DIRECT"
