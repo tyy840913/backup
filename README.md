@@ -4,19 +4,38 @@
 
 <p align="center">
   <b>⚡ 一键脚本合集 · 开箱即用 · 持续更新</b><br>
-  <sub>系统初始化 · 代理网络 · 证书安全 · PVE · 备份监控</sub>
+  <sub>服务管理 · 系统初始化 · 代理网络 · 证书安全 · PVE · 备份监控</sub>
 </p>
 
 <p align="center">
+  <a href="#-服务管理"><kbd>🖥️ 服务管理</kbd></a> •
   <a href="#-系统初始化"><kbd>📦 系统初始化</kbd></a> •
   <a href="#-代理与网络"><kbd>🌐 代理与网络</kbd></a> •
   <a href="#-证书与安全"><kbd>🔐 证书与安全</kbd></a> •
-  <a href="#-服务管理"><kbd>🖥️ 服务管理</kbd></a> •
   <a href="#-备份存储"><kbd>💾 备份存储</kbd></a> •
   <a href="#-pve-专用"><kbd>🛠️ PVE</kbd></a>
 </p>
 
 ---
+
+## 🖥️ 服务管理
+
+- **main.sh** — 🎯 主菜单（整合全部脚本）
+  ```bash
+  bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/main.sh)"
+  ```
+- **webconf.sh** — 📄 Nginx & Caddy 配置快速生成
+  ```bash
+  bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webconf.sh)
+  ```
+- **LXC一键脚本.sh** — 📦 LXC 容器创建
+  ```bash
+  bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/LXC一键脚本.sh)"
+  ```
+- **vps-node-deploy.sh** — 🚀 VPS 代理节点部署
+  ```bash
+  bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/vps-node-deploy.sh)
+  ```
 
 ## 📦 系统初始化
 
@@ -71,25 +90,6 @@
   bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webroot.sh)
   ```
 - **port.sh** — 🧱 系统防火墙（iptables）管理（集成于主菜单）
-
-## 🖥️ 服务管理
-
-- **main.sh** — 🎯 主菜单（整合全部脚本）
-  ```bash
-  bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/main.sh)"
-  ```
-- **webconf.sh** — 📄 Nginx & Caddy 配置快速生成
-  ```bash
-  bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/webconf.sh)
-  ```
-- **LXC一键脚本.sh** — 📦 LXC 容器创建
-  ```bash
-  bash -c "$(curl -fsSL https://cdn.woskee.nyc.mn/raw.githubusercontent.com/tyy840913/backup/main/LXC一键脚本.sh)"
-  ```
-- **vps-node-deploy.sh** — 🚀 VPS 代理节点部署
-  ```bash
-  bash <(curl -sL https://raw.githubusercontent.com/tyy840913/backup/refs/heads/main/vps-node-deploy.sh)
-  ```
 
 ## 💾 备份存储
 
