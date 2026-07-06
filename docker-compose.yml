@@ -122,6 +122,4 @@ services:
 
 volumes:
   searxng-cache:
-    external: true
   searxng-redis-data:
-    external: true
