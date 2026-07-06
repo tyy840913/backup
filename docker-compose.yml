@@ -1,18 +1,9 @@
-services:
-  # Portainer - 容器管理面板
-  portainer:
-    image: docker.1ms.run/6053537/portainer-ce:latest
-    container_name: portainer
-    restart: always
-    network_mode: bridge
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    ports:
-      - "9000:9000"
+name: docker_data
 
+services:
   # Watchtower - 自动更新容器
   watchtower:
-    image: docker.1ms.run/containrrr/watchtower:latest
+    image: containrrr/watchtower:latest
     container_name: watchtower
     restart: always
     network_mode: host
@@ -24,7 +15,7 @@ services:
 
   # openlist - 文件列表服务
   openlist:
-    image: docker.1ms.run/openlistteam/openlist:latest
+    image: openlistteam/openlist:latest
     container_name: openlist
     restart: always
     network_mode: bridge
@@ -37,9 +28,9 @@ services:
       - TZ=Asia/Shanghai
       - UMASK=022
 
-  # Lucky - 反向代理工具（Host 网络）
+  # Lucky - 反向代理/DDNS 工具
   lucky:
-    image: docker.1ms.run/gdy666/lucky:3.0.0
+    image: gdy666/lucky:v3
     container_name: lucky
     restart: always
     network_mode: host
@@ -51,7 +42,7 @@ services:
 
   # Vaultwarden - 密码管理服务
   vaultwarden:
-    image: docker.1ms.run/vaultwarden/server:latest
+    image: vaultwarden/server:latest
     container_name: vaultwarden
     restart: always
     network_mode: bridge
@@ -62,6 +53,64 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - WEB_VAULT_ENABLED=true
-      - SIGNUPS_ALLOWED=true 
+      - SIGNUPS_ALLOWED=true
+    healthcheck:
+      test: ["CMD", "/healthcheck.sh"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
 
-  
+  # 小雅 alist - 挂载阿里云盘（配置独立管理在 /etc/xiaoya/）
+  xiaoya:
+    image: xiaoyaliu/alist:latest
+    container_name: xiaoya
+    restart: always
+    network_mode: bridge
+    privileged: true
+    volumes:
+      - /etc/xiaoya:/data
+      - /etc/xiaoya/data:/www/data
+      - /docker_data/xiaoya:/docker_data/xiaoya
+    ports:
+      - "2345:2345"
+      - "2346:2346"
+      - "2347:2347"
+      - "5678:80"
+
+  # SearXNG - 元搜索引擎（与 redis 捆绑）
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    restart: always
+    network_mode: bridge
+    depends_on:
+      - searxng-redis
+    links:
+      - searxng-redis
+    ports:
+      - "9001:8080"
+    volumes:
+      - /docker_data/searxng/core-config:/etc/searxng:rw
+      - searxng-cache:/var/cache/searxng
+    environment:
+      - TZ=Asia/Shanghai
+      - SEARXNG_BASE_URL=http://localhost:9001
+      - SEARXNG_SECRET_KEY=0b58fbfb9f08a8348b6db355a8c59e12d2b8f36248007a5f014fdca1331970c4
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # SearXNG Redis - 搜索引擎缓存
+  searxng-redis:
+    image: redis:alpine
+    container_name: searxng-redis
+    restart: always
+    network_mode: bridge
+    volumes:
+      - searxng-redis-data:/data
+    command: redis-server
+
+volumes:
+  searxng-cache:
+    external: true
+  searxng-redis-data:
+    external: true
