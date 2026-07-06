@@ -1,11 +1,12 @@
 #!/bin/bash
+set -euo pipefail
 
 R='\033[1;31m'; G='\033[1;32m'; Y='\033[1;33m'; B='\033[1;34m'; C='\033[1;36m'; N='\033[0m'
 
 XIAOYA_DIR="/etc/xiaoya"
 DATA_DIR="/docker_data/xiaoya"
-IMG_BRIDGE="docker.1ms.run/xiaoyaliu/alist:latest"
-IMG_HOST="docker.1ms.run/xiaoyaliu/alist:hostmode"
+IMG_BRIDGE="xiaoyaliu/alist:latest"
+IMG_HOST="xiaoyaliu/alist:hostmode"
 
 check_deps() {
   command -v curl &>/dev/null || {
@@ -26,20 +27,22 @@ check_folderid()  { [ ${#1} -eq 40 ]; }
 
 load_config() {
   local dir="$1"
-  TOK=$(cat "$dir/mytoken.txt" 2>/dev/null)
-  OT=$(cat "$dir/myopentoken.txt" 2>/dev/null)
-  FID=$(cat "$dir/temp_transfer_folder_id.txt" 2>/dev/null)
+  local TOK=$(cat "$dir/mytoken.txt" 2>/dev/null)
+  local OT=$(cat "$dir/myopentoken.txt" 2>/dev/null)
+  local FID=$(cat "$dir/temp_transfer_folder_id.txt" 2>/dev/null)
   check_token "$TOK" && check_opentoken "$OT" && check_folderid "$FID"
 }
 
 get_local_ip() {
-  LOCAL_IP=$(ip -4 addr show scope global 2>/dev/null | awk '/inet/ {print $2; exit}' | cut -d/ -f1)
-  [[ -z "$LOCAL_IP" ]] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-  echo "${LOCAL_IP:-127.0.0.1}"
+  local ip
+  ip=$(ip -4 addr show scope global 2>/dev/null | awk '/inet/ {print $2; exit}' | cut -d/ -f1)
+  [[ -z "$ip" ]] && ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  echo "${ip:-127.0.0.1}"
 }
 
 check_status() {
   local ip=$(get_local_ip)
+  local nm="" port="" cid=""
   echo -e "\n${B}========== xiaoya 状态 ==========${N}"
 
   if ! command -v docker &>/dev/null; then
@@ -55,12 +58,12 @@ check_status() {
   fi
   $docker_up && echo -e "Docker: ${G}运行中${N}" || echo -e "Docker: ${R}未运行${N}"
 
-  local cid=$(docker ps -q --filter name=xiaoya 2>/dev/null)
+  cid=$(docker ps -q --filter name=xiaoya 2>/dev/null)
   if [[ -n "$cid" ]]; then
-    local start=$(docker inspect -f '{{.State.StartedAt}}' xiaoya 2>/dev/null)
+    local start=$(docker inspect -f '{{.State.StartedAt}}' xiaoya 2>/dev/null) || true
     local sec=0
     [[ -n "$start" ]] && sec=$(( $(date +%s) - $(date -d "$start" +%s) )) 2>/dev/null || true
-    local nm=$(docker inspect xiaoya --format '{{.HostConfig.NetworkMode}}' 2>/dev/null)
+    nm=$(docker inspect xiaoya --format '{{.HostConfig.NetworkMode}}' 2>/dev/null)
     echo -e "容器: ${G}运行中${N} | 网络: ${G}$nm${N}"
     echo -e "已运行: $((sec/86400))d $((sec%86400/3600))h $((sec%3600/60))m"
     docker logs xiaoya --tail 3 2>/dev/null | grep -i "error\|warn\|version" || true
@@ -69,8 +72,25 @@ check_status() {
     [[ -n "$aid" ]] && echo -e "容器: ${Y}已停止${N}" || echo -e "容器: ${R}不存在${N}"
   fi
 
-  curl -s -m 3 http://127.0.0.1:5678 &>/dev/null && \
-    echo -e "服务: ${G}http://$ip:5678${N}" || \
+  if [[ "$nm" = "host" ]]; then
+    port="5678"
+  else
+    port=$(docker port xiaoya 2>/dev/null | head -1 | grep -oE ':[0-9]+$' | tr -d ':') || true
+    [[ -z "$port" ]] && port="5678"
+  fi
+
+  local accessible=false
+  curl -s -m 3 "http://127.0.0.1:$port" &>/dev/null && accessible=true
+
+  if ! $accessible && [[ "$nm" != "host" ]]; then
+    local cip=$(docker inspect xiaoya --format '{{.NetworkSettings.IPAddress}}' 2>/dev/null) || true
+    if [[ -n "$cip" ]]; then
+      curl -s -m 3 "http://$cip:5678" &>/dev/null && { port="5678"; ip="$cip"; accessible=true; }
+    fi
+  fi
+
+  $accessible && \
+    echo -e "服务: ${G}http://$ip:$port${N}" || \
     echo -e "服务: ${R}不可访问${N}"
 
   [[ -f "$XIAOYA_DIR/mytoken.txt" ]] && \
@@ -106,21 +126,33 @@ init_config() {
   mkdir -p "$XIAOYA_DIR" "$XIAOYA_DIR/data"
 
   while ! check_token "$(cat "$XIAOYA_DIR/mytoken.txt" 2>/dev/null)"; do
-    read -p "$(echo -e "${C}输入阿里云盘 Token（32 位）:${N}") " tk
+    if [[ ! -t 0 ]]; then
+      echo -e "${R}非交互式终端，需手动写入 $XIAOYA_DIR/mytoken.txt${N}"; return 1
+    fi
+    echo -en "${C}输入阿里云盘 Token（32 位）:${N} "
+    read tk
     [[ ${#tk} -ne 32 ]] && echo "长度不为 32" && continue
-    echo "$tk" > "$XIAOYA_DIR/mytoken.txt"
+    echo "$tk" > "$XIAOYA_DIR/mytoken.txt" && chmod 600 "$XIAOYA_DIR/mytoken.txt"
   done
 
   while ! check_opentoken "$(cat "$XIAOYA_DIR/myopentoken.txt" 2>/dev/null)"; do
-    read -p "$(echo -e "${Y}输入 Open Token（至少 335 位）:${N}") " ot
+    if [[ ! -t 0 ]]; then
+      echo -e "${R}非交互式终端，需手动写入 $XIAOYA_DIR/myopentoken.txt${N}"; return 1
+    fi
+    echo -en "${Y}输入 Open Token（至少 335 位）:${N} "
+    read ot
     [[ ${#ot} -le 334 ]] && echo "长度不足 335" && continue
-    echo "$ot" > "$XIAOYA_DIR/myopentoken.txt"
+    echo "$ot" > "$XIAOYA_DIR/myopentoken.txt" && chmod 600 "$XIAOYA_DIR/myopentoken.txt"
   done
 
   while ! check_folderid "$(cat "$XIAOYA_DIR/temp_transfer_folder_id.txt" 2>/dev/null)"; do
-    read -p "$(echo -e "${C}输入转存目录 folder_id（40 位）:${N}") " fid
+    if [[ ! -t 0 ]]; then
+      echo -e "${R}非交互式终端，需手动写入 $XIAOYA_DIR/temp_transfer_folder_id.txt${N}"; return 1
+    fi
+    echo -en "${C}输入转存目录 folder_id（40 位）:${N} "
+    read fid
     [[ ${#fid} -ne 40 ]] && echo "长度不为 40" && continue
-    echo "$fid" > "$XIAOYA_DIR/temp_transfer_folder_id.txt"
+    echo "$fid" > "$XIAOYA_DIR/temp_transfer_folder_id.txt" && chmod 600 "$XIAOYA_DIR/temp_transfer_folder_id.txt"
   done
   echo -e "${G}Token 填写完成${N}"
 }
@@ -154,9 +186,10 @@ start_container() {
 
   [[ -s "$XIAOYA_DIR/docker_address.txt" ]] || echo "http://${ip}:5678" > "$XIAOYA_DIR/docker_address.txt"
 
-  [[ "$MODE" = "host" ]] && IMG="$IMG_HOST" || IMG="$IMG_BRIDGE"
-  PORT_MAP=""
+  [[ "$MODE" = "host" ]] && local IMG="$IMG_HOST" || local IMG="$IMG_BRIDGE"
+  local PORT_MAP="" NET_MODE=""
   [[ "$MODE" != "host" ]] && PORT_MAP="-p 5678:80 -p 2345:2345 -p 2346:2346 -p 2347:2347"
+  [[ "$MODE" = "host" ]] && NET_MODE="--network host"
 
   PROXY_ARGS=""
   if [[ -s "$XIAOYA_DIR/proxy.txt" ]]; then
@@ -170,6 +203,7 @@ start_container() {
 
   echo "创建容器..."
   docker create --privileged \
+    $NET_MODE \
     $PORT_MAP \
     $PROXY_ARGS \
     -v "$XIAOYA_DIR:/data" \
@@ -213,6 +247,12 @@ show_logs() {
 case "${1:-menu}" in
   status|st)   check_status ;;
   restart)     restart_container ;;
+  help|--help|-h)
+    echo "用法: $0 [status|restart|help]"
+    echo "   status    查看服务状态"
+    echo "   restart   重启容器"
+    echo "   help      显示本帮助"
+    ;;
   *)
     if docker ps -q --filter name=xiaoya | grep -q .; then
       while true; do
@@ -232,7 +272,7 @@ case "${1:-menu}" in
         read -p "按回车键继续..."
       done
     else
-start_container && show_logs
+      start_container && show_logs
     fi
     ;;
 esac
