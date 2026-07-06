@@ -1,9 +1,8 @@
 name: docker_data
 
 services:
-  # Portainer - 容器管理面板
   portainer:
-    image: portainer/portainer-ce:latest
+    image: 6053537/portainer-ce:latest
     container_name: portainer
     restart: always
     network_mode: bridge
@@ -12,7 +11,6 @@ services:
     ports:
       - "9000:9000"
 
-  # Watchtower - 自动更新容器
   watchtower:
     image: containrrr/watchtower:latest
     container_name: watchtower
@@ -24,7 +22,6 @@ services:
       - TZ=Asia/Shanghai
     command: --schedule "0 0 */2 * * *" --cleanup --remove-volumes
 
-  # openlist - 文件列表服务
   openlist:
     image: openlistteam/openlist:latest
     container_name: openlist
@@ -39,7 +36,6 @@ services:
       - TZ=Asia/Shanghai
       - UMASK=022
 
-  # Lucky - 反向代理/DDNS 工具
   lucky:
     image: gdy666/lucky:v3
     container_name: lucky
@@ -47,11 +43,9 @@ services:
     network_mode: host
     volumes:
       - /docker_data/luckyconf:/app/conf
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Asia/Shanghai
 
-  # Vaultwarden - 密码管理服务
   vaultwarden:
     image: vaultwarden/server:latest
     container_name: vaultwarden
@@ -66,17 +60,11 @@ services:
       - WEB_VAULT_ENABLED=true
       - SIGNUPS_ALLOWED=true
 
-
-  # SearXNG - 元搜索引擎（与 redis 捆绑）
   searxng:
     image: searxng/searxng:latest
     container_name: searxng
     restart: always
     network_mode: bridge
-    depends_on:
-      - searxng-redis
-    links:
-      - searxng-redis
     ports:
       - "9001:8080"
     volumes:
@@ -86,18 +74,15 @@ services:
       - TZ=Asia/Shanghai
       - SEARXNG_BASE_URL=http://localhost:9001
       - SEARXNG_SECRET_KEY=0b58fbfb9f08a8348b6db355a8c59e12d2b8f36248007a5f014fdca1331970c4
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      - searxng-redis
 
-  # SearXNG Redis - 搜索引擎缓存
   searxng-redis:
     image: redis:alpine
     container_name: searxng-redis
     restart: always
-    network_mode: bridge
     volumes:
       - searxng-redis-data:/data
-    command: redis-server
 
 volumes:
   searxng-cache:
