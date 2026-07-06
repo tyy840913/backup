@@ -1,6 +1,17 @@
 name: docker_data
 
 services:
+  # Portainer - 容器管理面板
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: always
+    network_mode: bridge
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9000:9000"
+
   # Watchtower - 自动更新容器
   watchtower:
     image: containrrr/watchtower:latest
