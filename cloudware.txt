@@ -103,6 +103,7 @@ function isSafePath(filename) {
   if (!filename) return false;
   if (filename.includes('..')) return false;
   if (filename.startsWith('/')) return false;
+  if (filename.startsWith('__settings__/') || filename.startsWith('__info__/') || filename.startsWith('__tokens__/')) return false;
   return true;
 }
 
@@ -311,14 +312,12 @@ async function findFileNodeFromInfo(MY_SCRIPT_BUCKET, filename, allDomains, defa
 
 // 从信息文件计算节点大小（负载均衡用）
 async function computeNodeSizes(MY_SCRIPT_BUCKET, allDomains) {
+  const infos = await Promise.all(allDomains.map(d => loadInfo(MY_SCRIPT_BUCKET, d)));
   const nodeSizes = {};
-  for (const domain of allDomains) {
-    nodeSizes[domain] = 0;
-  }
-  for (const domain of allDomains) {
-    const info = await loadInfo(MY_SCRIPT_BUCKET, domain);
-    for (const f of Object.values(info.files)) {
-      nodeSizes[domain] += f.size || 0;
+  for (let i = 0; i < allDomains.length; i++) {
+    nodeSizes[allDomains[i]] = 0;
+    for (const f of Object.values(infos[i].files)) {
+      nodeSizes[allDomains[i]] += f.size || 0;
     }
   }
   return nodeSizes;
@@ -1608,7 +1607,7 @@ export default {
         const targetUrl = buildProxyUrl(targetDomain, path, url);
         try {
           const resp = await fetch(targetUrl, {
-            method: 'PUT', body: bodyText,
+            method: 'PUT', body: bodyBuffer,
             headers: { 'Authorization': requestAuthHeader, 'X-Proxy-Request': '1', 'X-Is-Text': isText ? '1' : '0', 'Content-Type': request.headers.get('Content-Type') || 'application/octet-stream' }
           });
           try {
@@ -1633,10 +1632,10 @@ export default {
       }
 
       const contentType = request.headers.get('Content-Type') || guessContentType(filename);
-      const fileSize = bodyText.length;
+      const fileSize = bodyBytes.length;
 
       try {
-        await MY_SCRIPT_BUCKET.put(filename, bodyText);
+        await MY_SCRIPT_BUCKET.put(filename, bodyBuffer);
       } catch (e) {
         console.error('PUT /update/: KV put failed for', filename, e);
         return new Response(JSON.stringify({ success: false, error: `KV 写入失败: ${e.message}` }), {
@@ -1815,7 +1814,7 @@ export default {
       // 三步原子操作：get → put → delete，带回滚
       let content;
       try {
-        content = await MY_SCRIPT_BUCKET.get(oldName, { type: 'text' });
+        content = await MY_SCRIPT_BUCKET.get(oldName, { type: 'arrayBuffer' });
       } catch (e) {
         console.error('POST /rename/: KV get failed for', oldName, e);
         return new Response(JSON.stringify({ success: false, error: `KV 读取失败: ${e.message}` }), {
@@ -1849,17 +1848,34 @@ export default {
         });
       }
 
-      // 更新信息文件
+      // 更新信息文件（失败时重试一次）
+      let info;
       try {
-        const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+        info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
         const oldEntry = info.files[oldName];
         if (oldEntry) {
           delete info.files[oldName];
           info.files[newName] = oldEntry;
         }
         await saveInfo(MY_SCRIPT_BUCKET, currentDomain, info);
+      } catch (e) {
+        console.error('POST /rename/: info update failed, retrying for', oldName, '->', newName, e);
+        try {
+          info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+          const oldEntry = info.files[oldName];
+          if (oldEntry) {
+            delete info.files[oldName];
+            info.files[newName] = oldEntry;
+          }
+          await saveInfo(MY_SCRIPT_BUCKET, currentDomain, info);
+        } catch (e2) {
+          console.error('POST /rename/: info retry also failed for', oldName, '->', newName, e2);
+          info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+        }
+      }
 
-        // 本节点操作：推送更新到所有其他节点（非代理请求才推送）
+      // 本节点操作：推送更新到所有其他节点（非代理请求才推送）
+      try {
         const isProxy = request.headers.get('X-Proxy-Request') === '1';
         if (!isProxy) {
           const infoBody = JSON.stringify(info);
@@ -1873,12 +1889,11 @@ export default {
           );
         }
       } catch (e) {
-        console.error('POST /rename/: info update/sync failed for', oldName, '->', newName, e);
-        // KV 数据已正确 rename，info 不一致不阻塞响应
+        console.error('POST /rename/: info sync failed for', oldName, '->', newName, e);
       }
 
-      const info = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
-      return new Response(JSON.stringify({ success: true, old_name: oldName, new_name: newName, updatedInfo: { ...info, domain: currentDomain } }), {
+      const finalInfo = await loadInfo(MY_SCRIPT_BUCKET, currentDomain);
+      return new Response(JSON.stringify({ success: true, old_name: oldName, new_name: newName, updatedInfo: { ...finalInfo, domain: currentDomain } }), {
         headers: { 'Content-Type': 'application/json' }, status: 200
       });
     }
