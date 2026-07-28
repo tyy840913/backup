@@ -59,6 +59,8 @@ DOMAIN-SUFFIX,appcenter.ms
 DOMAIN-SUFFIX,browser-intake-datadoghq.com
 DOMAIN-SUFFIX,revenuecat.com
 DOMAIN-SUFFIX,app-measurement.com
+DOMAIN-SUFFIX,agnes-ai.com
+
 
 # --- [大厂 AI 专属云服务接口] ---
 DOMAIN-SUFFIX,ai.azure.com
