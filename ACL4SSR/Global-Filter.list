@@ -71,3 +71,4 @@ DOMAIN-REGEX,^pull-rtmp-[^.]+\.douyincdn\.com$
 # DOMAIN,lf3-reading.fqnovelpic.com
 DOMAIN,mon.toutiaocloud.com
 DOMAIN,api5-normal-lf.fqnovel.com
+DOMAIN,api5-normal-sinfonlinec.fqnovel.com
