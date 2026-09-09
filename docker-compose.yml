@@ -11,16 +11,16 @@ services:
     ports:
       - "9000:9000"
 
-  watchtower:
-    image: containrrr/watchtower:latest
-    container_name: watchtower
-    restart: always
-    network_mode: host
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - TZ=Asia/Shanghai
-    command: --schedule "0 0 */2 * * *" --cleanup --remove-volumes
+#  watchtower:
+#    image: containrrr/watchtower:latest
+#    container_name: watchtower
+#    restart: always
+#    network_mode: host
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock
+#    environment:
+#      - TZ=Asia/Shanghai
+#    command: --schedule "0 0 */2 * * *" --cleanup --remove-volumes
 
   openlist:
     image: openlistteam/openlist:latest
