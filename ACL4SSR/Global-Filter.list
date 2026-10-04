@@ -74,18 +74,31 @@ DOMAIN-REGEX,^api[0-9]+-normal-lf\.fqnovel\.com$
 DOMAIN,mon.toutiaocloud.com
 
 
-# 蛋仔派对
+  # 蛋仔派对 Clash 拦截规则（完整、去冗余）
 DOMAIN-SUFFIX,netease.com
 DOMAIN,audiostatlog.cc.163.com
 DOMAIN-SUFFIX,heytapmobi.com
 DOMAIN-SUFFIX,oppomobile.com
 DOMAIN-SUFFIX,heytapdownload.com
-IP-CIDR,60.188.233.0/24
-IP-CIDR,115.236.122.0/24
 DOMAIN-SUFFIX,ttwebview.com
+DOMAIN,gameapi.party.qq.com
+DOMAIN-SUFFIX,game.163.com
+DOMAIN-SUFFIX,party.163.com
+DOMAIN-SUFFIX,gamepay.163.com
+DOMAIN-SUFFIX,nie.163.com
+DOMAIN-SUFFIX,eggy.163.com
+
+IP-CIDR,60.188.233.0/24
 IP-CIDR,14.29.94.0/24
 IP-CIDR,140.82.114.0/24
 IP-CIDR,103.71.201.0/24
 IP-CIDR,36.110.147.0/24
 IP-CIDR,42.186.0.0/16
 IP-CIDR,47.104.224.0/24
+IP-CIDR,45.253.0.0/16
+IP-CIDR,115.236.0.0/16
+IP-CIDR,118.89.0.0/16
+IP-CIDR,110.80.0.0/16
+IP-CIDR,62.234.0.0/16
+IP-CIDR,222.73.0.0/16
+IP-CIDR,120.53.0.0/16
