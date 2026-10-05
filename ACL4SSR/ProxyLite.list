@@ -111,6 +111,10 @@ DOMAIN-SUFFIX,tiktok.com
 DOMAIN-SUFFIX,tiktokv.com
 DOMAIN-SUFFIX,tiktokcdn.com
 DOMAIN-SUFFIX,musical.ly
+DOMAIN-SUFFIX,mastodon.social
+DOMAIN-SUFFIX,viber.com
+DOMAIN-SUFFIX,kakaotalk.com
+DOMAIN-SUFFIX,snapchat.com
 
 # --- [流媒体与娱乐] ---
 DOMAIN-KEYWORD,netflix
@@ -131,6 +135,14 @@ DOMAIN-KEYWORD,primevideo
 DOMAIN-SUFFIX,vimeo.com
 DOMAIN-SUFFIX,vimeocdn.com
 DOMAIN-SUFFIX,dailymotion.com
+DOMAIN-SUFFIX,deezer.com
+DOMAIN-SUFFIX,soundcloud.com
+DOMAIN-SUFFIX,bandcamp.com
+DOMAIN-SUFFIX,mixcloud.com
+DOMAIN-SUFFIX,steamcommunity.com
+DOMAIN-SUFFIX,steamstatic.com
+DOMAIN-SUFFIX,paramountplus.com
+DOMAIN-SUFFIX,showtime.com
 
 # --- [新闻与出版] ---
 DOMAIN-SUFFIX,bbc.com
@@ -153,6 +165,13 @@ DOMAIN-KEYWORD,blogspot
 DOMAIN-SUFFIX,wordpress.com
 DOMAIN-SUFFIX,wp.com
 DOMAIN-SUFFIX,substack.com
+DOMAIN-SUFFIX,aljazeera.com
+DOMAIN-SUFFIX,cbc.ca
+DOMAIN-SUFFIX,abc.net.au
+DOMAIN-SUFFIX,independent.co.uk
+DOMAIN-SUFFIX,newyorker.com
+DOMAIN-SUFFIX,time.com
+DOMAIN-SUFFIX,axios.com
 
 # --- [存储与协作] ---
 DOMAIN-KEYWORD,dropbox
@@ -173,6 +192,14 @@ DOMAIN-SUFFIX,gitbook.io
 DOMAIN-SUFFIX,replit.com
 DOMAIN-SUFFIX,sourcegraph.com
 DOMAIN-SUFFIX,archive.org
+DOMAIN-SUFFIX,herokuapp.com
+DOMAIN-SUFFIX,javatpoint.com
+DOMAIN-SUFFIX,sonatype.org
+# GitLab：应用本体可用（/explore 200），但根路径 301 到被 SNI 阻断的
+# about.gitlab.com（营销站），实测直连会卡在重定向，故收录
+DOMAIN-SUFFIX,gitlab.com
+# hashnode.dev：DNS 干净但 SNI 被 GFW 阻断（TLS 握手无响应）
+DOMAIN-SUFFIX,hashnode.dev
 
 # --- [部署平台（仅被墙部分）] ---
 # vercel.app 已被墙；vercel.com 官网可直连不收录
@@ -192,6 +219,89 @@ DOMAIN-KEYWORD,xnxx
 DOMAIN-KEYWORD,redtube
 DOMAIN-KEYWORD,onlyfans
 
+
+# --- [加密金融与交易所]（实测 DNS 污染或连接被丢） ---
+DOMAIN-SUFFIX,binance.com
+DOMAIN-SUFFIX,coinbase.com
+DOMAIN-SUFFIX,bybit.com
+DOMAIN-SUFFIX,okx.com
+DOMAIN-SUFFIX,bitget.com
+DOMAIN-SUFFIX,kucoin.com
+DOMAIN-SUFFIX,kraken.com
+DOMAIN-SUFFIX,bitfinex.com
+DOMAIN-SUFFIX,gate.io
+DOMAIN-SUFFIX,mexc.com
+DOMAIN-SUFFIX,etherscan.io
+DOMAIN-SUFFIX,trustwallet.com
+DOMAIN-SUFFIX,metamask.io
+DOMAIN-SUFFIX,uniswap.org
+DOMAIN-SUFFIX,opensea.io
+DOMAIN-SUFFIX,zora.co
+DOMAIN-SUFFIX,ledger.com
+DOMAIN-SUFFIX,trezor.io
+DOMAIN-SUFFIX,coinmarketcap.com
+DOMAIN-SUFFIX,coingecko.com
+DOMAIN-SUFFIX,tradingview.com
+DOMAIN-SUFFIX,bitstamp.net
+
+# --- [VPN 与代理工具]（实测连接被丢） ---
+DOMAIN-SUFFIX,nordvpn.com
+DOMAIN-SUFFIX,expressvpn.com
+DOMAIN-SUFFIX,surfshark.com
+DOMAIN-SUFFIX,protonvpn.com
+DOMAIN-SUFFIX,proton.me
+DOMAIN-SUFFIX,protonmail.com
+DOMAIN-SUFFIX,ivpn.net
+DOMAIN-SUFFIX,mullvad.net
+DOMAIN-SUFFIX,windscribe.com
+DOMAIN-SUFFIX,privateinternetaccess.com
+DOMAIN-SUFFIX,wireguard.com
+
+# --- [图片与设计社区] ---
+DOMAIN-SUFFIX,imgur.com
+DOMAIN-SUFFIX,imgur.io
+DOMAIN-SUFFIX,flickr.com
+DOMAIN-SUFFIX,deviantart.com
+DOMAIN-SUFFIX,artstation.com
+DOMAIN-SUFFIX,behance.net
+DOMAIN-SUFFIX,500px.com
+DOMAIN-SUFFIX,wattpad.com
+DOMAIN-SUFFIX,goodreads.com
+DOMAIN-SUFFIX,pixlr.com
+
+# --- [学术与文档]（含镜像站） ---
+DOMAIN-SUFFIX,z-lib.org
+DOMAIN-SUFFIX,libgen.is
+DOMAIN-SUFFIX,annas-archive.org
+DOMAIN-SUFFIX,sci-hub.se
+
+# --- [AI 补充]（实测污染或被墙） ---
+DOMAIN-SUFFIX,jan.ai
+DOMAIN-SUFFIX,krea.ai
+DOMAIN-SUFFIX,blackbox.ai
+DOMAIN-SUFFIX,sora.com
+DOMAIN-SUFFIX,getimg.ai
+DOMAIN-SUFFIX,dreamstudio.ai
+DOMAIN-SUFFIX,modal.run
+DOMAIN-SUFFIX,nightcafe.studio
+
+# --- [监控与错误追踪]（实测连接被丢） ---
+DOMAIN-SUFFIX,sentry.io
+DOMAIN-SUFFIX,bugsnag.com
+DOMAIN-SUFFIX,newrelic.com
+DOMAIN-SUFFIX,rollbar.com
+DOMAIN-SUFFIX,bluejeans.com
+
+# --- [RSS 与密码管理] ---
+DOMAIN-SUFFIX,feedly.com
+DOMAIN-SUFFIX,inoreader.com
+DOMAIN-SUFFIX,dashlane.com
+DOMAIN-SUFFIX,onedrive.live.com
+
+# --- [游戏社区与其他]（itch.io 归 Steam 生态） ---
+DOMAIN-SUFFIX,itch.io
+DOMAIN-SUFFIX,hbouniverse.com
+DOMAIN-SUFFIX,typekit.net
 # --- [IP 段规则] ---
 # Telegram
 IP-CIDR,91.108.0.0/16,no-resolve
