@@ -31,7 +31,6 @@ DOMAIN-SUFFIX,ndcpp.com
 
 # 域名正则表达式
 DOMAIN-REGEX,^(?:(?:mon\d+-misc|.*log\d+-applog|.*-toutiao)-lf|lf\d+-short)\.(?:fqnovel|ibytedapm)\.com$
-DOMAIN-REGEX,^api[0-9]+-normal-(?:sinfonlinec|lf)\.fqnovel\.com$
 DOMAIN-REGEX,^pangolin-sdk-toutiao.*\.com$
 DOMAIN-REGEX,^pull-rtmp-[^.]+\.douyincdn\.com$
 
