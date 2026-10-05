@@ -6,6 +6,8 @@
 DOMAIN-KEYWORD,ecombdapi
 DOMAIN-KEYWORD,ecombdimg
 
+
+
 # 域名后缀
 DOMAIN-SUFFIX,zijieapi.com
 DOMAIN-SUFFIX,amemv.com
@@ -27,6 +29,19 @@ DOMAIN-SUFFIX,p1-lm.adkwai.com
 DOMAIN-SUFFIX,open.e.kuaishou.com
 DOMAIN-SUFFIX,bytedance.com
 DOMAIN-SUFFIX,ndcpp.com
+DOMAIN-SUFFIX,bytegoofy.com
+
+
+# 域名
+# DOMAIN,lf3-reading.fqnovelpic.com
+DOMAIN,mon.toutiaocloud.com
+DOMAIN,api-access.pangolin-sdk-toutiao.com
+DOMAIN,api-access.pangolin-sdk-toutiao-b.com
+DOMAIN,v6-novelapp.ixigua.com
+DOMAIN,activity-ag.awemeughun.com
+DOMAIN,msync-im1-vip6-std.easemob.com
+DOMAIN,apd-pcdnwxlogin.teg.tencent-cloud.net
+DOMAIN,api.iegadp.qq.com
 
 
 # 域名正则表达式
@@ -34,9 +49,6 @@ DOMAIN-REGEX,^(?:(?:mon\d+-misc|.*log\d+-applog|.*-toutiao)-lf|lf\d+-short)\.(?:
 DOMAIN-REGEX,^pangolin-sdk-toutiao.*\.com$
 DOMAIN-REGEX,^pull-rtmp-[^.]+\.douyincdn\.com$
 
-# 域名
-# DOMAIN,lf3-reading.fqnovelpic.com
-DOMAIN,mon.toutiaocloud.com
 
 # 蛋仔派对 Clash 拦截规则（完整、去冗余）
 DOMAIN-SUFFIX,netease.com
