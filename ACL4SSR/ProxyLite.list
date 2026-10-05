@@ -118,6 +118,10 @@ DOMAIN-KEYWORD,spotify
 DOMAIN-KEYWORD,twitch
 DOMAIN-KEYWORD,disneyplus
 DOMAIN-KEYWORD,primevideo
+# Netflix CDN（实测国内连接被丢，必须收录，否则无法播放）
+DOMAIN-SUFFIX,nflxvideo.net
+DOMAIN-SUFFIX,nflximg.net
+DOMAIN-SUFFIX,nflxext.com
 DOMAIN-SUFFIX,vimeo.com
 DOMAIN-SUFFIX,vimeocdn.com
 DOMAIN-SUFFIX,dailymotion.com
@@ -150,6 +154,13 @@ DOMAIN-SUFFIX,archive.org
 DOMAIN-SUFFIX,herokuapp.com
 DOMAIN-SUFFIX,javatpoint.com
 DOMAIN-SUFFIX,sonatype.org
+# 开发者站点（实测 greasyfork/quay 为间歇性污染，linux.do/nodeseek 被墙）
+DOMAIN-SUFFIX,quay.io
+DOMAIN-SUFFIX,nodejs.org
+DOMAIN-SUFFIX,greasyfork.com
+DOMAIN-SUFFIX,linux.do
+DOMAIN-SUFFIX,nodeseek.com
+DOMAIN-SUFFIX,quora.com
 # GitLab：应用本体可用（/explore 200），但根路径 301 到被 SNI 阻断的
 # about.gitlab.com（营销站），实测直连会卡在重定向，故收录
 DOMAIN-SUFFIX,gitlab.com
