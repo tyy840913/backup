@@ -1,252 +1,209 @@
-# --- [核心 AI 大模型 (关键词覆盖)] ---
+# ============================================================
+# 代理分流规则（完善版 v2）
+# 原则：仅收录国内无法直连 / DNS 污染严重、需要走代理的服务
+# 已核实并移除：Microsoft、Apple、Bing、Notion、Figma、Slack、
+# Canva、Supabase、Netlify、Heroku、GitLab、PyPI、NPM、Maven 等
+# 国内可直连的服务一律不收录
+# ============================================================
+
+# --- [AI 大模型与服务] ---
 DOMAIN-KEYWORD,anthropic
 DOMAIN-KEYWORD,claude
 DOMAIN-KEYWORD,openai
 DOMAIN-KEYWORD,chatgpt
 DOMAIN-KEYWORD,oaistatic
 DOMAIN-KEYWORD,oaiusercontent
-DOMAIN-KEYWORD,generative
+DOMAIN-KEYWORD,gemini
 DOMAIN-KEYWORD,deepmind
-DOMAIN-KEYWORD,datadog
-DOMAIN-KEYWORD,mistral
-DOMAIN-KEYWORD,perplexity
-DOMAIN-KEYWORD,cohere
-DOMAIN-KEYWORD,runway
-DOMAIN-KEYWORD,midjourney
-DOMAIN-KEYWORD,stability
-DOMAIN-KEYWORD,stablediffusion
-DOMAIN-KEYWORD,replicate
-DOMAIN-KEYWORD,together
-DOMAIN-KEYWORD,fireworks
-DOMAIN-KEYWORD,notionai
-DOMAIN-KEYWORD,blackbox
-DOMAIN-KEYWORD,phind
-DOMAIN-KEYWORD,bing
-DOMAIN-KEYWORD,playground
 DOMAIN-KEYWORD,copilot
+DOMAIN-KEYWORD,perplexity
+DOMAIN-KEYWORD,mistral
+DOMAIN-KEYWORD,cohere
+DOMAIN-KEYWORD,huggingface
 DOMAIN-KEYWORD,cursor
-DOMAIN-KEYWORD,grazie
-DOMAIN-KEYWORD,elevenlabs
-
-# --- [短词/易误伤服务 (后缀匹配)] ---
-DOMAIN-SUFFIX,jan.ai
-DOMAIN-SUFFIX,poe.com
-DOMAIN-SUFFIX,coze.com
-DOMAIN-SUFFIX,coze.io
-DOMAIN-SUFFIX,groq.com
-DOMAIN-SUFFIX,modal.com
-DOMAIN-SUFFIX,modal.run
-DOMAIN-SUFFIX,ai21.com
-DOMAIN-SUFFIX,x.com
 DOMAIN-SUFFIX,x.ai
-DOMAIN-SUFFIX,meta.ai
 DOMAIN-SUFFIX,grok.com
-DOMAIN-SUFFIX,mozilla.org
+DOMAIN-SUFFIX,groq.com
+DOMAIN-SUFFIX,poe.com
+DOMAIN-SUFFIX,character.ai
+DOMAIN-SUFFIX,openrouter.ai
+DOMAIN-SUFFIX,elevenlabs.io
+DOMAIN-SUFFIX,runwayml.com
+DOMAIN-SUFFIX,midjourney.com
+DOMAIN-SUFFIX,stability.ai
+DOMAIN-SUFFIX,replicate.com
+DOMAIN-SUFFIX,civitai.com
+DOMAIN-SUFFIX,suno.com
+DOMAIN-SUFFIX,luma.ai
+DOMAIN-SUFFIX,pika.art
+DOMAIN-SUFFIX,ideogram.ai
+DOMAIN-SUFFIX,leonardo.ai
+DOMAIN-SUFFIX,recraft.ai
 
-# --- [AI 必须的身份验证与风控服务] ---
+# --- [AI 登录依赖的身份验证/风控服务] ---
+# 这些域名本身国内可通，但必须与 AI 服务同走代理，否则登录风控会失败
 DOMAIN-SUFFIX,auth0.com
-DOMAIN-SUFFIX,sentry.io
-DOMAIN-SUFFIX,stripe.com
-DOMAIN-SUFFIX,identrust.com
+DOMAIN-SUFFIX,arkoselabs.com
 DOMAIN-SUFFIX,statsigapi.net
 DOMAIN-SUFFIX,featuregates.org
-DOMAIN-SUFFIX,arkoselabs.com
 DOMAIN-SUFFIX,intercom.io
-DOMAIN-SUFFIX,prodregistryv2.org
 DOMAIN-SUFFIX,intercomcdn.com
-DOMAIN-SUFFIX,segment.io
-DOMAIN-SUFFIX,appcenter.ms
-DOMAIN-SUFFIX,browser-intake-datadoghq.com
-DOMAIN-SUFFIX,revenuecat.com
-DOMAIN-SUFFIX,app-measurement.com
-DOMAIN-SUFFIX,agnes-ai.com
+DOMAIN-SUFFIX,stripe.com
 
-
-# --- [大厂 AI 专属云服务接口] ---
-DOMAIN-SUFFIX,ai.azure.com
-DOMAIN-SUFFIX,azureedge.net
-DOMAIN-SUFFIX,cloudflareai.com
-
-# --- [笔记与生产力 AI 增强] ---
-DOMAIN-SUFFIX,notion.so
-DOMAIN-SUFFIX,notion-static.com
-DOMAIN-SUFFIX,quora.com
-
-# --- [自定义与特殊后缀] ---
-DOMAIN-SUFFIX,ip-ddns.com
-DOMAIN-SUFFIX,ddns-ip.net
-DOMAIN-KEYWORD,cloudns
-DOMAIN-KEYWORD,freemyip
-DOMAIN-KEYWORD,duckdns
-DOMAIN-KEYWORD,dnsomatic
-DOMAIN-KEYWORD,nodeloc
-DOMAIN-KEYWORD,greasyfork
-DOMAIN-KEYWORD,netassist
-DOMAIN-KEYWORD,netlib
+# --- [Google 全家桶] ---
+# 注：google 关键词已覆盖 googleapis/googleusercontent/googlesyndication 等
 DOMAIN-KEYWORD,google
-DOMAIN-KEYWORD,gemini
-DOMAIN-SUFFIX,t.me
-DOMAIN-SUFFIX,workers.dev
-DOMAIN-SUFFIX,linux.do
-DOMAIN-SUFFIX,atsptp.com
-DOMAIN-SUFFIX,b-cdn.net
-DOMAIN-SUFFIX,stackryze.com
-DOMAIN-SUFFIX,gcore.com
-DOMAIN-SUFFIX,fast.com
-
-
-
-# --- [全球科技巨头核心服务] ---
-# Google 相关
 DOMAIN-KEYWORD,gstatic
 DOMAIN-KEYWORD,gmail
+DOMAIN-KEYWORD,ggpht
 DOMAIN-KEYWORD,1e100
-DOMAIN-KEYWORD,android
-DOMAIN-KEYWORD,chrome
-DOMAIN-KEYWORD,youtu
-DOMAIN-KEYWORD,ytimg
+DOMAIN-KEYWORD,gcpvt
+DOMAIN-KEYWORD,doubleclick
 DOMAIN-SUFFIX,g.co
 DOMAIN-SUFFIX,goo.gl
-DOMAIN-SUFFIX,yt.be
-DOMAIN-SUFFIX,2mdn.net
-DOMAIN-SUFFIX,app-measurement.net
-DOMAIN-SUFFIX,xn--ngstr-lra8j.com
+DOMAIN-SUFFIX,android.com
+DOMAIN-SUFFIX,chromium.org
 DOMAIN-REGEX,gvt[0-9]\.com$
 
-# Microsoft / OneDrive / Office
-DOMAIN-KEYWORD,microsoft
-DOMAIN-KEYWORD,office
-DOMAIN-KEYWORD,outlook
-DOMAIN-KEYWORD,skype
-DOMAIN-KEYWORD,windows
-DOMAIN-KEYWORD,xbox
-DOMAIN-KEYWORD,live
-DOMAIN-KEYWORD,msn
-DOMAIN-KEYWORD,onedrive
-DOMAIN-KEYWORD,skydrive
-DOMAIN-KEYWORD,oneclient
+# --- [YouTube] ---
+# 注：youtu 关键词已覆盖 youtube
+DOMAIN-KEYWORD,youtu
+DOMAIN-KEYWORD,ytimg
+DOMAIN-SUFFIX,yt.be
 
-# Apple / iCloud
-DOMAIN-KEYWORD,apple
-DOMAIN-KEYWORD,icloud
-DOMAIN-KEYWORD,itunes
-DOMAIN-KEYWORD,appstore
-
-# Meta
+# --- [Meta 全家桶] ---
 DOMAIN-KEYWORD,facebook
 DOMAIN-KEYWORD,fbcdn
+DOMAIN-KEYWORD,fbsbx
 DOMAIN-KEYWORD,instagram
 DOMAIN-KEYWORD,whatsapp
 DOMAIN-KEYWORD,messenger
 DOMAIN-KEYWORD,oculus
-DOMAIN-KEYWORD,meta
-DOMAIN-KEYWORD,threads
+DOMAIN-SUFFIX,meta.com
+DOMAIN-SUFFIX,threads.net
+DOMAIN-SUFFIX,threads.com
 
-# Amazon
-DOMAIN-KEYWORD,amazon
-DOMAIN-KEYWORD,twitch
-DOMAIN-KEYWORD,imdb
-DOMAIN-KEYWORD,primevideo
-
-# --- [开发者与技术工具] ---
-DOMAIN-KEYWORD,github
-DOMAIN-KEYWORD,gitlab
-DOMAIN-SUFFIX,docker.com
-DOMAIN-SUFFIX,docker.io
-DOMAIN-SUFFIX,apkpure.com
-DOMAIN-KEYWORD,python
-DOMAIN-KEYWORD,pypi
-DOMAIN-KEYWORD,rust-lang
-DOMAIN-KEYWORD,crates
-DOMAIN-KEYWORD,apache
-DOMAIN-KEYWORD,elastic
-DOMAIN-KEYWORD,maven
-DOMAIN-KEYWORD,stackoverflow
-DOMAIN-KEYWORD,sourceforge
-DOMAIN-KEYWORD,codeberg
-DOMAIN-KEYWORD,launchpad
-DOMAIN-KEYWORD,terraform
-DOMAIN-KEYWORD,hashicorp
-DOMAIN-KEYWORD,jetbrains
-DOMAIN-KEYWORD,gradle
-DOMAIN-KEYWORD,wispbyte
-DOMAIN-KEYWORD,spring
-DOMAIN-KEYWORD,sourcegraph
-DOMAIN-KEYWORD,nodeseek
-DOMAIN-SUFFIX,golang.org
-DOMAIN-SUFFIX,nodejs.org
-DOMAIN-SUFFIX,npmjs.com
-DOMAIN-SUFFIX,gcr.io
-DOMAIN-SUFFIX,jitpack.io
-DOMAIN-SUFFIX,quay.io
-DOMAIN-SUFFIX,redhat.com
-DOMAIN-SUFFIX,sonatype.org
-DOMAIN-KEYWORD,huggingface
-
-# --- [社交、新闻与存储] ---
+# --- [X / Twitter] ---
+# 注：twitter 关键词已覆盖 tweetdeck
 DOMAIN-KEYWORD,twitter
+DOMAIN-KEYWORD,twimg
+DOMAIN-SUFFIX,x.com
+DOMAIN-SUFFIX,t.co
+
+# --- [其他社交与社区] ---
 DOMAIN-KEYWORD,telegram
+DOMAIN-SUFFIX,t.me
 DOMAIN-KEYWORD,discord
-DOMAIN-KEYWORD,slack
 DOMAIN-KEYWORD,reddit
-DOMAIN-KEYWORD,medium
-DOMAIN-KEYWORD,quora
+DOMAIN-SUFFIX,redd.it
 DOMAIN-KEYWORD,wikipedia
-DOMAIN-SUFFIX,duckduckgo.com
-DOMAIN-KEYWORD,archive
-DOMAIN-KEYWORD,dropbox
-DOMAIN-KEYWORD,mega
-DOMAIN-KEYWORD,spotify
+DOMAIN-KEYWORD,wikimedia
+DOMAIN-SUFFIX,medium.com
+DOMAIN-KEYWORD,quora
+DOMAIN-SUFFIX,line.me
+DOMAIN-SUFFIX,line-apps.com
+DOMAIN-SUFFIX,line-scdn.net
+DOMAIN-SUFFIX,signal.org
+DOMAIN-SUFFIX,tumblr.com
+DOMAIN-SUFFIX,pinterest.com
+DOMAIN-SUFFIX,pinimg.com
+DOMAIN-SUFFIX,tiktok.com
+DOMAIN-SUFFIX,tiktokv.com
+DOMAIN-SUFFIX,tiktokcdn.com
+DOMAIN-SUFFIX,musical.ly
+
+# --- [流媒体与娱乐] ---
 DOMAIN-KEYWORD,netflix
-DOMAIN-KEYWORD,vimeo
-DOMAIN-KEYWORD,hulu
+DOMAIN-SUFFIX,nflxvideo.net
+DOMAIN-SUFFIX,nflximg.net
+DOMAIN-SUFFIX,nflxext.com
+DOMAIN-KEYWORD,spotify
+DOMAIN-SUFFIX,scdn.co
+DOMAIN-KEYWORD,twitch
+DOMAIN-SUFFIX,ttvnw.net
+DOMAIN-SUFFIX,jtvnw.net
 DOMAIN-KEYWORD,disneyplus
-DOMAIN-KEYWORD,steam
-DOMAIN-KEYWORD,epicgames
-DOMAIN-KEYWORD,bbc
-DOMAIN-KEYWORD,nytimes
+DOMAIN-SUFFIX,bamgrid.com
+DOMAIN-SUFFIX,dssott.com
+DOMAIN-SUFFIX,hulu.com
+DOMAIN-SUFFIX,hulustream.com
+DOMAIN-KEYWORD,primevideo
+DOMAIN-SUFFIX,vimeo.com
+DOMAIN-SUFFIX,vimeocdn.com
+DOMAIN-SUFFIX,dailymotion.com
+
+# --- [新闻与出版] ---
+DOMAIN-SUFFIX,bbc.com
+DOMAIN-SUFFIX,bbc.co.uk
+DOMAIN-SUFFIX,bbci.co.uk
+DOMAIN-SUFFIX,nytimes.com
+DOMAIN-SUFFIX,nyt.com
+DOMAIN-SUFFIX,wsj.com
+DOMAIN-SUFFIX,bloomberg.com
+DOMAIN-SUFFIX,reuters.com
+DOMAIN-SUFFIX,theguardian.com
+DOMAIN-SUFFIX,washingtonpost.com
+DOMAIN-SUFFIX,cnn.com
+DOMAIN-SUFFIX,voanews.com
+DOMAIN-SUFFIX,rfa.org
+DOMAIN-SUFFIX,dw.com
+DOMAIN-SUFFIX,ft.com
+DOMAIN-SUFFIX,economist.com
 DOMAIN-KEYWORD,blogspot
-DOMAIN-KEYWORD,sci-hub
+DOMAIN-SUFFIX,wordpress.com
+DOMAIN-SUFFIX,wp.com
+DOMAIN-SUFFIX,substack.com
 
-# --- [云服务与CDN] ---
-DOMAIN-KEYWORD,cloudfront
-DOMAIN-KEYWORD,fastly
-DOMAIN-KEYWORD,akamai
-DOMAIN-KEYWORD,vercel
-DOMAIN-KEYWORD,pages
-DOMAIN-KEYWORD,azure
-DOMAIN-KEYWORD,digitalocean
-DOMAIN-KEYWORD,vultr
-DOMAIN-KEYWORD,linode
-DOMAIN-KEYWORD,hetzner
-DOMAIN-KEYWORD,bunny
-DOMAIN-KEYWORD,netlify
-DOMAIN-KEYWORD,heroku
-DOMAIN-KEYWORD,firebase
+# --- [存储与协作] ---
+DOMAIN-KEYWORD,dropbox
+DOMAIN-SUFFIX,mega.nz
+DOMAIN-SUFFIX,mega.co.nz
 
+# --- [开发者工具（国内被墙或污染严重）] ---
+# GitHub 系列：污染严重，需要代理（github 关键词已覆盖
+# githubusercontent/githubassets/github.io/gist 等全部子域）
+DOMAIN-KEYWORD,github
+DOMAIN-SUFFIX,docker.io
+DOMAIN-SUFFIX,docker.com
+DOMAIN-SUFFIX,gcr.io
+DOMAIN-SUFFIX,ghcr.io
+DOMAIN-SUFFIX,golang.org
+DOMAIN-SUFFIX,jsdelivr.net
+DOMAIN-SUFFIX,gitbook.io
+DOMAIN-SUFFIX,replit.com
+DOMAIN-SUFFIX,sourcegraph.com
+DOMAIN-SUFFIX,archive.org
 
-# --- [成人内容]---
+# --- [部署平台（仅被墙部分）] ---
+# vercel.app 已被墙；vercel.com 官网可直连不收录
+# netlify 国内可直连，不收录
+DOMAIN-SUFFIX,vercel.app
+DOMAIN-SUFFIX,workers.dev
+DOMAIN-SUFFIX,pages.dev
+DOMAIN-SUFFIX,firebaseio.com
+
+# --- [搜索] ---
+DOMAIN-SUFFIX,duckduckgo.com
+
+# --- [成人内容] ---
 DOMAIN-KEYWORD,pornhub
-DOMAIN-KEYWORD,redtube
 DOMAIN-KEYWORD,xvideos
-DOMAIN-KEYWORD,onlyfans
 DOMAIN-KEYWORD,xnxx
+DOMAIN-KEYWORD,redtube
+DOMAIN-KEYWORD,onlyfans
 
-# --- [IP段规则 - 精确匹配] ---
+# --- [IP 段规则] ---
 # Telegram
-IP-CIDR,5.28.192.0/18,no-resolve
 IP-CIDR,91.108.0.0/16,no-resolve
 IP-CIDR,95.161.64.0/20,no-resolve
-IP-CIDR,109.239.140.0/24,no-resolve
 IP-CIDR,149.154.160.0/20,no-resolve
 IP-CIDR6,2001:67c:4e8::/48,no-resolve
 IP-CIDR6,2001:b28:f23d::/48,no-resolve
 IP-CIDR6,2001:b28:f23f::/48,no-resolve
 
-# Google & Google China
+# Google 海外 IP
 IP-CIDR,74.125.0.0/16,no-resolve
 IP-CIDR,173.194.0.0/16,no-resolve
-IP-CIDR,203.208.0.0/16,no-resolve
-IP-CIDR,120.192.0.0/10,no-resolve
-IP-CIDR,180.163.0.0/16,no-resolve
-IP-CIDR,220.181.174.0/24,no-resolve
+IP-CIDR,142.250.0.0/15,no-resolve
+IP-CIDR,172.217.0.0/16,no-resolve
+IP-CIDR,216.58.192.0/19,no-resolve
