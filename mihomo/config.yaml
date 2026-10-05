@@ -209,21 +209,21 @@ proxy-groups:
   
 rule-providers:
   ProxyLite:
-    url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/ProxyLite.list
+    url: https://git.woskee.nyc.mm/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/ProxyLite.list
     path: ./ruleset/ProxyLite.list
     behavior: classical
     interval: 86400
     format: text
     type: http
   DIRECT:
-    url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/DIRECT.list
+    url: https://git.woskee.nyc.mm/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/DIRECT.list
     path: ./ruleset/DIRECT.list
     behavior: classical
     interval: 86400
     format: text
     type: http
   Global-Filter:
-    url: https://ghproxy.net/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/Global-Filter.list
+    url: https://git.woskee.nyc.mm/raw.githubusercontent.com/tyy840913/backup/refs/heads/main/ACL4SSR/Global-Filter.list
     path: ./ruleset/Global-Filter.list
     behavior: classical
     interval: 86400
