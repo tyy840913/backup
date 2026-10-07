@@ -90,6 +90,9 @@ DOMAIN-KEYWORD,twimg
 DOMAIN-SUFFIX,x.com
 DOMAIN-SUFFIX,t.co
 
+# --- [ DNS/域名] ---
+DOMAIN-KEYWORD,dynu
+
 # --- [其他社交与社区] ---
 DOMAIN-KEYWORD,telegram
 DOMAIN-SUFFIX,t.me
