@@ -103,7 +103,6 @@ DOMAIN-KEYWORD,wikipedia
 DOMAIN-KEYWORD,wikimedia
 DOMAIN-SUFFIX,medium.com
 DOMAIN-KEYWORD,quora
-DOMAIN-SUFFIX,t66y.com
 DOMAIN-SUFFIX,line.me
 DOMAIN-SUFFIX,line-apps.com
 DOMAIN-SUFFIX,line-scdn.net
@@ -179,7 +178,7 @@ DOMAIN-KEYWORD,pornhub
 DOMAIN-KEYWORD,xvideos
 DOMAIN-KEYWORD,xnxx
 DOMAIN-KEYWORD,redtube
-DOMAIN-KEYWORD,onlyfans
+DOMAIN-SUFFIX,t66y.com
 
 # --- [博客与内容托管]（实测 blogspot.com 国内 DNS 污染，返回 Facebook IP） ---
 DOMAIN-KEYWORD,blogspot
