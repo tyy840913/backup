@@ -5,6 +5,13 @@
 # 字节跳动相关域名匹配（仅主域名）
 DOMAIN-KEYWORD,ecombdapi
 DOMAIN-KEYWORD,ecombdimg
+DOMAIN-SUFFIX,ad.toutiao.com
+DOMAIN-SUFFIX,pangolin-sdk-toutiao.com
+DOMAIN-SUFFIX,pangolin-sdk-toutiao-b.com
+DOMAIN-SUFFIX,pglstatp-toutiao.com
+DOMAIN-SUFFIX,dm.toutiao.com
+DOMAIN-SUFFIX,adshare.toutiao.com
+DOMAIN-SUFFIX,track.toutiao.com
 
 # OPPO一加手机游戏登录
 DOMAIN-SUFFIX,heytapmobi.com
